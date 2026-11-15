@@ -1,6 +1,6 @@
 {
   "name": "Party Games",
-  "description": "5 minijuegos en 3D: pisos que caen, lluvia de yunques, caza de gemas, carrera de obstáculos y luz roja/luz verde. Sumá estrellas y subí al podio.",
+  "description": "6 minijuegos en 3D estilo fiesta: karts, bomba caliente, lluvia de monedas, hexágonos que caen, circuito loco y empujones. Sumá estrellas y subí al podio.",
   "author": "ClaudeArcade",
   "mode": "multi",
   "minPlayers": 2,
@@ -8,5 +8,5 @@
   "emoji": "🎉",
   "color": "#ff4d8d",
   "thumbnail": "thumb.jpg",
-  "controls": "WASD moverse · Espacio saltar · Mouse cámara (click) · Q/E girar"
+  "controls": "WASD moverse · Espacio saltar · Click para cámara · F objeto/empujón"
 }
