@@ -41,7 +41,7 @@
     el.title = g.description;
     const players = g.mode === 'multi' ? `👥 ${g.minPlayers === g.maxPlayers ? g.minPlayers : g.minPlayers + '–' + g.maxPlayers}` : '👤 1';
     el.innerHTML =
-      `<div class="thumb">${g.thumbnail ? `<img src="${esc(g.thumbnail)}" alt="" loading="lazy">` : `<span>${esc(g.emoji)}</span>`}</div>` +
+      `<div class="thumb"><img src="${esc(g.thumbnail)}" alt="${esc(g.name)}" loading="lazy"></div>` +
       `<div class="meta"><b>${esc(g.name)}</b><small>${players} · ${esc(g.author)}</small></div>`;
     el.addEventListener('click', onClick);
     return el;
@@ -106,11 +106,23 @@
     return socket;
   }
 
+  // El nombre es obligatorio para jugar online
   function myName() {
-    const n = $('#inName').value.trim().slice(0, 16);
-    if (n) store.set('arcade:name', n);
-    return n || 'Jugador';
+    const input = $('#inName');
+    const n = input.value.replace(/[<>&"']/g, '').trim().slice(0, 16);
+    if (!n) {
+      $('#onlineErr').textContent = 'Poné tu nombre para jugar online';
+      input.classList.add('invalid');
+      input.focus();
+      return null;
+    }
+    input.classList.remove('invalid');
+    store.set('arcade:name', n);
+    return n;
   }
+  $('#inName').addEventListener('input', () => {
+    if ($('#inName').value.trim()) { $('#inName').classList.remove('invalid'); $('#onlineErr').textContent = ''; }
+  });
 
   function onJoined(res) {
     if (!res.ok) { $('#onlineErr').textContent = res.error; return; }
@@ -125,12 +137,18 @@
     show('viewLobby');
   }
 
-  $('#btnCreate').addEventListener('click', () => ensureSocket().emit('room:create', { name: myName() }, onJoined));
+  $('#btnCreate').addEventListener('click', () => {
+    const name = myName();
+    if (name) ensureSocket().emit('room:create', { name }, onJoined);
+  });
   $('#btnJoin').addEventListener('click', () => {
+    const name = myName();
+    if (!name) return;
     const code = $('#inCode').value.trim().toUpperCase();
     if (code.length !== 5) { $('#onlineErr').textContent = 'El código tiene 5 letras'; return; }
-    ensureSocket().emit('room:join', { code, name: myName() }, onJoined);
+    ensureSocket().emit('room:join', { code, name }, onJoined);
   });
+  $('#inName').addEventListener('keydown', e => { if (e.key === 'Enter') ($('#inCode').value.trim() ? $('#btnJoin') : $('#btnCreate')).click(); });
   $('#inCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnJoin').click(); });
   $('#btnOnline').addEventListener('click', () => show(room ? 'viewLobby' : 'viewOnline'));
   $('#roomBadge').addEventListener('click', () => show('viewLobby'));

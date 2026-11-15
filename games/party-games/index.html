@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Party Games</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9ad8ff; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #fff; user-select: none; }
+  canvas { display: block; }
+  [hidden] { display: none !important; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 2px 6px rgba(0,0,0,.45); }
+  #top { top: 10px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #roundName { font-weight: 900; font-size: 18px; background: rgba(20,16,42,.55); padding: 6px 14px; border-radius: 999px; }
+  #timer { font-weight: 900; font-size: 30px; margin-top: 4px; }
+  #board { top: 10px; left: 10px; background: rgba(20,16,42,.55); border-radius: 14px; padding: 10px 12px; min-width: 170px; font-size: 14px; }
+  #board b { display: block; margin-bottom: 6px; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; opacity: .8; }
+  #board .row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  #board .row.me span { color: #ffd43b; }
+  #board i, .rrow i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+  #board span { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+  #board em { font-style: normal; font-weight: 800; }
+  #mgHud { top: 92px; left: 50%; transform: translateX(-50%); text-align: center; }
+  .pill { display: inline-block; background: rgba(20,16,42,.6); padding: 8px 16px; border-radius: 999px; font-weight: 800; font-size: 18px; }
+  .pill.light { font-size: 30px; padding: 10px 26px; }
+  .pill.light.g { background: #2b8a3e; } .pill.light.y { background: #e67700; } .pill.light.r { background: #c92a2a; }
+  .pill.dead { margin-top: 6px; background: rgba(0,0,0,.5); font-size: 15px; }
+  .sub { margin-top: 6px; font-weight: 700; font-size: 14px; }
+  #big { top: 38%; left: 0; right: 0; text-align: center; font-size: 54px; font-weight: 900; -webkit-text-stroke: 2px rgba(0,0,0,.35); }
+  #big.pop { animation: pop .35s ease-out; }
+  @keyframes pop { from { transform: scale(1.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  #feed { right: 12px; bottom: 12px; text-align: right; font-weight: 800; font-size: 15px; display: flex; flex-direction: column; gap: 4px; }
+  #feed div { background: rgba(20,16,42,.55); padding: 5px 10px; border-radius: 10px; }
+  #hint { left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 14px; font-weight: 700; background: rgba(20,16,42,.5); padding: 6px 12px; border-radius: 999px; }
+  .panel { left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(20,16,42,.86); border-radius: 22px; padding: 22px 26px; text-align: center; max-width: min(520px, 88vw); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  .panel h1 { margin: 6px 0 8px; font-size: 34px; }
+  .panel h2 { margin: 0 0 12px; font-size: 26px; }
+  .panel p { margin: 0; font-size: 17px; line-height: 1.45; font-weight: 600; opacity: .95; }
+  .panel small { opacity: .75; font-weight: 700; display: block; margin-top: 10px; }
+  #card .emoji { font-size: 56px; }
+  #card .count { font-size: 64px; font-weight: 900; color: #ffd43b; min-height: 74px; margin-top: 6px; }
+  .rrow { display: flex; align-items: center; gap: 10px; padding: 6px 4px; font-weight: 800; font-size: 17px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .rrow.me { color: #ffd43b; }
+  .rrow .pl { width: 34px; text-align: center; }
+  .rrow .nm { flex: 1; min-width: 120px; }
+  .rrow .pts { width: 60px; color: #69db7c; text-align: right; }
+  .rrow .tot { width: 60px; text-align: right; }
+  #podium { top: auto; bottom: 18px; transform: translateX(-50%); min-width: 320px; max-height: 42vh; overflow: auto; }
+  #podium h1 { font-size: 28px; }
+  #preview { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 5%; }
+  #preview h1 { margin: 0; font-size: 92px; font-weight: 900; letter-spacing: 2px; color: #ffd43b; -webkit-text-stroke: 4px #1b1b3a; text-shadow: 0 8px 0 #1b1b3a; transform: rotate(-3deg); }
+  #preview div { margin-top: 10px; font-size: 26px; font-weight: 900; background: #ff4d8d; padding: 6px 18px; border-radius: 999px; -webkit-text-stroke: 0; transform: rotate(-3deg); }
+  @media (max-width: 700px) { #board { font-size: 12px; min-width: 130px; } #big { font-size: 38px; } .panel h1 { font-size: 26px; } }
+</style>
+</head>
+<body>
+  <div id="top" class="hud"><div id="roundName">Party Games</div><div id="timer"></div></div>
+  <div id="board" class="hud"></div>
+  <div id="mgHud" class="hud"></div>
+  <div id="big" class="hud"></div>
+  <div id="feed" class="hud"></div>
+  <div id="hint" class="hud">🖱️ Hacé click para girar la cámara con el mouse · WASD moverse · Espacio saltar · Q/E girar</div>
+  <div id="waiting" class="hud panel" hidden><h2>🎉 Party Games</h2><p>Esperando a que carguen todos los jugadores…</p></div>
+  <div id="card" class="hud panel" hidden></div>
+  <div id="results" class="hud panel" hidden></div>
+  <div id="podium" class="hud panel" hidden></div>
+  <div id="preview" class="hud" hidden><h1>PARTY GAMES</h1><div>2 – 8 jugadores · 5 minijuegos</div></div>
+
+  <script src="/sdk/arcade-sdk.js"></script>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>

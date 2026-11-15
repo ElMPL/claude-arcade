@@ -1,9 +1,0 @@
-{
-  "name": "Esquiva",
-  "description": "Esquivá los bloques que caen. Cada vez más rápido.",
-  "author": "ClaudeArcade",
-  "mode": "single",
-  "emoji": "🟦",
-  "color": "#4dabff",
-  "controls": "← → o mouse/dedo para moverte · Espacio o tocar para reiniciar"
-}

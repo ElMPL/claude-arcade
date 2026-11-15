@@ -89,6 +89,8 @@ input {
   border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%;
 }
 input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+input.invalid { outline: 2px solid var(--err); border-color: transparent; }
+.req { font-weight: 700; font-size: 12px; opacity: .7; }
 #inCode { text-transform: uppercase; letter-spacing: 4px; text-align: center; }
 .row { display: flex; gap: 10px; }
 .or { text-align: center; color: var(--muted); font-size: 13px; position: relative; }

@@ -13,7 +13,7 @@ games/
   mi-juego/            ← id del juego: minúsculas, números y guiones (kebab-case)
     game.json          ← manifiesto (obligatorio)
     index.html         ← punto de entrada (obligatorio)
-    thumb.png          ← miniatura 4:3, ideal 400x300 (opcional)
+    thumb.jpg          ← FOTO del juego: captura 4:3 (ideal 800x600). Muy recomendada
     ...                ← cualquier otro archivo (js, css, sprites, sonidos)
 ```
 
@@ -47,11 +47,15 @@ games/
 | `mode` | sí | `"multi"` (online, en sala) o `"single"` (un jugador, se juega directo desde el catálogo) |
 | `minPlayers` / `maxPlayers` | si es multi | entre 2 y 8. Juego de 1v1: `2` y `2`. Hasta 4: `2` y `4` |
 | `description`, `author`, `controls` | recomendado | se muestran en el catálogo y en la barra del juego |
-| `emoji` + `color` | opcional | se usan como miniatura si no hay `thumbnail` |
-| `thumbnail` | opcional | ruta relativa a tu carpeta |
+| `thumbnail` | recomendado | ruta a la foto del juego (ej. `thumb.jpg`). Si no se pone, se busca `thumb.png/jpg/webp` en la carpeta |
+| `emoji` + `color` | recomendado | si el juego no tiene foto, la plataforma genera una portada automática con este emoji, este color y el nombre |
 | `entry` | opcional | si tu HTML principal no se llama `index.html` |
 
 ---
+
+### Foto del juego (miniatura)
+Cada juego debería tener su foto: una **captura real del juego** en 4:3 (800x600 está perfecto), guardada como `thumb.jpg` en la carpeta. Que se vea lo más lindo del juego, con colores fuertes y, si querés, el nombre grande arriba (como en `games/party-games/thumb.jpg`).
+Si no hay foto, la plataforma arma una portada automática con el `emoji`, el `color` y el nombre: funciona, pero una captura real queda mucho mejor.
 
 ## 2. El SDK
 
@@ -129,7 +133,7 @@ Para que el jugador no-host no sienta lag, podés predecir su propio movimiento 
 ### B. Cada uno es dueño de sí mismo — para shooters estilo Krunker, carreras, juegos casuales
 - Cada jugador simula **su propio** personaje y manda su posición ~20 veces/seg (`volatile`).
 - Los demás interpolan hacia la última posición recibida.
-- Disparos: el que dispara manda un evento `shot`. El que recibe el impacto decide si le pegaron y avisa `died`. (Ver `games/arena-cuadrados/` como ejemplo completo).
+- Disparos: el que dispara manda un evento `shot`. El que recibe el impacto decide si le pegaron y avisa `died`. 
 
 ### Fin de partida
 Cuando hay un ganador, el **host** manda un evento a todos (para mostrar la pantalla final) y unos segundos después llama `Arcade.end({ text: '...' })`.
@@ -151,6 +155,9 @@ La plataforma abre esa URL en el iframe agregando `?arcade_room=CODIGO&arcade_pl
 
 ---
 
+## Ejemplo completo
+`games/party-games/` es un juego multijugador 3D (Three.js, 2 a 8 jugadores) que usa todo lo de esta guía: host que maneja rondas y puntajes, jugadores dueños de su movimiento, `volatile` para posiciones, `onPlayerLeft`, `onHostChanged` y `Arcade.end`. Su código fuente está en `src/main.js`.
+
 ## 5. Probar en tu compu
 ```bash
 npm install
@@ -166,6 +173,7 @@ npm start
 
 ## Checklist antes del PR
 - [ ] Carpeta `games/<id>/` en kebab-case, con `game.json` e `index.html`
+- [ ] Tiene `thumb.jpg` con una captura del juego (4:3)
 - [ ] `mode`, `minPlayers`, `maxPlayers` correctos
 - [ ] Incluye `<script src="/sdk/arcade-sdk.js"></script>` y espera `Arcade.ready()` antes de arrancar
 - [ ] Usa `ctx.me.slot` para asignar P1/P2/colores (no el orden de llegada de mensajes)

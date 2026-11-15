@@ -1,0 +1,12 @@
+{
+  "name": "Party Games",
+  "description": "5 minijuegos en 3D: pisos que caen, lluvia de yunques, caza de gemas, carrera de obstáculos y luz roja/luz verde. Sumá estrellas y subí al podio.",
+  "author": "ClaudeArcade",
+  "mode": "multi",
+  "minPlayers": 2,
+  "maxPlayers": 8,
+  "emoji": "🎉",
+  "color": "#ff4d8d",
+  "thumbnail": "thumb.jpg",
+  "controls": "WASD moverse · Espacio saltar · Mouse cámara (click) · Q/E girar"
+}
