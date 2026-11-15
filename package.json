@@ -1,0 +1,16 @@
+{
+  "name": "claude-arcade",
+  "version": "1.0.0",
+  "description": "Plataforma tipo Friv para juegos hechos con Claude, con salas online",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.8.0"
+  }
+}

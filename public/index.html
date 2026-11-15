@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClaudeArcade</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <a class="logo" href="/">Claude<span>Arcade</span></a>
+    <div class="header-right">
+      <span id="roomBadge" class="badge" hidden></span>
+      <button id="btnOnline" class="btn primary">🎮 Jugar online</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="viewCatalog">
+      <div class="filters">
+        <button data-f="all" class="chip on">Todos</button>
+        <button data-f="multi" class="chip">👥 Multijugador</button>
+        <button data-f="single" class="chip">👤 Un jugador</button>
+      </div>
+      <div id="grid" class="grid"></div>
+    </section>
+
+    <section id="viewOnline" hidden>
+      <div class="card narrow">
+        <h2>Jugar online</h2>
+        <label class="field">Tu nombre
+          <input id="inName" maxlength="16" placeholder="Ej: Gaby" autocomplete="nickname">
+        </label>
+        <button id="btnCreate" class="btn primary big">Crear sala</button>
+        <div class="or"><span>o unite con un código</span></div>
+        <div class="row">
+          <input id="inCode" placeholder="CÓDIGO" maxlength="5" autocapitalize="characters">
+          <button id="btnJoin" class="btn">Unirse</button>
+        </div>
+        <p id="onlineErr" class="err"></p>
+        <button class="btn ghost back">← Volver al catálogo</button>
+      </div>
+    </section>
+
+    <section id="viewLobby" hidden>
+      <div class="lobby">
+        <div class="card side">
+          <div class="room-head">
+            <div>
+              <small>SALA</small>
+              <div id="roomCode" class="code"></div>
+            </div>
+            <button id="btnCopy" class="btn small">🔗 Copiar link</button>
+          </div>
+          <ul id="playerList" class="players"></ul>
+          <p id="lastResult" class="result" hidden></p>
+          <button id="btnLeave" class="btn ghost">Salir de la sala</button>
+        </div>
+        <div class="card grow">
+          <h3 id="pickTitle">Elegí un juego</h3>
+          <div id="lobbyGames" class="grid small"></div>
+          <div class="startbar">
+            <span id="startInfo"></span>
+            <button id="btnStart" class="btn primary big">▶ Empezar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="viewGame" hidden>
+    <div class="gamebar">
+      <b id="gameTitle"></b>
+      <span id="gameControls"></span>
+      <div class="gamebar-right">
+        <button id="btnFull" class="btn small" title="Pantalla completa">⛶</button>
+        <button id="btnExit" class="btn small danger">✕ Salir</button>
+      </div>
+    </div>
+    <iframe id="frame" allow="fullscreen; gamepad; autoplay; clipboard-write" allowfullscreen></iframe>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

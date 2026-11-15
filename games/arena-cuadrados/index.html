@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arena de Cuadrados</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0b1a; overflow: hidden; font-family: system-ui, sans-serif; color: #fff; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: none; }
+  #msg { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+         font-size: 42px; font-weight: 900; pointer-events: none; text-shadow: 0 3px 10px #000; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="msg"></div>
+<script src="/sdk/arcade-sdk.js"></script>
+<script>
+// Ejemplo de juego multijugador con el SDK.
+// Modelo de red: cada jugador es dueño de su posición y decide si le pegaron ("víctima autoritativa").
+const W = 1600, H = 900, SPEED = 340, BULLET_SPEED = 950, R = 22, MAX_HP = 100, DMG = 25, WIN_KILLS = 5;
+const COLORS = ['#ff4d6d', '#4dabff', '#ffd43b', '#69db7c'];
+const SPAWNS = [[200, 200], [1400, 700], [1400, 200], [200, 700]];
+const canvas = document.getElementById('c');
+const g = canvas.getContext('2d');
+const msgEl = document.getElementById('msg');
+
+let scale = 1, ox = 0, oy = 0;
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+  scale = Math.min(innerWidth / W, innerHeight / H);
+  ox = (innerWidth - W * scale) / 2; oy = (innerHeight - H * scale) / 2;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+Arcade.ready().then(start);
+
+function start(ctx) {
+  const meId = ctx.me.id;
+  const players = {};
+  const addPlayer = (p, i) => {
+    const s = SPAWNS[p.slot % 4];
+    players[p.id] = { name: p.name, slot: p.slot, x: s[0], y: s[1], tx: s[0], ty: s[1], a: 0, hp: MAX_HP, kills: 0 };
+  };
+  ctx.players.forEach(addPlayer);
+  if (!ctx.online) addPlayer({ id: 'bot', name: 'Bot de práctica', slot: 1 }); // para probar solo
+  const self = players[meId];
+  const bullets = [];
+  const keys = {};
+  const mouse = { x: W / 2, y: H / 2, down: false };
+  let cooldown = 0, respawn = 0, sendAcc = 0, ended = false, flashT = 0;
+
+  addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') e.preventDefault(); });
+  addEventListener('keyup', e => { keys[e.code] = false; });
+  canvas.addEventListener('mousemove', e => { mouse.x = (e.clientX - ox) / scale; mouse.y = (e.clientY - oy) / scale; });
+  canvas.addEventListener('mousedown', () => { mouse.down = true; });
+  addEventListener('mouseup', () => { mouse.down = false; });
+
+  function flash(text, secs = 2) { msgEl.textContent = text; flashT = secs; }
+
+  // ---- red ----
+  Arcade.on('st', (d, from) => {
+    const p = players[from]; if (!p) return;
+    p.tx = d.x; p.ty = d.y; p.a = d.a; p.hp = d.hp;
+  });
+  Arcade.on('shot', (d, from) => bullets.push({ x: d.x, y: d.y, vx: d.vx, vy: d.vy, owner: from, life: 1.2 }));
+  Arcade.on('died', (d, from) => registerKill(d.by, from));
+  Arcade.on('win', d => showWin(d.name));
+  Arcade.onPlayerLeft(id => { if (players[id]) flash(`${players[id].name} se fue`); delete players[id]; });
+
+  function registerKill(killerId, victimId) {
+    const k = players[killerId], v = players[victimId];
+    if (k) k.kills++;
+    if (k && v) flash(`${k.name} eliminó a ${v.name}`);
+    if (Arcade.isHost() && k && k.kills >= WIN_KILLS && !ended) {
+      Arcade.send('win', { name: k.name });
+      showWin(k.name);
+      setTimeout(() => Arcade.end({ text: `🏆 ${k.name} ganó Arena de Cuadrados` }), 3500);
+    }
+  }
+  function showWin(name) { ended = true; flash(`🏆 ${name} ganó`, 99); }
+
+  function spawn(p) {
+    const s = SPAWNS[Math.floor(Math.random() * 4)];
+    p.x = p.tx = s[0]; p.y = p.ty = s[1]; p.hp = MAX_HP;
+  }
+
+  // ---- loop ----
+  let last = performance.now();
+  function frame(t) {
+    const dt = Math.min(0.05, (t - last) / 1000); last = t;
+
+    if (self.hp > 0 && !ended) {
+      let dx = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+      let dy = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
+      const len = Math.hypot(dx, dy) || 1;
+      self.x = Math.max(R, Math.min(W - R, self.x + dx / len * SPEED * dt));
+      self.y = Math.max(R, Math.min(H - R, self.y + dy / len * SPEED * dt));
+      self.a = Math.atan2(mouse.y - self.y, mouse.x - self.x);
+      cooldown -= dt;
+      if ((mouse.down || keys.Space) && cooldown <= 0) {
+        cooldown = 0.22;
+        const b = { x: self.x + Math.cos(self.a) * (R + 6), y: self.y + Math.sin(self.a) * (R + 6),
+                    vx: Math.cos(self.a) * BULLET_SPEED, vy: Math.sin(self.a) * BULLET_SPEED };
+        bullets.push({ ...b, owner: meId, life: 1.2 });
+        Arcade.send('shot', b);
+      }
+    } else if (self.hp <= 0) {
+      respawn -= dt;
+      if (respawn <= 0) spawn(self);
+    }
+
+    // interpolar a los demás
+    for (const id in players) {
+      if (id === meId || id === 'bot') continue;
+      const p = players[id], k = Math.min(1, dt * 15);
+      p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k;
+    }
+    // bot de práctica (solo offline)
+    const bot = players.bot;
+    if (bot) {
+      if (bot.hp <= 0) { bot.respawn = (bot.respawn ?? 2) - dt; if (bot.respawn <= 0) { spawn(bot); bot.respawn = 2; } }
+      else { bot.x = 800 + Math.cos(t / 900) * 500; bot.y = 450 + Math.sin(t / 1300) * 300; }
+    }
+
+    // balas
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+      let dead = b.life <= 0 || b.x < 0 || b.y < 0 || b.x > W || b.y > H;
+      // ¿me pegaron a mí? (lo decido yo)
+      if (!dead && b.owner !== meId && self.hp > 0 && Math.hypot(b.x - self.x, b.y - self.y) < R) {
+        dead = true;
+        self.hp -= DMG;
+        if (self.hp <= 0) {
+          self.hp = 0; respawn = 2;
+          Arcade.send('died', { by: b.owner });
+          registerKill(b.owner, meId);
+        }
+      }
+      // bot
+      if (!dead && bot && b.owner === meId && bot.hp > 0 && Math.hypot(b.x - bot.x, b.y - bot.y) < R) {
+        dead = true; bot.hp -= DMG;
+        if (bot.hp <= 0) { bot.hp = 0; self.kills++; flash('Eliminaste al bot'); }
+      }
+      // efecto visual al tocar a otro (el daño lo decide él)
+      if (!dead) for (const id in players) {
+        const p = players[id];
+        if (id !== meId && id !== 'bot' && id !== b.owner && p.hp > 0 && Math.hypot(b.x - p.x, b.y - p.y) < R) { dead = true; break; }
+      }
+      if (dead) bullets.splice(i, 1);
+    }
+
+    sendAcc += dt;
+    if (sendAcc >= 0.05) { // 20 veces por segundo
+      sendAcc = 0;
+      Arcade.send('st', { x: Math.round(self.x), y: Math.round(self.y), a: +self.a.toFixed(2), hp: self.hp }, { volatile: true });
+    }
+
+    if (flashT > 0) { flashT -= dt; if (flashT <= 0) msgEl.textContent = ''; }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function draw() {
+    g.fillStyle = '#0d0b1a'; g.fillRect(0, 0, innerWidth, innerHeight);
+    g.save(); g.translate(ox, oy); g.scale(scale, scale);
+    g.fillStyle = '#17132e'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#221c44'; g.lineWidth = 2;
+    for (let x = 0; x <= W; x += 80) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    for (let y = 0; y <= H; y += 80) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+
+    g.fillStyle = '#fff';
+    bullets.forEach(b => { g.beginPath(); g.arc(b.x, b.y, 5, 0, Math.PI * 2); g.fill(); });
+
+    for (const id in players) {
+      const p = players[id];
+      if (p.hp <= 0) continue;
+      g.save(); g.translate(p.x, p.y); g.rotate(p.a);
+      g.fillStyle = COLORS[p.slot % 4];
+      g.fillRect(-R, -R, R * 2, R * 2);
+      g.fillStyle = '#fff'; g.fillRect(R - 4, -5, 22, 10);
+      g.restore();
+      g.fillStyle = '#000a'; g.fillRect(p.x - 30, p.y - R - 18, 60, 7);
+      g.fillStyle = '#3ee08f'; g.fillRect(p.x - 30, p.y - R - 18, 60 * p.hp / MAX_HP, 7);
+      g.fillStyle = '#fff'; g.font = 'bold 16px system-ui'; g.textAlign = 'center';
+      g.fillText(p.name + (id === meId ? ' (vos)' : ''), p.x, p.y - R - 24);
+    }
+
+    // crosshair
+    g.strokeStyle = '#fff'; g.lineWidth = 2;
+    g.beginPath(); g.arc(mouse.x, mouse.y, 10, 0, Math.PI * 2); g.stroke();
+
+    // marcador
+    g.textAlign = 'left'; g.font = 'bold 22px system-ui';
+    Object.values(players).sort((a, b) => b.kills - a.kills).forEach((p, i) => {
+      g.fillStyle = COLORS[p.slot % 4];
+      g.fillText(`${p.name}: ${p.kills}`, 20, 36 + i * 28);
+    });
+    g.fillStyle = '#fff8'; g.font = '16px system-ui';
+    g.fillText(`Primero a ${WIN_KILLS} gana${ctx.online ? '' : ' · modo práctica (abrilo desde una sala para jugar online)'}`, 20, H - 20);
+    if (self.hp <= 0 && !ended) { g.textAlign = 'center'; g.font = 'bold 36px system-ui'; g.fillStyle = '#fff'; g.fillText('Reapareciendo…', W / 2, H / 2 + 80); }
+    g.restore();
+  }
+
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

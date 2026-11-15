@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Esquiva</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #08131f; overflow: hidden; font-family: system-ui, sans-serif; touch-action: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="/sdk/arcade-sdk.js"></script>
+<script>
+const c = document.getElementById('c'), g = c.getContext('2d');
+let w, h;
+function resize() { const d = devicePixelRatio || 1; w = innerWidth; h = innerHeight; c.width = w * d; c.height = h * d; g.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', resize); resize();
+
+const best = (() => { try { return +localStorage.getItem('esquiva:best') || 0; } catch { return 0; } })();
+let record = best, px, blocks, time, spawnT, alive, keys = {}, target = null;
+function reset() { px = w / 2; blocks = []; time = 0; spawnT = 0; alive = true; }
+reset();
+
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space' && !alive) reset(); });
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('pointermove', e => { target = e.clientX; });
+addEventListener('pointerdown', e => { if (!alive) reset(); target = e.clientX; });
+
+let last = performance.now();
+function loop(t) {
+  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  if (alive) {
+    time += dt;
+    const speed = 500;
+    if (keys.ArrowLeft || keys.KeyA) { px -= speed * dt; target = null; }
+    if (keys.ArrowRight || keys.KeyD) { px += speed * dt; target = null; }
+    if (target != null) px += (target - px) * Math.min(1, dt * 12);
+    px = Math.max(20, Math.min(w - 20, px));
+    spawnT -= dt;
+    if (spawnT <= 0) {
+      spawnT = Math.max(0.12, 0.6 - time * 0.015);
+      const s = 20 + Math.random() * 40;
+      blocks.push({ x: Math.random() * (w - s), y: -s, s, v: 220 + time * 14 + Math.random() * 120 });
+    }
+    for (const b of blocks) {
+      b.y += b.v * dt;
+      if (b.y + b.s > h - 60 && b.y < h - 20 && b.x < px + 20 && b.x + b.s > px - 20) {
+        alive = false;
+        if (time > record) { record = time; try { localStorage.setItem('esquiva:best', String(record)); } catch {} }
+      }
+    }
+    blocks = blocks.filter(b => b.y < h + 80);
+  }
+  g.fillStyle = '#08131f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#ff6b6b'; blocks.forEach(b => g.fillRect(b.x, b.y, b.s, b.s));
+  g.fillStyle = '#4dabff'; g.fillRect(px - 20, h - 60, 40, 40);
+  g.fillStyle = '#fff'; g.font = 'bold 24px system-ui'; g.textAlign = 'left';
+  g.fillText(`${time.toFixed(1)}s`, 20, 40);
+  g.font = '16px system-ui'; g.fillText(`Récord: ${record.toFixed(1)}s`, 20, 64);
+  if (!alive) {
+    g.textAlign = 'center'; g.font = 'bold 44px system-ui'; g.fillText('¡Perdiste!', w / 2, h / 2 - 10);
+    g.font = '20px system-ui'; g.fillText('Espacio o tocá para volver a jugar', w / 2, h / 2 + 30);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
