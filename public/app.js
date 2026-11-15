@@ -85,6 +85,7 @@
       if (results && results.text) {
         $('#lastResult').textContent = results.text;
         $('#lastResult').hidden = false;
+        $('#lastResult').classList.remove('pop'); void $('#lastResult').offsetWidth; $('#lastResult').classList.add('pop');
       }
       if (room) show('viewLobby');
     });
@@ -185,9 +186,10 @@
 
     const ul = $('#playerList');
     ul.innerHTML = '';
-    room.players.forEach(p => {
+    [...room.players].sort((a, b) => (b.crowns || 0) - (a.crowns || 0)).forEach(p => {
       const li = document.createElement('li');
-      li.innerHTML = `<span>${p.id === room.hostId ? '👑 ' : ''}${esc(p.name)}</span>${p.id === myId ? '<span class="you">VOS</span>' : ''}`;
+      const crowns = p.crowns ? `<span class="crowns" title="Juegos ganados">👑 ${p.crowns}</span>` : '<span class="crowns zero">👑 0</span>';
+      li.innerHTML = `<span class="pname">${esc(p.name)}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
       ul.appendChild(li);
     });
 

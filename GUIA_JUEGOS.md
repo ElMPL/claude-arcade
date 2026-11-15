@@ -86,7 +86,7 @@ Arcade.ready().then(ctx => {
 | `Arcade.onPlayerLeft(id => {})` | Alguien se fue (cerró la pestaña o se cortó). |
 | `Arcade.onHostChanged(newId => {})` | El host se fue y ahora hay otro. Si tu juego es "host autoritativo", el nuevo host tiene que tomar la simulación. |
 | `Arcade.isHost()`, `Arcade.isOnline()`, `Arcade.me`, `Arcade.players` | Atajos. |
-| `Arcade.end({ text: '🏆 Gaby ganó' })` | Termina la partida y vuelve todos al lobby, mostrando `text`. **Solo cuenta si lo llama el host.** En modo `single`, cierra el juego. |
+| `Arcade.end({ winners: [id, ...], text })` | Termina la partida y vuelve todos al lobby. **Solo cuenta si lo llama el host.** Cada id de `winners` suma **una corona 👑** en la sala (es el puntaje universal de la plataforma: juegos ganados). `text` es opcional (si no se pone, se arma solo: "👑 Gaby ganó …"). Si hay empate, pasá varios ids. En modo `single`, cierra el juego. |
 
 Límite: unos 150 mensajes por segundo por jugador (los que sobren se descartan). Con 20–30 por segundo alcanza para cualquier juego.
 
@@ -136,7 +136,7 @@ Para que el jugador no-host no sienta lag, podés predecir su propio movimiento 
 - Disparos: el que dispara manda un evento `shot`. El que recibe el impacto decide si le pegaron y avisa `died`. 
 
 ### Fin de partida
-Cuando hay un ganador, el **host** manda un evento a todos (para mostrar la pantalla final) y unos segundos después llama `Arcade.end({ text: '...' })`.
+Cuando hay un ganador, el **host** manda un evento a todos para mostrar la pantalla final **con una cuenta regresiva visible** ("Volviendo al menú en 10…"). Al llegar a 0 llama `Arcade.end({ winners: [idGanador] })` y todos vuelven al menú de la sala. Usá `setTimeout` para ese final (no dependas de `requestAnimationFrame`, que se pausa si la pestaña queda en segundo plano).
 
 ### Si alguien se va
 Escuchá `Arcade.onPlayerLeft`. Si quedan menos jugadores que `minPlayers`, la plataforma corta la partida sola. Si el host se fue, `onHostChanged` te avisa.
@@ -167,18 +167,17 @@ npm start
 ```
 
 ## 6. Cómo subirlo
-1. Hacé un fork del repo (o una rama si tenés acceso).
-2. Agregá **solo** tu carpeta `games/<tu-id>/`.
-3. Abrí un Pull Request titulado `Juego: <Nombre>`.
+Seguí **`SUBIR_JUEGO.md`**: fork → rama → `games/<tu-id>/` → `node scripts/check-games.js` → Pull Request. GitHub revisa el juego automáticamente y, cuando el dueño lo aprueba, la página se actualiza sola.
 
 ## Checklist antes del PR
 - [ ] Carpeta `games/<id>/` en kebab-case, con `game.json` e `index.html`
 - [ ] Tiene `thumb.jpg` con una captura del juego (4:3)
+- [ ] `node scripts/check-games.js` dice "Todo bien"
 - [ ] `mode`, `minPlayers`, `maxPlayers` correctos
 - [ ] Incluye `<script src="/sdk/arcade-sdk.js"></script>` y espera `Arcade.ready()` antes de arrancar
 - [ ] Usa `ctx.me.slot` para asignar P1/P2/colores (no el orden de llegada de mensajes)
 - [ ] Mensajes frecuentes con `{ volatile: true }`; eventos importantes sin volatile
-- [ ] El host llama `Arcade.end({ text })` al terminar
+- [ ] El host muestra una cuenta regresiva y llama `Arcade.end({ winners })` al terminar
 - [ ] Maneja `onPlayerLeft` (y `onHostChanged` si es host autoritativo)
 - [ ] Funciona abriéndolo solo (modo práctica) sin errores en consola
 - [ ] Se adapta al tamaño de la ventana

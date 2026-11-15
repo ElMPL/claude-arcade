@@ -10,7 +10,7 @@ import { MINIGAMES } from './minigames.js';
 const FAST = (() => { try { return localStorage.getItem('pg:fast') === '1'; } catch { return false; } })();
 const TS = FAST ? 0.25 : 1;
 const CARD_T = 4.8 * TS, COUNT_T = 3 * TS, INTRO = CARD_T + COUNT_T;
-const RESULTS = 7 * TS, PODIUM = 15;
+const RESULTS = 7 * TS, PODIUM = 12;
 const ROUND_POINTS = [3, 2, 1];
 const MOVE = { max: 8.6, accel: 65, airAccel: 32, decel: 45, jump: 13, grav: -34, fallGrav: -50, coyote: 0.12, buffer: 0.15 };
 
@@ -18,6 +18,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const lerpAngle = (a, b, k) => a + ((((b - a + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI) * k;
 const smooth = x => x * x * (3 - 2 * x);
+const mulberry = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // ---------------- Estado ----------------
@@ -26,9 +27,9 @@ const players = new Map();
 const me = {
   pos: new THREE.Vector3(), vel: new THREE.Vector3(), ry: 0, onGround: false, ground: null, alive: true, frozen: true, finished: false,
   coyote: 0, jumpBuf: 0, jumpCut: false, stunT: 0, invulnT: 0, dashT: 0, dashCd: 0, lastLandVy: 0, airT: 0,
-  kart: { speed: 0, steer: 0, drifting: false, driftDir: 0, driftT: 0, boostT: 0, spinT: 0, hopT: 0 },
+  kart: { speed: 0, steer: 0, drifting: false, driftDir: 0, driftT: 0, boostT: 0, spinT: 0, spinVis: 0, starT: 0 },
 };
-let round = null, totals = {}, podiumData = null, spectate = null;
+let round = null, totals = {}, tiePts = {}, podiumData = null, spectate = null; // totals = coronas
 const H = { started: false, ready: new Set(), t0: performance.now(), order: [], idx: -1, cur: null, nextAt: 0, endAt: 0 };
 
 const isHost = () => Arcade.isHost();
@@ -87,12 +88,14 @@ function toast(text) {
   setTimeout(() => el.remove(), 3700);
 }
 function renderPlayers() {
-  const ids = [...players.keys()].sort((a, b) => (totals[b] || 0) - (totals[a] || 0));
+  const ids = [...players.keys()].sort(byScore);
   $('players').innerHTML = ids.map(id => {
     const out = round && round.alive && round.ids && round.ids.includes(id) && !round.alive.has(id) && round.phase !== 'podium';
-    return `<div class="pr${id === myId ? ' me' : ''}${out ? ' out' : ''}"><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span>${esc(nameOf(id))}</span><b>${totals[id] || 0}<em>★</em></b></div>`;
+    return `<div class="pr${id === myId ? ' me' : ''}${out ? ' out' : ''}"><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span>${esc(nameOf(id))}</span><b><em>👑</em>${totals[id] || 0}</b></div>`;
   }).join('');
 }
+
+const byScore = (a, b) => (totals[b] || 0) - (totals[a] || 0) || (tiePts[b] || 0) - (tiePts[a] || 0);
 
 // ---------------- Acciones de juego ----------------
 function eliminate() {
@@ -175,6 +178,8 @@ const G = {
   justPressed: (...codes) => codes.some(c => pressed[c]),
   broadcast(k, d = {}) { sendMG(k, { ...d }); if (round.mg.onMsg) round.mg.onMsg(k, d, myId); },
   markOut: id => onOut(id),
+  rand: Math.random,
+  clock: () => clock,
   characterOf: id => (players.get(id) || {}).ch,
   elimDone() { const n = roundIds().length; const a = roundIds().filter(id => round.alive.has(id)).length; return n >= 2 ? a <= 1 : a === 0; },
   elimRank() {
@@ -199,6 +204,7 @@ function startRound(d) {
   clearWorld();
   const def = MINIGAMES[d.id];
   round = { i: d.i, id: d.id, def, phase: 'intro', t: 0, ids: d.ids, alive: new Set(d.ids.filter(id => players.has(id))), outOrder: [], lastCount: 99, total: d.total };
+  G.rand = mulberry(d.seed || 12345);
   round.mg = def.create(G);
   const n = d.ids.length;
   // karts
@@ -223,7 +229,7 @@ function startRound(d) {
   const idx = d.ids.indexOf(myId);
   const sp = idx >= 0 ? round.mg.spawn(idx, n) : { x: 0, y: 2, z: 0, ry: 0 };
   me.pos.set(sp.x, sp.y, sp.z); me.vel.set(0, 0, 0); me.ry = sp.ry || 0;
-  Object.assign(me.kart, { speed: 0, steer: 0, drifting: false, driftT: 0, boostT: 0, spinT: 0 });
+  Object.assign(me.kart, { speed: 0, steer: 0, drifting: false, driftT: 0, boostT: 0, spinT: 0, spinVis: 0, starT: 0 });
   me.stunT = 0; me.invulnT = 0; me.dashT = 0; me.dashCd = 0; me.finished = false; me.frozen = true;
   me.alive = idx >= 0 && !d.late;
   if (!me.alive) { round.alive.delete(myId); const pl = players.get(myId); if (pl) pl.ch.visible = false; }
@@ -259,19 +265,20 @@ function applyRoundEnd(d) {
   if (!round || round.i !== d.i) return;
   round.phase = 'end';
   me.frozen = true;
-  totals = d.totals;
+  totals = d.totals; tiePts = d.tie || tiePts;
   renderPlayers();
   const medal = ['🥇', '🥈', '🥉'];
   let rows = '', n = 0;
   d.groups.forEach((g, gi) => g.forEach(id => {
-    rows += `<div class="rr${id === myId ? ' me' : ''}" style="animation-delay:${0.15 + n++ * 0.12}s"><span class="pl">${medal[gi] || gi + 1 + 'º'}</span><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span class="nm">${esc(nameOf(id))}</span><span class="pts">${d.pts[id] ? '+' + d.pts[id] + '★' : ''}</span><span class="tot">${totals[id] || 0}★</span></div>`;
+    rows += `<div class="rr${id === myId ? ' me' : ''}" style="animation-delay:${0.15 + n++ * 0.12}s"><span class="pl">${medal[gi] || gi + 1 + 'º'}</span><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span class="nm">${esc(nameOf(id))}</span><span class="pts">${gi === 0 ? '+1 👑' : ''}</span><span class="tot">👑 ${totals[id] || 0}</span></div>`;
   }));
   $('results').innerHTML = `<h2>${round.def.emoji} ${esc(round.def.name)}</h2><div class="rlist">${rows}</div><small>${d.last ? '¡Vamos al podio!' : 'Siguiente minijuego…'}</small>`;
   $('results').hidden = false;
   $('widget').innerHTML = ''; $('corner').innerHTML = '';
   const winners = d.groups[0] || [];
   for (const id of winners) { const p = id === myId ? me.pos : (players.get(id) || {}).pos; if (p) fx.confetti(p, 40, 2); }
-  if (winners.includes(myId)) sfx.win(); else sfx.pop();
+  sfx.whistle();
+  if (winners.includes(myId)) setTimeout(() => sfx.win(), 450);
 }
 
 // --- host ---
@@ -286,7 +293,7 @@ function hostBegin() {
 function hostNextRound() {
   H.idx++; H.nextAt = 0;
   if (H.idx >= H.order.length) return hostPodium();
-  const d = { i: H.idx, id: H.order[H.idx], total: H.order.length, ids: [...players.keys()] };
+  const d = { i: H.idx, id: H.order[H.idx], total: H.order.length, ids: [...players.keys()], seed: Math.floor(Math.random() * 2147483647) };
   H.cur = d;
   Arcade.send('rs', d);
   startRound(d);
@@ -294,19 +301,32 @@ function hostNextRound() {
 function hostEndRound() {
   round.phase = 'end';
   const groups = round.mg.hostRank().map(g => g.filter(id => players.has(id))).filter(g => g.length);
-  const pts = {};
-  groups.forEach((g, gi) => g.forEach(id => { pts[id] = ROUND_POINTS[gi] || 0; totals[id] = (totals[id] || 0) + pts[id]; }));
-  const d = { i: round.i, groups, pts, totals: { ...totals }, last: H.idx >= H.order.length - 1 };
+  groups.forEach((g, gi) => g.forEach(id => {
+    if (gi === 0) totals[id] = (totals[id] || 0) + 1; // una corona por minijuego ganado
+    tiePts[id] = (tiePts[id] || 0) + (ROUND_POINTS[gi] || 0); // desempate (no se muestra)
+  }));
+  const d = { i: round.i, groups, totals: { ...totals }, tie: { ...tiePts }, last: H.idx >= H.order.length - 1 };
   Arcade.send('re', d);
   applyRoundEnd(d);
   H.nextAt = performance.now() + RESULTS * 1000;
 }
+function scheduleEnd(secs) {
+  clearTimeout(H.endTimer);
+  H.endTimer = setTimeout(() => {
+    const d = podiumData;
+    const names = d ? d.winners.map(id => (d.list.find(p => p.id === id) || {}).name).filter(Boolean) : [];
+    Arcade.end({ winners: d ? d.winners : [], text: names.length ? `👑 ${names.join(' y ')} ${names.length > 1 ? 'ganaron' : 'ganó'} Party Games` : '' });
+  }, secs * 1000);
+}
 function hostPodium() {
-  const ids = [...players.keys()].sort((a, b) => (totals[b] || 0) - (totals[a] || 0));
-  const d = { list: ids.map(id => ({ id, name: nameOf(id), slot: slotOf(id), pts: totals[id] || 0 })) };
+  const ids = [...players.keys()].sort(byScore);
+  const list = ids.map(id => ({ id, name: nameOf(id), slot: slotOf(id), pts: totals[id] || 0, tie: tiePts[id] || 0 }));
+  const top = list[0];
+  const winners = top ? list.filter(p => p.pts === top.pts && p.tie === top.tie).map(p => p.id) : [];
+  const d = { list, winners, dur: PODIUM };
   Arcade.send('pod', d);
   showPodium(d);
-  H.endAt = performance.now() + PODIUM * 1000;
+  scheduleEnd(PODIUM);
 }
 
 // ---------------- Podio ----------------
@@ -355,11 +375,19 @@ function showPodium(d) {
   $('widget').innerHTML = ''; $('corner').innerHTML = ''; $('timer').textContent = ''; $('roundChip').innerHTML = '<span>🏆</span>Podio final';
   if (document.pointerLockElement) document.exitPointerLock();
   podium = { placed: buildPodium(d.list), t: 0, fw: 0 };
-  const top = d.list[0];
-  const winners = top ? d.list.filter(p => p.pts === top.pts).map(p => p.name) : [];
+  const winners = (d.winners || []).map(id => (d.list.find(p => p.id === id) || {}).name).filter(Boolean);
   $('podiumUI').innerHTML = `<h1>${esc(winners.join(' y '))} ${winners.length > 1 ? 'ganan' : 'gana'}</h1><div class="rlist">` +
-    d.list.map((p, i) => `<div class="rr${p.id === myId ? ' me' : ''}" style="animation-delay:${0.6 + i * 0.12}s"><span class="pl">${['🥇', '🥈', '🥉'][i] || i + 1 + 'º'}</span><i style="--c:${CSS_COLORS[p.slot % 8]}">${esc(p.name.charAt(0).toUpperCase())}</i><span class="nm">${esc(p.name)}</span><span class="tot">${p.pts}★</span></div>`).join('') + '</div>';
+    d.list.map((p, i) => `<div class="rr${p.id === myId ? ' me' : ''}" style="animation-delay:${0.6 + i * 0.12}s"><span class="pl">${['🥇', '🥈', '🥉'][i] || i + 1 + 'º'}</span><i style="--c:${CSS_COLORS[p.slot % 8]}">${esc(p.name.charAt(0).toUpperCase())}</i><span class="nm">${esc(p.name)}</span><span class="tot">👑 ${p.pts}</span></div>`).join('') +
+    `</div><div class="back">Volviendo al menú en <b id="backCount">${d.dur || PODIUM}</b></div>`;
   $('podiumUI').hidden = false;
+  const endAt = performance.now() + (d.dur || PODIUM) * 1000;
+  clearInterval(H.backTimer);
+  H.backTimer = setInterval(() => {
+    const left = Math.max(0, Math.ceil((endAt - performance.now()) / 1000));
+    const el = $('backCount'); if (el) el.textContent = left;
+    if (left <= 3 && left > 0) sfx.count();
+    if (left <= 0) clearInterval(H.backTimer);
+  }, 1000);
   renderPlayers();
   sfx.fanfare();
   fx.confetti(new THREE.Vector3(0, 9, 0), 160, 9);
@@ -497,6 +525,7 @@ function bodyCollisions() {
       const push = (min - d) * 0.6;
       me.pos.x += dx / d * push; me.pos.z += dz / d * push;
       if (round.mg.kart) me.kart.speed *= 0.97;
+      if (round.mg.onBump) round.mg.onBump(pl.id);
     }
   }
 }
@@ -588,9 +617,11 @@ function updateKart(dt) {
   k.steer += (-ix - k.steer) * Math.min(1, dt * 10);
   const off = mg.isOffroad ? mg.isOffroad(me.pos) : false;
   let max = off ? 12 : 25;
+  if (k.starT > 0) { k.starT -= dt; max = 32; if (Math.random() < 0.7) fx.trail({ x: me.pos.x, y: me.pos.y + 0.5, z: me.pos.z }, COLORS[Math.floor(clock * 12) % 8], 0.35); }
   if (k.boostT > 0) { k.boostT -= dt; max = 35; k.speed = Math.max(k.speed, 30); if (Math.random() < 0.6) fx.trail({ x: me.pos.x - Math.sin(me.ry) * 1.4, y: me.pos.y + 0.6, z: me.pos.z - Math.cos(me.ry) * 1.4 }, 0xffa94d, 0.3); }
   if (k.spinT > 0) {
-    k.spinT -= dt; me.ry += 13 * dt; k.speed *= Math.exp(-2.5 * dt); k.drifting = false;
+    k.spinT -= dt; k.spinVis += 14 * dt; k.speed *= Math.exp(-2.5 * dt); k.drifting = false;
+    if (k.spinT <= 0) k.spinVis = 0;
   } else {
     if (iz > 0) k.speed += (k.speed < max ? 22 : -18) * dt;
     else if (iz < 0) k.speed -= (k.speed > 0 ? 34 : 14) * dt;
@@ -646,7 +677,7 @@ function updateAvatars(dt, t) {
       pl.pos.copy(me.pos); pl.curRy = me.ry;
       const a = myAnimState();
       const holder = pl.kart || ch;
-      holder.position.copy(me.pos); holder.rotation.y = me.ry;
+      holder.position.copy(me.pos); holder.rotation.y = me.ry + (pl.kart ? me.kart.spinVis : 0);
       if (pl.kart) {
         pl.kart.rotation.z = me.kart.drifting ? -me.kart.driftDir * 0.12 : 0;
         animateKart(pl.kart, me.kart.speed, me.kart.steer, dt);
@@ -657,11 +688,12 @@ function updateAvatars(dt, t) {
       pl.pos.lerp(pl.target, k);
       pl.curRy = lerpAngle(pl.curRy, pl.ry, k);
       const holder = pl.kart || ch;
-      holder.position.copy(pl.pos); holder.rotation.y = pl.curRy;
+      holder.position.copy(pl.pos); holder.rotation.y = pl.curRy + (pl.kart && pl.net.f & 4 ? clock * 14 : 0);
       if (pl.kart) {
         pl.kart.rotation.z = pl.net.f & 1 ? -Math.sign(pl.net.k || 1) * 0.12 : 0;
         animateKart(pl.kart, pl.net.s, pl.net.k, dt);
         animateCharacter(ch, { state: 'sit' }, dt, t);
+        if (pl.net.f & 8 && Math.random() < 0.6) fx.trail({ x: pl.pos.x, y: pl.pos.y + 0.5, z: pl.pos.z }, COLORS[Math.floor(clock * 12) % 8], 0.35);
         if (pl.net.f & 2 && Math.random() < 0.5) fx.trail({ x: pl.pos.x - Math.sin(pl.curRy) * 1.4, y: pl.pos.y + 0.6, z: pl.pos.z - Math.cos(pl.curRy) * 1.4 }, 0xffa94d, 0.3);
       } else animateCharacter(ch, { state: A_CODES[pl.net.a] || 'idle', speed: pl.net.s, vy: pl.net.vy }, dt, t);
       ch.userData.label.visible = true;
@@ -683,11 +715,6 @@ function loop(now) {
       if (others.every(id => H.ready.has(id)) || now - H.t0 > 8000) hostBegin();
     }
     if (H.nextAt && now >= H.nextAt) hostNextRound();
-    if (H.endAt && now >= H.endAt) {
-      H.endAt = 0;
-      const w = podiumData && podiumData.list[0];
-      Arcade.end({ text: w ? `🏆 ${w.name} ganó Party Games con ${w.pts} ★` : 'Fin de Party Games' });
-    }
   }
 
   if (round && round.phase === 'podium') {
@@ -720,7 +747,7 @@ function loop(now) {
       Arcade.send('p', {
         x: +me.pos.x.toFixed(2), y: +me.pos.y.toFixed(2), z: +me.pos.z.toFixed(2), r: +me.ry.toFixed(2), a: myAnimState(),
         s: +(round.mg.kart ? k.speed : Math.hypot(me.vel.x, me.vel.z)).toFixed(1), vy: +me.vel.y.toFixed(1),
-        k: +k.steer.toFixed(2), f: (k.drifting ? 1 : 0) | (k.boostT > 0 ? 2 : 0), pr: round.mg.progress ? +round.mg.progress().toFixed(2) : 0,
+        k: +k.steer.toFixed(2), f: (k.drifting ? 1 : 0) | (k.boostT > 0 ? 2 : 0) | (k.spinT > 0 ? 4 : 0) | (k.starT > 0 ? 8 : 0), pr: round.mg.progress ? +round.mg.progress().toFixed(2) : 0,
       }, { volatile: true });
     }
   }
@@ -780,7 +807,7 @@ function wire() {
   Arcade.onHostChanged(() => {
     if (!isHost()) return;
     toast('Ahora sos el host');
-    if (podiumData) { H.endAt = performance.now() + 5000; return; }
+    if (podiumData) { scheduleEnd(5); return; }
     hostPodium();
   });
   $('mute').addEventListener('click', e => { e.stopPropagation(); $('mute').textContent = toggleMute() ? '🔇' : '🔊'; });

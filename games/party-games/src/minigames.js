@@ -123,6 +123,14 @@ function createKarts(G) {
   }
   for (let k = 0; k < 14; k++) { const i = Math.floor(k / 14 * N), t = T[i]; G.addBalloon(S[i].x + t.z * (W / 2 + 3), 6, S[i].z - t.x * (W / 2 + 3), G.COLORS[k % 8]); }
 
+  // ---- Disposición aleatoria (misma para todos: usa la semilla de la ronda) ----
+  const rnd = G.rand;
+  const slots = [];
+  for (let f = 0.07; f < 0.95; f += 0.055) slots.push(f);
+  for (let k = slots.length - 1; k > 0; k--) { const j = Math.floor(rnd() * (k + 1)); [slots[k], slots[j]] = [slots[j], slots[k]]; }
+  const take = n => slots.splice(0, n);
+  const at = (f, off) => { const i = Math.floor(f * N) % N, p = S[i], t = T[i]; return { i, x: p.x + t.z * off, z: p.z - t.x * off, ry: Math.atan2(t.x, t.z) }; };
+
   // turbos en el piso
   const padTex = G.canvasTex(64, 128, (c, w, h) => {
     c.fillStyle = '#ffd43b'; c.fillRect(0, 0, w, h);
@@ -130,12 +138,21 @@ function createKarts(G) {
     for (let y = 0; y < 2; y++) { c.beginPath(); c.moveTo(8, 40 + y * 64); c.lineTo(32, 16 + y * 64); c.lineTo(56, 40 + y * 64); c.lineTo(56, 56 + y * 64); c.lineTo(32, 32 + y * 64); c.lineTo(8, 56 + y * 64); c.fill(); }
   });
   padTex.wrapT = THREE.RepeatWrapping;
-  const pads = [0.16, 0.45, 0.72].map(f => {
-    const i = Math.floor(f * N), p = S[i], t = T[i];
-    flat(3.4, 5, new THREE.MeshBasicMaterial({ map: padTex }), p.x, p.z, Math.atan2(t.x, t.z) + Math.PI, 0.1);
-    return { x: p.x, z: p.z, cd: 0 };
+  const pads = take(4).map(f => {
+    const q = at(f, (rnd() - 0.5) * 6);
+    flat(3.4, 5, new THREE.MeshBasicMaterial({ map: padTex }), q.x, q.z, q.ry + Math.PI, 0.1);
+    return { x: q.x, z: q.z, cd: 0 };
   });
   G.addAnim(dt => { padTex.offset.y -= dt * 1.5; });
+
+  // rampas de salto
+  const ramps = take(2).map(f => {
+    const q = at(f, 0);
+    const g = new THREE.Group(); g.position.set(q.x, 0, q.z); g.rotation.y = q.ry; G.world.add(g);
+    const wedge = new THREE.Mesh(G.GEO.box, G.toon(0x4dabff)); wedge.scale.set(W - 2, 0.25, 4.5); wedge.rotation.x = -0.22; wedge.position.y = 0.45; wedge.castShadow = true; g.add(wedge);
+    const stripe = new THREE.Mesh(G.GEO.box, G.toon(0xffffff)); stripe.scale.set(W - 2.2, 0.27, 0.6); stripe.rotation.x = -0.22; stripe.position.set(0, 0.47, 1.2); g.add(stripe);
+    return { x: q.x, z: q.z, cd: 0 };
+  });
 
   // cajas de objetos
   const boxTex = G.canvasTex(128, 128, (c, w) => {
@@ -146,15 +163,15 @@ function createKarts(G) {
   });
   const boxMat = new THREE.MeshBasicMaterial({ map: boxTex, transparent: true, opacity: 0.92 });
   const boxes = [];
-  [0.3, 0.6, 0.88].forEach(f => {
-    const i = Math.floor(f * N), p = S[i], t = T[i];
-    [-3.2, 0, 3.2].forEach(o => {
-      const m = new THREE.Mesh(G.GEO.box, boxMat); m.scale.setScalar(1.3);
-      const x = p.x + t.z * o, z = p.z - t.x * o;
-      m.position.set(x, 1.2, z); G.world.add(m);
-      boxes.push({ m, x, z, off: 0 });
-    });
+  take(4).forEach(f => {
+    const n = 3 + Math.floor(rnd() * 2), spread = 2.4 + rnd() * 1.2, shift = (rnd() - 0.5) * 2;
+    for (let k = 0; k < n; k++) {
+      const q = at(f, shift + (k - (n - 1) / 2) * spread);
+      const m = new THREE.Mesh(G.GEO.box, boxMat); m.scale.setScalar(1.3); m.position.set(q.x, 1.2, q.z); G.world.add(m);
+      boxes.push({ m, x: q.x, z: q.z, off: 0 });
+    }
   });
+
   // charcos de aceite
   const oils = new Map();
   const oilGeo = new THREE.CircleGeometry(1.6, 20);
@@ -165,12 +182,34 @@ function createKarts(G) {
     G.world.add(m); oils.set(d.id, { ...d, m, age: 0 });
     G.sfx.pop();
   }
+  // cohetes
+  const rockets = [];
+  function addRocket(d) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(G.GEO.cyl, G.toon(0xff4d6d)); body.scale.set(0.28, 1.1, 0.28); body.rotation.x = Math.PI / 2; g.add(body);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.5, 12), G.toon(0xffffff)); nose.rotation.x = Math.PI / 2; nose.position.z = 0.8; g.add(nose);
+    const from = G.posOf(d.from);
+    g.position.set(from.x, from.y + 1.5, from.z); G.world.add(g);
+    rockets.push({ ...d, g, t: 0 });
+    G.sfx.rocket();
+  }
 
   // estado local
-  let idx = N - 8, lap = -1, half = true, item = null, oilImm = 0, oilSeq = 0;
+  let idx = N - 8, lap = -1, half = true, item = null, uses = 0, oilImm = 0, seq = 0, bumpCd = {};
   const tracker = G.finishTracker();
   const progress = () => lap + idx / N;
   const progressOf = id => (id === G.myId() ? progress() : ((G.players.get(id) || {}).net || {}).pr || -1);
+  const order = () => G.ids().filter(id => G.alive(id)).sort((a, b) => progressOf(b) - progressOf(a));
+  function rollItem() {
+    const o = order(), n = o.length, pos = Math.max(0, o.indexOf(G.myId()));
+    const r = Math.random();
+    if (n <= 1) return ['turbo', 'aceite', 'cohete', 'triple', 'estrella'][Math.floor(r * 5)];
+    const f = pos / (n - 1); // 0 = primero, 1 = último
+    if (f < 0.34) return r < 0.45 ? 'aceite' : r < 0.85 ? 'turbo' : 'cohete';
+    if (f < 0.67) return r < 0.3 ? 'turbo' : r < 0.5 ? 'aceite' : r < 0.8 ? 'cohete' : 'triple';
+    return r < 0.3 ? 'cohete' : r < 0.6 ? 'triple' : 'estrella';
+  }
+  const ICONS = { turbo: '🍄', triple: '🍄', aceite: '🛢️', cohete: '🚀', estrella: '⭐' };
 
   return {
     kart: true,
@@ -184,6 +223,12 @@ function createKarts(G) {
     respawnPoint() { const p = S[idx], t = T[idx]; return { x: p.x, y: 0.5, z: p.z, ry: Math.atan2(t.x, t.z) }; },
     isOffroad: p => near(p, idx, 6).d > W / 2 + 0.6,
     progress,
+    onBump(id) {
+      if (G.me.kart.starT <= 0 || (bumpCd[id] || 0) > G.clock()) return;
+      bumpCd[id] = G.clock() + 1.5;
+      G.sendTo(id, 'hit', { by: G.myId() });
+      G.fx.burst(G.me.pos, [0xffd43b, 0xffffff], 14, 6);
+    },
     update(dt, t) {
       for (const b of boxes) {
         b.m.rotation.y += dt * 1.6; b.m.rotation.x = Math.sin(t * 2 + b.x) * 0.3;
@@ -191,6 +236,22 @@ function createKarts(G) {
         if (b.off > 0) { b.off -= dt; b.m.visible = b.off <= 0; }
       }
       for (const [id, o] of oils) { o.age += dt; if (o.age > 25) { G.world.remove(o.m); oils.delete(id); } }
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i];
+        r.t += dt;
+        const tp = G.posOf(r.to);
+        const target = new THREE.Vector3(tp.x, tp.y + 0.8, tp.z);
+        const k = Math.min(1, dt * (2 + r.t * 4));
+        const prev = r.g.position.clone();
+        r.g.position.lerp(target, k);
+        r.g.lookAt(r.g.position.clone().add(r.g.position.clone().sub(prev)));
+        G.fx.trail(r.g.position, 0xffa94d, 0.2);
+        if (r.t > 0.4 && (r.g.position.distanceTo(target) < 1.2 || r.t > 3)) {
+          G.fx.explosion(r.g.position); G.sfx.boom();
+          G.world.remove(r.g); rockets.splice(i, 1);
+          if (r.to === G.myId()) this.onMsg('hit', { by: r.from }, r.from);
+        }
+      }
       const me = G.me;
       if (!me.alive) return;
       const n = near(me.pos, idx, 25);
@@ -199,7 +260,6 @@ function createKarts(G) {
       else if (prev < N * 0.15 && idx > N * 0.85) { lap--; half = true; }
       if (idx > N * 0.4 && idx < N * 0.6) half = true;
       if (lap >= LAPS) tracker.reach();
-      // límite de la isla
       const dx = me.pos.x - CX, dz = me.pos.z - CZ, d = Math.hypot(dx, dz);
       if (d > IR - 2) { me.pos.x = CX + dx / d * (IR - 2); me.pos.z = CZ + dz / d * (IR - 2); me.kart.speed *= 0.5; }
       if (!G.playing()) return;
@@ -207,36 +267,57 @@ function createKarts(G) {
         p.cd -= dt;
         if (p.cd <= 0 && Math.hypot(me.pos.x - p.x, me.pos.z - p.z) < 2.8) { p.cd = 1; me.kart.boostT = Math.max(me.kart.boostT, 1); G.sfx.boost(); }
       }
+      for (const r of ramps) {
+        r.cd -= dt;
+        if (r.cd <= 0 && me.onGround && Math.hypot(me.pos.x - r.x, me.pos.z - r.z) < 3.2 && me.kart.speed > 8) {
+          r.cd = 1.5; me.vel.y = 11; me.onGround = false; me.kart.boostT = Math.max(me.kart.boostT, 0.9);
+          G.sfx.jump(); G.sfx.boost(); G.fx.sparkle(me.pos, 0x4dabff, 12);
+        }
+      }
       for (const b of boxes) {
         if (b.off <= 0 && Math.hypot(me.pos.x - b.x, me.pos.z - b.z) < 1.8) {
-          b.off = 4; b.m.visible = false;
+          b.off = 3; b.m.visible = false;
           G.fx.burst({ x: b.x, y: 1.2, z: b.z }, [0xff4d8d, 0xffd43b, 0x4dabff, 0x51cf66], 16, 5);
-          if (!item) { item = Math.random() < 0.55 ? 'turbo' : 'aceite'; G.sfx.item(); }
+          if (!item) { item = rollItem(); uses = item === 'triple' ? 3 : 1; G.sfx.item(); }
         }
       }
       if (item && G.justPressed('KeyF', 'ShiftLeft', 'ShiftRight', 'KeyE', 'Mouse')) {
-        if (item === 'turbo') { me.kart.boostT = 1.5; G.sfx.boost(); }
-        else G.broadcast('oil', { id: G.myId() + ':' + oilSeq++, x: +(me.pos.x - Math.sin(me.ry) * 2.8).toFixed(2), z: +(me.pos.z - Math.cos(me.ry) * 2.8).toFixed(2), by: G.myId() });
-        item = null;
+        if (item === 'turbo' || item === 'triple') { me.kart.boostT = 1.3; G.sfx.boost(); }
+        else if (item === 'estrella') { me.kart.starT = 5.5; me.kart.spinT = 0; me.kart.spinVis = 0; G.sfx.star(); G.fx.sparkle(me.pos, 0xffe066, 20); }
+        else if (item === 'aceite') G.broadcast('oil', { id: G.myId() + ':' + seq++, x: +(me.pos.x - Math.sin(me.ry) * 2.8).toFixed(2), z: +(me.pos.z - Math.cos(me.ry) * 2.8).toFixed(2), by: G.myId() });
+        else if (item === 'cohete') {
+          const o = order(), i = o.indexOf(G.myId());
+          const target = i > 0 ? o[i - 1] : o[1];
+          if (target) G.broadcast('rk', { from: G.myId(), to: target });
+        }
+        if (--uses <= 0) item = null;
       }
       oilImm -= dt;
-      if (oilImm <= 0) for (const o of oils.values()) {
+      if (oilImm <= 0 && me.kart.starT <= 0) for (const o of oils.values()) {
         if ((o.by === G.myId() && o.age < 1) || Math.hypot(me.pos.x - o.x, me.pos.z - o.z) > 1.7) continue;
-        oilImm = 2; me.kart.spinT = 1.2; G.sfx.spin(); G.fx.sparkle(me.pos, 0xb197fc, 12);
+        oilImm = 2; me.kart.spinT = 1.1; G.sfx.spin(); G.fx.sparkle(me.pos, 0xb197fc, 12);
         break;
       }
     },
     onMsg(k, d, from) {
       if (tracker.onMsg(k, d, from)) return;
       if (k === 'oil' && !oils.has(d.id)) addOil(d);
+      else if (k === 'rk') addRocket(d);
+      else if (k === 'hit') {
+        const me = G.me;
+        if (me.kart.starT > 0 || me.kart.spinT > 0) return;
+        me.kart.spinT = 1.2; me.kart.speed *= 0.4; me.vel.y = 6; me.onGround = false;
+        G.sfx.spin();
+      }
     },
     hostDone: () => tracker.done(),
     hostRank: () => tracker.rank(progressOf),
     hudCorner() {
       const ids = G.ids();
       const pos = 1 + ids.filter(id => id !== G.myId() && (tracker.order.includes(id) ? !tracker.order.includes(G.myId()) || tracker.order.indexOf(id) < tracker.order.indexOf(G.myId()) : progressOf(id) > progress() && !tracker.order.includes(G.myId()))).length;
-      const icon = item === 'turbo' ? '🍄' : item === 'aceite' ? '🛢️' : '';
-      return `<div class="kart-hud"><div class="kpos">${pos}<sup>º</sup></div><div class="klap">Vuelta <b>${Math.min(LAPS, Math.max(1, lap + 1))}</b>/${LAPS}</div><div class="kitem${item ? ' has' : ''}">${icon || '<span>?</span>'}${item ? '<small>F</small>' : ''}</div></div>`;
+      const icon = item ? ICONS[item] + (item === 'triple' ? `<b class="x">×${uses}</b>` : '') : '';
+      const star = G.me.kart.starT > 0 ? ' star' : '';
+      return `<div class="kart-hud${star}"><div class="kpos">${pos}<sup>º</sup></div><div class="klap">Vuelta <b>${Math.min(LAPS, Math.max(1, lap + 1))}</b>/${LAPS}</div><div class="kitem${item ? ' has' : ''}">${icon || '<span>?</span>'}${item ? '<small>F</small>' : ''}</div></div>`;
     },
   };
 }
@@ -714,7 +795,7 @@ export const MINIGAMES = {
   karts: {
     name: 'Turbo Karts', emoji: '🏎️', time: 150, create: createKarts,
     goal: 'Terminá 3 vueltas antes que nadie',
-    desc: 'Pasá por las flechas para acelerar, agarrá cajas ❓ para turbos o charcos de aceite, y derrapá en las curvas para cargar un turbo extra.',
+    desc: 'Las cajas ❓ dan turbos, aceite, cohetes 🚀 o la estrella ⭐ (invencible). Usá las flechas y las rampas, y derrapá en las curvas para un turbo extra. ¡Cambia en cada carrera!',
     controls: [['W', 'Acelerar'], ['S', 'Frenar'], ['A D', 'Doblar'], ['Espacio', 'Derrapar (mantené)'], ['F', 'Usar objeto']],
   },
   hex: {

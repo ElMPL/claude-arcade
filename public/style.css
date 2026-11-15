@@ -104,7 +104,12 @@ input.invalid { outline: 2px solid var(--err); border-color: transparent; }
 .code { font-family: 'Bungee', sans-serif; font-size: 34px; color: var(--accent); letter-spacing: 3px; }
 .players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .players li { background: var(--bg2); padding: 10px 12px; border-radius: 12px; font-weight: 800; display: flex; justify-content: space-between; }
-.players li .you { color: var(--accent); font-size: 12px; }
+.players li .you { color: var(--accent); font-size: 11px; }
+.players li .host { color: var(--muted); font-size: 11px; }
+.players li .crowns { font-weight: 900; color: var(--accent); }
+.players li .crowns.zero { opacity: .35; }
+.result.pop { animation: resultpop .6s cubic-bezier(.2,1.6,.4,1); }
+@keyframes resultpop { from { transform: scale(.6); opacity: 0; } }
 .result { background: rgba(62,224,143,.12); color: var(--ok); padding: 10px 12px; border-radius: 12px; font-weight: 800; margin: 0; }
 .startbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; }
 #startInfo { color: var(--muted); font-weight: 700; }

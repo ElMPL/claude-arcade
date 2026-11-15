@@ -11,7 +11,8 @@
  *   Arcade.onPlayerLeft(id => {})
  *   Arcade.onHostChanged(newHostId => {})
  *   Arcade.isHost(), Arcade.isOnline(), Arcade.me, Arcade.players, Arcade.ctx
- *   Arcade.end({ text })     termina la partida (solo cuenta si lo llama el host) y vuelve al lobby
+ *   Arcade.end({ winners, text })  termina la partida (solo cuenta si lo llama el host) y vuelve al lobby.
+ *                            winners: ids de los ganadores (cada uno suma 1 corona 👑 en la sala). text: opcional.
  *
  * Si abrís el juego directo (sin la plataforma), funciona en modo solo: online=false, 1 jugador.
  */

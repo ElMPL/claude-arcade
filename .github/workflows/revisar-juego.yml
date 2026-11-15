@@ -1,0 +1,29 @@
+name: Revisar juego
+# Corre en cada pedido de cambios (PR): revisa que el juego cumpla la guía.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Archivos cambiados
+        run: git diff --name-only origin/${{ github.base_ref }}...HEAD > /tmp/cambios.txt && cat /tmp/cambios.txt
+      - name: Revisar juegos
+        run: node scripts/check-games.js --changed /tmp/cambios.txt
+      - name: Probar que la plataforma arranca
+        run: |
+          npm ci || npm install
+          (node server.js > /tmp/server.log 2>&1 &)
+          sleep 3
+          curl -fsS http://localhost:3000/api/games | head -c 2000

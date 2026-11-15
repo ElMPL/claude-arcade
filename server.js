@@ -154,7 +154,7 @@ io.on('connection', socket => {
     leave();
     const code = makeCode();
     const r = { code, hostId: socket.id, players: new Map(), gameId: null, state: 'lobby' };
-    r.players.set(socket.id, { id: socket.id, name, slot: 0 });
+    r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0 });
     rooms.set(code, r);
     room = r;
     socket.join(code);
@@ -171,7 +171,7 @@ io.on('connection', socket => {
     if (r.state === 'playing') return cb({ ok: false, error: 'La partida ya empezó, esperá a que termine' });
     if (r.players.size >= MAX_ROOM_SIZE) return cb({ ok: false, error: 'La sala está llena' });
     leave();
-    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size });
+    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0 });
     room = r;
     socket.join(code);
     cb({ ok: true, me: socket.id, room: publicRoom(r) });
@@ -208,7 +208,13 @@ io.on('connection', socket => {
   socket.on('room:end', payload => {
     if (!room || room.hostId !== socket.id || room.state !== 'playing') return;
     room.state = 'lobby';
-    const results = payload && typeof payload === 'object' ? { text: String(payload.text || '').slice(0, 120) } : null;
+    // Coronas: cada juego ganado suma 1 corona al ganador (o ganadores) en la sala
+    const winners = payload && Array.isArray(payload.winners) ? [...new Set(payload.winners)].filter(id => room.players.has(id)).slice(0, 8) : [];
+    for (const id of winners) room.players.get(id).crowns++;
+    const game = GAME_BY_ID.get(room.gameId);
+    let text = payload && typeof payload === 'object' ? String(payload.text || '').slice(0, 120) : '';
+    if (!text && winners.length) text = `👑 ${winners.map(id => room.players.get(id).name).join(' y ')} ${winners.length > 1 ? 'ganaron' : 'ganó'} ${game ? game.name : ''}`;
+    const results = { text, winners, gameName: game ? game.name : '' };
     io.to(room.code).emit('game:end', { results });
     io.to(room.code).emit('room:update', publicRoom(room));
   });

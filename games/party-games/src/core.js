@@ -448,35 +448,38 @@ function noise(d, { vol = 0.3, at = 0, freq = 1200, q = 0.7 } = {}) {
     if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
     const s = a.createBufferSource(); s.buffer = noiseBuf;
     const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq; f.Q.value = q;
-    const g = a.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
     s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + d);
   } catch { /* */ }
 }
 const notes = (list, gap = 0.1, o = {}) => list.forEach((f, i) => tone(f, o.d || 0.16, { ...o, at: i * gap }));
 export const sfx = {
-  jump: () => tone(380, 0.16, { type: 'square', vol: 0.06, slide: 1.9 }),
-  land: () => noise(0.08, { vol: 0.12, freq: 600 }),
-  coin: () => notes([988, 1319], 0.07, { type: 'square', vol: 0.07, d: 0.12 }),
-  bigcoin: () => notes([784, 988, 1175, 1568], 0.06, { type: 'square', vol: 0.07, d: 0.12 }),
-  bump: () => { tone(160, 0.18, { type: 'square', vol: 0.12, slide: 0.5 }); noise(0.1, { vol: 0.15, freq: 900 }); },
-  poof: () => noise(0.25, { vol: 0.15, freq: 2400 }),
-  splash: () => { noise(0.5, { vol: 0.25, freq: 1800 }); tone(300, 0.3, { vol: 0.05, slide: 0.4 }); },
-  boom: () => { noise(0.9, { vol: 0.5, freq: 500 }); tone(90, 0.6, { type: 'sawtooth', vol: 0.15, slide: 0.3 }); },
-  count: () => tone(660, 0.14, { type: 'square', vol: 0.08 }),
-  go: () => notes([784, 1047], 0.1, { type: 'square', vol: 0.09, d: 0.22 }),
-  checkpoint: () => notes([660, 880, 1320], 0.07, { vol: 0.12 }),
-  item: () => notes([523, 659, 784, 1047, 1319], 0.045, { type: 'square', vol: 0.05, d: 0.08 }),
-  boost: () => { tone(200, 0.45, { type: 'sawtooth', vol: 0.06, slide: 3 }); noise(0.4, { vol: 0.08, freq: 3000 }); },
-  spin: () => notes([880, 660, 440, 330], 0.06, { type: 'square', vol: 0.06, d: 0.08 }),
-  tick: () => tone(1400, 0.04, { type: 'square', vol: 0.04 }),
-  pass: () => notes([440, 880], 0.05, { type: 'square', vol: 0.08, d: 0.1 }),
-  out: () => notes([523, 392, 262], 0.14, { type: 'sawtooth', vol: 0.07, d: 0.2 }),
-  finish: () => notes([523, 659, 784, 1047, 784, 1047], 0.09, { type: 'square', vol: 0.07 }),
-  win: () => notes([523, 659, 784, 1047, 1319, 1568], 0.08, { vol: 0.15, d: 0.3 }),
-  fanfare: () => { notes([392, 523, 659, 784], 0.13, { type: 'square', vol: 0.07, d: 0.3 }); notes([523, 659, 784, 1047], 0.13, { vol: 0.12, d: 0.6, at: 0.6 }); },
-  whoosh: () => noise(0.35, { vol: 0.12, freq: 1500 }),
-  pop: () => tone(600, 0.08, { type: 'sine', vol: 0.12, slide: 2 }),
-  dash: () => noise(0.18, { vol: 0.14, freq: 2600 }),
+  jump: () => tone(420, 0.14, { type: 'sine', vol: 0.09, slide: 1.8 }),
+  land: () => noise(0.06, { vol: 0.07, freq: 500 }),
+  coin: () => notes([988, 1319], 0.07, { type: 'triangle', vol: 0.1, d: 0.12 }),
+  bigcoin: () => notes([784, 988, 1175, 1568], 0.06, { type: 'triangle', vol: 0.1, d: 0.12 }),
+  bump: () => { tone(200, 0.15, { type: 'sine', vol: 0.14, slide: 0.55 }); noise(0.07, { vol: 0.06, freq: 800 }); },
+  poof: () => noise(0.18, { vol: 0.06, freq: 1800 }),
+  splash: () => { noise(0.35, { vol: 0.1, freq: 1400 }); tone(320, 0.25, { type: 'sine', vol: 0.05, slide: 0.5 }); },
+  boom: () => { noise(0.6, { vol: 0.22, freq: 420 }); tone(110, 0.45, { type: 'sine', vol: 0.18, slide: 0.4 }); },
+  count: () => tone(660, 0.12, { type: 'triangle', vol: 0.12 }),
+  go: () => notes([784, 1047], 0.1, { type: 'triangle', vol: 0.14, d: 0.25 }),
+  checkpoint: () => notes([660, 880, 1320], 0.07, { type: 'triangle', vol: 0.1 }),
+  item: () => notes([523, 659, 784, 1047], 0.05, { type: 'triangle', vol: 0.08, d: 0.09 }),
+  boost: () => { tone(260, 0.35, { type: 'triangle', vol: 0.07, slide: 2.4 }); noise(0.3, { vol: 0.04, freq: 2500 }); },
+  spin: () => notes([880, 740, 587, 440], 0.06, { type: 'triangle', vol: 0.08, d: 0.08 }),
+  tick: () => tone(1200, 0.04, { type: 'sine', vol: 0.06 }),
+  pass: () => notes([523, 784], 0.05, { type: 'triangle', vol: 0.1, d: 0.1 }),
+  out: () => notes([587, 494, 392], 0.13, { type: 'triangle', vol: 0.1, d: 0.18 }),
+  finish: () => notes([523, 659, 784, 1047], 0.09, { type: 'triangle', vol: 0.12, d: 0.18 }),
+  win: () => notes([523, 659, 784, 1047, 1319], 0.08, { type: 'triangle', vol: 0.11, d: 0.25 }),
+  whistle: () => { tone(1500, 0.18, { type: 'sine', vol: 0.09, slide: 1.15 }); tone(1500, 0.3, { type: 'sine', vol: 0.09, slide: 1.15, at: 0.22 }); },
+  fanfare: () => { notes([392, 523, 659, 784], 0.13, { type: 'triangle', vol: 0.1, d: 0.3 }); notes([523, 659, 784, 1047], 0.13, { type: 'triangle', vol: 0.12, d: 0.5, at: 0.6 }); },
+  whoosh: () => noise(0.3, { vol: 0.05, freq: 1300 }),
+  pop: () => tone(600, 0.08, { type: 'sine', vol: 0.1, slide: 2 }),
+  dash: () => noise(0.15, { vol: 0.07, freq: 2200 }),
+  rocket: () => { tone(300, 0.6, { type: 'triangle', vol: 0.06, slide: 2 }); noise(0.5, { vol: 0.05, freq: 2000 }); },
+  star: () => notes([784, 988, 1175, 1568, 1175, 1568], 0.07, { type: 'triangle', vol: 0.08, d: 0.1 }),
 };
 
 farIslands();
