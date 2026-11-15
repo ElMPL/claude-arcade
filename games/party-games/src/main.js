@@ -397,7 +397,10 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 const canvas = renderer.domElement;
 let camYaw = Math.PI, camPitch = 0.42, mouseIdle = 99, dragging = false;
 const camPos = new THREE.Vector3(0, 10, -20), camLook = new THREE.Vector3();
-canvas.addEventListener('click', () => { unlockAudio(); try { canvas.requestPointerLock(); } catch { /* */ } });
+canvas.addEventListener('click', () => {
+  unlockAudio();
+  try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => { /* sin pointer lock: se usa arrastrar */ }); } catch { /* */ }
+});
 canvas.addEventListener('mousedown', e => { dragging = true; if (e.button === 0 && document.pointerLockElement === canvas) pressed.Mouse = true; });
 addEventListener('mouseup', () => { dragging = false; });
 addEventListener('mousemove', e => {
