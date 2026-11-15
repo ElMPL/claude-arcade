@@ -40,7 +40,7 @@ function checkGame(id) {
   if (!['multi', 'single'].includes(m.mode)) err('game.json: "mode" tiene que ser "multi" o "single"');
   if (m.mode === 'multi') {
     const min = m.minPlayers, max = m.maxPlayers;
-    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 2 || max > 8 || min > max) err('game.json: minPlayers/maxPlayers tienen que ser enteros entre 2 y 8 (min ≤ max)');
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 8 || min > max || max < 2) err('game.json: minPlayers (1-8) y maxPlayers (2-8) tienen que ser enteros, con min ≤ max. minPlayers 1 solo si el juego tiene bots');
   }
   if (!m.description) warn('game.json: conviene agregar "description"');
   if (!m.controls) warn('game.json: conviene agregar "controls"');

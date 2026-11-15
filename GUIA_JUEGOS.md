@@ -45,7 +45,7 @@ games/
 |---|---|---|
 | `name` | sí | máx. 40 caracteres |
 | `mode` | sí | `"multi"` (online, en sala) o `"single"` (un jugador, se juega directo desde el catálogo) |
-| `minPlayers` / `maxPlayers` | si es multi | entre 2 y 8. Juego de 1v1: `2` y `2`. Hasta 4: `2` y `4` |
+| `minPlayers` / `maxPlayers` | si es multi | entre 2 y 8. Juego de 1v1: `2` y `2`. Hasta 4: `2` y `4`. Si el juego completa con bots, `minPlayers` puede ser `1` |
 | `description`, `author`, `controls` | recomendado | se muestran en el catálogo y en la barra del juego |
 | `thumbnail` | recomendado | ruta a la foto del juego (ej. `thumb.jpg`). Si no se pone, se busca `thumb.png/jpg/webp` en la carpeta |
 | `emoji` + `color` | recomendado | si el juego no tiene foto, la plataforma genera una portada automática con este emoji, este color y el nombre |

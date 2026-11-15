@@ -1,0 +1,12 @@
+{
+  "name": "Truco",
+  "description": "El clásico truco argentino: truco, retruco, vale cuatro, envido, real y falta envido. Mesas de 1v1, 2v2 o 3v3; los lugares vacíos los completan bots.",
+  "author": "ClaudeArcade",
+  "mode": "multi",
+  "minPlayers": 1,
+  "maxPlayers": 6,
+  "emoji": "🃏",
+  "color": "#1f8a50",
+  "thumbnail": "thumb.jpg",
+  "controls": "Click en una carta para jugarla · Botones: Truco, Envido, Mazo"
+}

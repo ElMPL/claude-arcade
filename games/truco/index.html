@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Truco</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="room">
+    <div id="felt"><div class="felt-logo">TRUCO</div></div>
+    <div id="seats"></div>
+    <div id="played"></div>
+    <div id="bubbles"></div>
+    <div id="score"></div>
+    <div id="topright"><div id="info"></div><button id="mute" title="Sonido">🔊</button></div>
+    <div id="status"></div>
+    <div id="hand"></div>
+    <div id="actions"></div>
+    <div id="respond" hidden></div>
+    <div id="banner" hidden></div>
+  </div>
+  <div id="setup" class="overlay" hidden></div>
+  <div id="end" class="overlay" hidden></div>
+  <div id="preview" hidden><h1>TRUCO</h1><p>1v1 · 2v2 · 3v3 · con bots</p></div>
+
+  <script src="/sdk/arcade-sdk.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
