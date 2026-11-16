@@ -13,6 +13,9 @@ button { font-family: var(--font); cursor: pointer; border: 0; }
 /* Etiquetas sobre las cabezas */
 .plabel { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .plabel.mine { display: none; }
+.plabel.idle { opacity: .4; }
+#topright button.on { background: var(--gold); color: var(--ink); }
+#banner.duel b { color: var(--gold); }
 .plabel .nm { background: var(--panel); border: 2px solid var(--c, #888); padding: 2px 12px; border-radius: 99px; font-weight: 600; font-size: clamp(12px, 1.4vw, 15px); white-space: nowrap; }
 .plabel.nos { --c: var(--nos); } .plabel.ellos { --c: var(--ellos); }
 .plabel.active .nm { box-shadow: 0 0 0 3px var(--gold), 0 0 18px rgba(242,193,78,.6); }
@@ -110,9 +113,30 @@ button { font-family: var(--font); cursor: pointer; border: 0; }
 #preview h1 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 120px; color: var(--gold); letter-spacing: 6px; text-shadow: 0 0 30px rgba(242,193,78,.5), 0 6px 0 #4a1c0a, 0 10px 20px rgba(0,0,0,.8); line-height: 1; }
 #preview p { margin: 14px 0 0; font-size: 24px; font-weight: 700; background: rgba(22,14,9,.85); padding: 6px 20px; border-radius: 99px; border: 2px solid var(--gold); }
 
+@media (max-height: 520px), (max-width: 700px) {
+  #score { transform: scale(.7); transform-origin: top left; }
+  #topright { transform: scale(.8); transform-origin: top right; }
+  .plabel .nm { font-size: 11px; padding: 1px 8px; }
+  .bubble { font-size: 15px; }
+  #bar { padding: 4px 6px 6px; gap: 4px; }
+  #bar .grp { padding: 3px; gap: 3px; }
+  .cb { padding: 7px 9px; font-size: 11px; }
+  .cb.truco { min-width: 0; font-size: 13px; }
+  #chat { bottom: 70px; }
+  .panel { padding: 12px; }
+  .panel h1 { font-size: 30px; }
+  .skinprev { width: 140px !important; height: 154px !important; }
+}
 @media (max-width: 700px) {
   .cols { flex-direction: column; }
   .cb { padding: 9px 10px; } .cb.truco, .cb.yes, .cb.no { min-width: 0; }
   #status { top: 64px; } #chat { bottom: 130px; }
   #score { transform: scale(.82); transform-origin: top left; }
 }
+
+#rotate { display: none; }
+@media (orientation: portrait) and (max-width: 600px) {
+  #rotate { display: block; position: fixed; left: 50%; top: 44%; transform: translateX(-50%); z-index: 40; background: var(--panel); border: 2px solid var(--gold); padding: 8px 14px; border-radius: 14px; font-size: 14px; pointer-events: none; animation: fadeaway 5s forwards; }
+  #status { top: auto; bottom: 120px; }
+}
+@keyframes fadeaway { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }

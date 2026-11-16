@@ -1,5 +1,5 @@
 // Truco 3D — mesa en un bar, primera persona, skins, sala de espera, red y HUD
-import { THREE, renderer, scene, camera, updateScene, makeCard, makeChair, makeStack, TABLE_Y, PREVIEW } from './scene.js';
+import { THREE, renderer, scene, camera, updateScene, makeCard, makeChair, makeStack, setTableShape, TABLE_Y, PREVIEW } from './scene.js';
 import { makeCharacter, setHeldCards, animateCharacter, react, MODELS, COLORS, HATS, randomSkin, validSkin } from './chars.js';
 import { Engine } from '../js/engine.js';
 import { canEnvido, canTruco, canPlay, canMazo, isResponder, envidoRaises, nextTrucoLevel, TRUCO_NAMES, ENVIDO_NAMES, teamOf } from '../js/rules.js';
@@ -13,7 +13,7 @@ const CHAT = ['¡Cantá!', '¡Poné!', '¡Vení!', 'Callado', 'Tengo para el env
 const SPEED = FAST ? 0.3 : 1;
 
 let myId = null, S = null, hand = [], mySeat = -1, engine = null, deadlineLocal = 0, layoutKey = '';
-let lobby = { sel: { size: 2, goal: 30, mode: 'mix' }, ready: [] };
+let lobby = { sel: { size: 2, goal: 30, mode: 'mix', pica: 1 }, ready: [] };
 let mySkin = (() => { try { return validSkin(JSON.parse(localStorage.getItem('truco:skin'))) || randomSkin(); } catch { return randomSkin(); } })();
 const skins = {}; // (host) skin de cada humano
 
@@ -56,52 +56,85 @@ function rel(seat) { const n = S.seats.length; return (seat - (mySeat < 0 ? 0 : 
 function angleOf(seat) { return rel(seat) * (Math.PI * 2) / S.seats.length; }
 const dirOf = a => new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
 const myTeam = () => (mySeat >= 0 && S ? S.seats[mySeat].team : 0);
+const isRect = () => !!S && S.seats.length === 6;
+// Ubicación de cada asiento. En 3v3 la mesa es rectangular (3 por lado) y los rivales del pica pica quedan cara a cara.
+const RECT = [[-1, 1], [0, 1], [1, 1], [1, -1], [0, -1], [-1, -1]];
+function pose(seat) {
+  if (isRect()) {
+    let [x, sd] = RECT[seat];
+    if (mySeat >= 3) { x = -x; sd = -sd; }
+    x *= 1.05;
+    const a = sd > 0 ? 0 : Math.PI;
+    return { x, a, pos: new THREE.Vector3(x, 0, sd * 1.42), chair: new THREE.Vector3(x, 0, sd * 1.64),
+      spot: k => new THREE.Vector3(x + (k - 1) * 0.21, TABLE_Y + 0.016 + k * 0.004, sd * 0.42), deck: new THREE.Vector3(x * 0.75, TABLE_Y + 0.03, sd * 0.62) };
+  }
+  const a = angleOf(seat), d = dirOf(a), perp = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
+  return { x: d.x, a, pos: d.clone().multiplyScalar(1.72), chair: d.clone().multiplyScalar(1.9),
+    spot: k => d.clone().multiplyScalar(rel(seat) === 0 ? 0.42 : 0.56).addScaledVector(perp, (k - 1) * 0.25).setY(TABLE_Y + 0.016 + k * 0.004),
+    deck: d.clone().multiplyScalar(0.72).setY(TABLE_Y + 0.03) };
+}
 
 function rebuildSeats() {
   seatObjs.forEach(o => { if (o) { if (o.ch) scene.remove(o.ch); scene.remove(o.chair); o.label.remove(); } });
   seatObjs.length = 0;
+  setTableShape(isRect() ? 'rect' : 'round');
+  loadView();
   S.seats.forEach((st, i) => {
-    const a = angleOf(i), d = dirOf(a);
-    const chair = makeChair(); chair.position.copy(d.clone().multiplyScalar(1.9)); chair.rotation.y = a;
+    const P = pose(i), a = P.a;
+    const chair = makeChair(); chair.position.copy(P.chair); chair.rotation.y = a;
     let ch = null;
-    if (i !== mySeat) { ch = makeCharacter(validSkin(st.skin) || randomSkin()); ch.position.copy(d.clone().multiplyScalar(1.72)); ch.rotation.y = a + Math.PI; }
+    if (i !== mySeat) { ch = makeCharacter(validSkin(st.skin) || randomSkin()); ch.position.copy(P.pos); ch.rotation.y = a + Math.PI; }
     const label = document.createElement('div'); label.className = 'plabel'; $('labels').appendChild(label);
     seatObjs[i] = { ch, chair, angle: a, label };
   });
   layoutKey = S.seats.map(s => s.id || s.name).join('|') + ':' + mySeat;
 }
 
-// Cámara en primera persona (más cerca de la mesa)
-const camBase = new THREE.Vector3(0, 1.33, 1.78), lookBase = new THREE.Vector3(0, 0.74, 0.1);
-let mx = 0, my = 0, cyaw = 0, cpitch = 0;
+// Cámara: primera persona (más cerca de la mesa) o vista desde arriba
+let mx = 0, my = 0, cyaw = 0, cpitch = 0, topView = false, camT = 0;
 addEventListener('pointermove', e => { mx = e.clientX / innerWidth - 0.5; my = e.clientY / innerHeight - 0.5; });
+// preferencia de vista separada para mesa redonda y rectangular (en 3v3 arranca desde arriba)
+const viewKey = () => (isRect() ? 'truco:top6' : 'truco:top');
+function loadView() {
+  let v = null; try { v = localStorage.getItem(viewKey()); } catch { /* */ }
+  topView = v === null ? isRect() : v === '1';
+  $('viewBtn').classList.toggle('on', topView);
+}
+$('viewBtn').addEventListener('click', () => { topView = !topView; $('viewBtn').classList.toggle('on', topView); try { localStorage.setItem(viewKey(), topView ? '1' : '0'); } catch { /* */ } });
 function updateCamera(dt) {
-  cyaw += (-mx * 0.4 - cyaw) * Math.min(1, dt * 3);
-  cpitch += (-my * 0.2 - cpitch) * Math.min(1, dt * 3);
-  camera.position.copy(camBase);
-  const look = lookBase.clone().sub(camBase);
-  look.applyAxisAngle(new THREE.Vector3(0, 1, 0), cyaw);
-  look.y += cpitch;
-  camera.lookAt(camBase.clone().add(look));
+  const portrait = camera.aspect < 1;
+  const fov = portrait ? 74 : 56;
+  if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  let base, look;
+  if (S && isRect()) { const P = pose(mySeat < 0 ? 0 : mySeat); base = new THREE.Vector3(P.x, 1.42, 1.86); look = new THREE.Vector3(P.x * 0.45, 0.74, -0.3); }
+  else { base = new THREE.Vector3(0, 1.33, 1.78); look = new THREE.Vector3(0, 0.74, 0.1); }
+  if (portrait) { base.z += 0.45; base.y += 0.3; }
+  const top = S && isRect() ? new THREE.Vector3(0, portrait ? 5.6 : 4.1, 0.95) : new THREE.Vector3(0, portrait ? 4.4 : 3.3, 0.8);
+  const topLook = new THREE.Vector3(0, 0.74, 0.08);
+  camT += ((topView ? 1 : 0) - camT) * Math.min(1, dt * 4);
+  cyaw += (-mx * 0.4 * (1 - camT) - cyaw) * Math.min(1, dt * 3);
+  cpitch += (-my * 0.2 * (1 - camT) - cpitch) * Math.min(1, dt * 3);
+  const dir = look.clone().sub(base).applyAxisAngle(new THREE.Vector3(0, 1, 0), cyaw);
+  dir.y += cpitch;
+  camera.position.copy(base).lerp(top, camT);
+  camera.lookAt(base.clone().add(dir).lerp(topLook, camT));
+  if (scene.userData.lamp) scene.userData.lamp.visible = camT < 0.4;
 }
 
 // ---------------- Cartas en la mesa ----------------
 const table = new Map();
-function spotFor(seat, k) {
-  const a = angleOf(seat), d = dirOf(a), perp = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
-  return d.multiplyScalar(rel(seat) === 0 ? 0.42 : 0.56).add(perp.multiplyScalar((k - 1) * 0.25)).setY(TABLE_Y + 0.016 + k * 0.004);
-}
+const spotFor = (seat, k) => pose(seat).spot(k);
 function originFor(seat) {
   if (seat === mySeat) { const v = new THREE.Vector3(0, -0.25, -0.55); camera.localToWorld(v); return v; }
   const o = seatObjs[seat];
   if (o && o.ch) { const v = new THREE.Vector3(); o.ch.userData.cards.getWorldPosition(v); return v; }
-  return dirOf(angleOf(seat)).multiplyScalar(1.6).setY(1.05);
+  return pose(seat).pos.clone().setY(1.05);
 }
 const glowMat = new THREE.MeshBasicMaterial({ color: 0xffd25e, transparent: true, opacity: 0.9, toneMapped: false });
 function syncTable() {
   const keys = new Set();
   S.tricks.forEach((tr, k) => tr.forEach(p => {
-    const key = `${S.handNo}:${k}:${p.seat}`;
+    const key = `${S.handNo}:${S.duelNo || 0}:${k}:${p.seat}`;
     keys.add(key);
     let e = table.get(key);
     if (!e) {
@@ -110,7 +143,7 @@ function syncTable() {
       mesh.traverse(o => { o.castShadow = false; });
       const to = spotFor(p.seat, k), from = originFor(p.seat);
       mesh.position.copy(from);
-      e = { mesh, from, to, t: 0, rot: angleOf(p.seat) + Math.PI + (Math.random() - 0.5) * 0.2 };
+      e = { mesh, from, to, t: 0, rot: pose(p.seat).a + Math.PI + (Math.random() - 0.5) * 0.2 };
       if (p.seat === mySeat) removeHandCard(p.card);
       table.set(key, e);
     }
@@ -138,8 +171,8 @@ function startDeal(e) {
   if (!S) return;
   endDeal();
   const n = e.n || S.seats.length;
-  const a = angleOf(e.dealer), d = dirOf(a);
-  const deckPos = d.clone().multiplyScalar(0.72).setY(TABLE_Y + 0.03);
+  const P = pose(e.dealer), a = P.a;
+  const deckPos = P.deck;
   const halves = [makeStack(20), makeStack(20)];
   halves.forEach(h => { h.position.copy(deckPos); h.rotation.y = a; });
   deal = { t: 0, dealer: e.dealer, n, mano: e.mano, deckPos, a, halves, flying: [], arrived: Array(n).fill(0), next: 0 };
@@ -239,13 +272,15 @@ renderer.domElement.addEventListener('click', e => {
 function updateHand(dt) {
   handGroup.position.copy(camera.position); handGroup.quaternion.copy(camera.quaternion);
   const n = handMeshes.length, can = S && canPlay(S, mySeat);
+  const sc = Math.min(1, camera.aspect * 1.2);
   const vis = deal && mySeat >= 0 ? deal.arrived[mySeat] || 0 : n;
   handMeshes.forEach((h, i) => {
     const m = h.mesh;
     m.visible = i < vis;
     h.hover += ((i === hovered ? 1 : 0) - h.hover) * Math.min(1, dt * 12);
     const mid = (n - 1) / 2;
-    const tx = (i - mid) * 0.095, ty = -0.19 - Math.abs(i - mid) * 0.01 + h.hover * 0.05 - (can ? 0 : 0.03), tz = -0.52 + i * 0.002;
+    m.scale.setScalar(0.72 * Math.max(0.7, sc));
+    const tx = (i - mid) * 0.095 * sc, ty = -0.19 - Math.abs(i - mid) * 0.01 + h.hover * 0.05 - (can ? 0 : 0.03), tz = -0.52 + i * 0.002;
     m.position.x += (tx - m.position.x) * Math.min(1, dt * 10);
     m.position.y += (ty - m.position.y) * Math.min(1, dt * 10);
     m.position.z += (tz - m.position.z) * Math.min(1, dt * 10);
@@ -267,7 +302,8 @@ function updateLabels() {
     if (mine) p = { x: innerWidth / 2, y: innerHeight * 0.56 };
     else { const h = headPos(i); if (!h) return; p = project(h.add(new THREE.Vector3(0, 0.34, 0))); p.y = Math.max(p.y, 150); p.x = Math.max(90, Math.min(innerWidth - 80, p.x)); }
     o.label.style.left = p.x + 'px'; o.label.style.top = p.y + 'px';
-    o.label.className = `plabel ${teamOf(S, i) === myTeam() ? 'nos' : 'ellos'}${i === actor ? ' active' : ''}${mine ? ' mine' : ''}`;
+    const idle = S.pica && S.active && !S.active.includes(i);
+    o.label.className = `plabel ${teamOf(S, i) === myTeam() ? 'nos' : 'ellos'}${i === actor ? ' active' : ''}${mine ? ' mine' : ''}${idle ? ' idle' : ''}`;
     const html = `<span class="nm">${st.bot ? '🤖 ' : ''}${esc(st.name)}</span>${i === S.mano ? '<span class="mano">MANO</span>' : ''}${i === actor && !st.bot && deadlineLocal ? `<i class="tbar" style="--p:${Math.max(0, (deadlineLocal - Date.now()) / 45000)}"></i>` : ''}`;
     if (o.label.dataset.html !== html) { o.label.innerHTML = html; o.label.dataset.html = html; }
     document.querySelectorAll(`.bubble[data-seat="${i}"]`).forEach(b => { b.style.left = p.x + 'px'; b.style.top = (mine ? innerHeight * 0.5 : p.y - 26) + 'px'; });
@@ -333,11 +369,12 @@ $('bar').addEventListener('click', e => { const b = e.target.closest('button'); 
 function renderStatus() {
   const st = $('status'); st.classList.remove('mine');
   if (!S || S.phase === 'end') { st.textContent = ''; return; }
-  if (S.phase === 'deal') { st.textContent = `${S.seats[S.dealer].name} mezcla y reparte…`; return; }
+  if (S.phase === 'deal') { st.textContent = `${S.seats[S.dealer].name} mezcla y reparte…${S.pica ? ' · mano de PICA PICA' : ''}`; return; }
+  const duel = S.pica && S.pica.duel >= 0 ? `Pica pica ${S.pica.duel + 1}/3 · ${S.seats[S.active[0]].name} vs ${S.seats[S.active[1]].name} · ` : '';
   if (S.phase !== 'play') { st.textContent = ''; return; }
-  if (S.pending) { st.textContent = S.pending.responder === mySeat ? '' : `Esperando la respuesta de ${S.seats[S.pending.responder].name}…`; return; }
-  if (S.turn === mySeat) { st.textContent = '¡Te toca! Elegí una carta'; st.classList.add('mine'); }
-  else st.textContent = `Turno de ${S.seats[S.turn].name}`;
+  if (S.pending) { st.textContent = S.pending.responder === mySeat ? duel : `${duel}Esperando la respuesta de ${S.seats[S.pending.responder].name}…`; return; }
+  if (S.turn === mySeat) { st.textContent = `${duel}¡Te toca! Elegí una carta`; st.classList.add('mine'); }
+  else st.textContent = `${duel}Turno de ${S.seats[S.turn].name}`;
 }
 
 // Chat de equipo (4 y 6 jugadores): solo lo ven tus compañeros
@@ -383,6 +420,13 @@ let bannerT;
 function onEvent(e) {
   if (e.kind === 'deal') { seatObjs.forEach(o => { if (o && o.ch) o.ch.userData.mood = null; }); startDeal(e); }
   else if (e.kind === 'play') snap(0, 0.25);
+  else if (e.kind === 'duel' && S) {
+    const B = $('banner');
+    B.className = 'duel';
+    B.innerHTML = `<b>Pica pica · ${e.k + 1}/3</b><span>${esc(S.seats[e.seats[0]].name)} vs ${esc(S.seats[e.seats[1]].name)}</span>`;
+    B.hidden = false; clearTimeout(bannerT); bannerT = setTimeout(() => { B.hidden = true; }, 1800);
+    sfx.call();
+  }
   else if (e.kind === 'call') { setTimeout(() => bubble(e.seat, e.text, 'big'), 30); sfx.call(); say(e.text); }
   else if (e.kind === 'tantos') { bubble(e.seat, e.text, e.num ? 'num' : ''); say(e.text); }
   else if (e.kind === 'info') bubble(e.seat, e.text);
@@ -506,6 +550,7 @@ function renderSetup(force) {
       <p>${host ? 'Armá la mesa. Los lugares vacíos los ocupan bots.' : 'El host arma la mesa.'}</p>
       <div class="opt"><label>Mesa</label>${seg('size', [[2, '1 vs 1', H.length > 2], [4, '2 vs 2', H.length > 4], [6, '3 vs 3', false]])}</div>
       <div class="opt"><label>Puntos</label>${seg('goal', [[15, 'A 15'], [30, 'A 30']])}</div>
+      ${sel.size === 6 && sel.goal === 30 ? `<div class="opt"><label>Pica pica (de 5 a 25)</label>${seg('pica', [[1, 'Sí'], [0, 'No']])}</div>` : ''}
       ${H.length > 1 && sel.size > H.length ? `<div class="opt"><label>Equipos</label>${seg('mode', [['mix', 'Mezclados'], ['together', 'Humanos vs bots', !canTogether]])}</div>` : ''}
       <div class="teams-prev"><div class="a">Equipo 1${col(0)}</div><div class="b">Equipo 2${col(1)}</div></div>
       <p class="waiting">${lobby.ready.length}/${H.length} listos · empieza cuando estén todos</p>
@@ -543,7 +588,7 @@ function startEngine() {
   skins[myId] = mySkin;
   const seats = buildSeats();
   engine = new Engine({
-    cfg: { size: lobby.sel.size, goal: lobby.sel.goal }, seats, speed: SPEED,
+    cfg: { size: lobby.sel.size, goal: lobby.sel.goal, pica: lobby.sel.size === 6 && lobby.sel.goal === 30 && !!lobby.sel.pica }, seats, speed: SPEED,
     push: s => { const pub = JSON.parse(JSON.stringify(s)); pub.tl = s.deadline ? s.deadline - Date.now() : 0; delete pub.deadline; Arcade.send('st', pub); onState(pub); },
     priv: (seat, cards) => { const id = seats[seat].id; if (id === myId) onHand(cards); else if (id) Arcade.send('hd', { cards }, { to: id }); },
     event: e => { Arcade.send('ev', e); onEvent(e); },
@@ -556,10 +601,10 @@ function startEngine() {
 let last = performance.now(), clock = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
+  const raw = Math.min(0.5, (now - last) / 1000), dt = Math.min(0.05, raw); last = now; clock += dt;
   updateCamera(dt);
   updateScene(dt, clock);
-  updateDeal(dt);
+  updateDeal(raw); // tiempo real: aunque vaya lento, el reparto termina a tiempo
   if (S) {
     const actor = S.phase === 'play' ? (S.pending ? S.pending.responder : S.turn) : S.phase === 'deal' ? S.dealer : -1;
     const target = actor === mySeat || actor < 0 ? camera.position.clone() : (headPos(actor) || new THREE.Vector3(0, 1, 0));

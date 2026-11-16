@@ -3,10 +3,11 @@ import * as THREE from 'three';
 export { THREE };
 
 export const PREVIEW = new URLSearchParams(location.search).has('preview');
+export const IS_TOUCH = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
 
 // ---------------- Render ----------------
 export const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: PREVIEW, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.3 : 1.75));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -26,7 +27,7 @@ const hemi = new THREE.HemisphereLight(0xffffff, 0x8fa4c8, 1.25);
 scene.add(hemi);
 export const sun = new THREE.DirectionalLight(0xfff4dd, 2.1);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 160 });
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.02;
@@ -232,11 +233,11 @@ export function pushOut(p, r, feetY, height = 1.6) {
         const px = c.hw - Math.abs(p.x - c.x), pz = c.hd - Math.abs(p.z - c.z);
         if (px < pz) { dx = Math.sign(p.x - c.x) || 1; dz = 0; p.x = c.x + dx * (c.hw + r); }
         else { dz = Math.sign(p.z - c.z) || 1; dx = 0; p.z = c.z + dz * (c.hd + r); }
-        hit = { x: dx, z: dz };
+        hit = { x: dx, z: dz, col: c };
       } else {
         const d = Math.sqrt(d2);
         p.x = cx + (dx / d) * r; p.z = cz + (dz / d) * r;
-        hit = { x: dx / d, z: dz / d };
+        hit = { x: dx / d, z: dz / d, col: c };
       }
     } else {
       const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz), m = c.r + r;
@@ -247,6 +248,21 @@ export function pushOut(p, r, feetY, height = 1.6) {
     }
   }
   return hit;
+}
+
+// Techo: si al subir la cabeza toca la parte de abajo de algo, devuelve esa altura
+export function ceilingAt(x, z, head, newHead) {
+  let best = Infinity;
+  for (const c of colliders) {
+    if (c.off || !inside(c, x, z, -0.1)) continue;
+    if (c.bottom >= head - 0.05 && c.bottom < newHead && c.bottom < best) best = c.bottom;
+  }
+  return best === Infinity ? null : best;
+}
+// ¿Hay algo sólido en este punto? (para que la cámara no atraviese paredes)
+export function solidAt(x, y, z) {
+  for (const c of colliders) if (!c.off && y > c.bottom && y < c.top && inside(c, x, z, 0.15)) return true;
+  return false;
 }
 
 // ---------------- Texturas ----------------

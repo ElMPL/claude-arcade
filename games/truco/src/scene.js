@@ -110,15 +110,28 @@ const std = (o) => new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0
 
 // ---------- Mesa y lámpara ----------
 export const TABLE_Y = 0.78;
+const tables = { round: new THREE.Group(), rect: new THREE.Group() };
+scene.add(tables.round, tables.rect);
+export function setTableShape(shape) { tables.round.visible = shape === 'round'; tables.rect.visible = shape === 'rect'; }
 (function table() {
+  const R = tables.round;
   const top = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.3, 0.09, 64), std({ map: woodTex('#5a2f15', '#2b1608', [2, 1]), roughness: 0.45 }));
-  top.position.y = TABLE_Y - 0.05; top.castShadow = true; top.receiveShadow = true; scene.add(top);
+  top.position.y = TABLE_Y - 0.05; top.castShadow = true; top.receiveShadow = true; R.add(top);
   const felt = new THREE.Mesh(new THREE.CylinderGeometry(1.16, 1.16, 0.012, 64), std({ map: feltTex(), roughness: 1 }));
-  felt.position.y = TABLE_Y; felt.receiveShadow = true; scene.add(felt);
+  felt.position.y = TABLE_Y; felt.receiveShadow = true; R.add(felt);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(1.22, 0.045, 10, 64), std({ color: 0x3a1d0c, roughness: 0.35 }));
-  rim.rotation.x = Math.PI / 2; rim.position.y = TABLE_Y + 0.01; scene.add(rim);
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, TABLE_Y - 0.1, 16), std({ color: 0x2b1608 })); leg.position.y = (TABLE_Y - 0.1) / 2; scene.add(leg);
-  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.06, 24), std({ color: 0x2b1608 })); foot.position.y = 0.03; scene.add(foot);
+  rim.rotation.x = Math.PI / 2; rim.position.y = TABLE_Y + 0.01; R.add(rim);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, TABLE_Y - 0.1, 16), std({ color: 0x2b1608 })); leg.position.y = (TABLE_Y - 0.1) / 2; R.add(leg);
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.06, 24), std({ color: 0x2b1608 })); foot.position.y = 0.03; R.add(foot);
+  // mesa rectangular (3 vs 3)
+  const Q = tables.rect;
+  const wood = std({ map: woodTex('#5a2f15', '#2b1608', [3, 1]), roughness: 0.45 });
+  const rtop = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.09, 1.95), wood); rtop.position.y = TABLE_Y - 0.05; rtop.castShadow = rtop.receiveShadow = true; Q.add(rtop);
+  const rfelt = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.012, 1.7), std({ map: feltTex(), roughness: 1 })); rfelt.position.y = TABLE_Y; rfelt.receiveShadow = true; Q.add(rfelt);
+  const rimM = std({ color: 0x3a1d0c, roughness: 0.35 });
+  [[0, 0.9, 3.3, 0.1], [0, -0.9, 3.3, 0.1], [1.6, 0, 0.1, 1.9], [-1.6, 0, 0.1, 1.9]].forEach(([x, z, w, d]) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, d), rimM); m.position.set(x, TABLE_Y + 0.012, z); Q.add(m); });
+  [[-1.45, -0.75], [1.45, -0.75], [-1.45, 0.75], [1.45, 0.75]].forEach(([x, z]) => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, TABLE_Y - 0.1, 0.1), std({ color: 0x2b1608 })); l.position.set(x, (TABLE_Y - 0.1) / 2, z); Q.add(l); });
+  Q.visible = false;
   // lámpara colgante
   const lamp = new THREE.Group(); lamp.position.set(0, 2.55, 0); scene.add(lamp);
   const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 2.5), std({ color: 0x111111 })); cord.position.y = 1.25; lamp.add(cord);

@@ -85,8 +85,12 @@ export const canPlay = (S, seat) => S.phase === 'play' && !S.pending && S.turn =
 export const canMazo = (S, seat) => S.phase === 'play' && (S.pending ? S.pending.responder === seat : S.turn === seat);
 export const isResponder = (S, seat) => S.phase === 'play' && !!S.pending && S.pending.responder === seat;
 
+const activeOf = S => (S.active && S.active.length ? S.active : S.seats.map((_, i) => i));
 export function nextOpponent(S, seat) {
-  const n = S.seats.length;
-  for (let k = 1; k < n; k++) { const s = (seat + k) % n; if (S.seats[s].team !== S.seats[seat].team) return s; }
-  return (seat + 1) % n;
+  const act = activeOf(S), idx = act.indexOf(seat);
+  for (let k = 1; k < act.length; k++) { const s = act[(idx + k) % act.length]; if (S.seats[s].team !== S.seats[seat].team) return s; }
+  return act[(idx + 1) % act.length];
 }
+export function nextActive(S, seat) { const act = activeOf(S); return act[(act.indexOf(seat) + 1) % act.length]; }
+// Pica pica (3v3): se enfrentan los que están cara a cara en la mesa rectangular
+export const PICA_PAIRS = [[0, 5], [1, 4], [2, 3]];

@@ -1,7 +1,7 @@
 // Motor del juego: corre solo en el host. Mantiene el estado público (S) y las manos privadas.
 import {
   newDeck, rank, envido, handWinner, trucoValue, envidoPoints, teamOf, canEnvido, envidoRaises, canTruco,
-  canPlay, canMazo, isResponder, nextOpponent, TRUCO_NAMES, ENVIDO_NAMES,
+  canPlay, canMazo, isResponder, nextOpponent, nextActive, PICA_PAIRS, TRUCO_NAMES, ENVIDO_NAMES,
 } from './rules.js';
 import { decide } from './bot.js';
 
@@ -13,6 +13,7 @@ export class Engine {
       phase: 'play', cfg, seats, score: [0, 0], dealer: Math.floor(Math.random() * seats.length), mano: 0, turn: 0,
       tricks: [[]], results: [], trickWin: [], truco: { level: 0, canRaise: null }, envidoDone: false, pending: null,
       counts: seats.map(() => 0), handNo: 0, last: null, winner: null, deadline: 0,
+      active: seats.map((_, i) => i), pica: null, lastType: 'pica', duelNo: 0,
     };
     this.hands = seats.map(() => []);
     this.orig = seats.map(() => []);
@@ -30,6 +31,12 @@ export class Engine {
     S.dealer = (S.dealer + 1) % n;
     S.mano = (S.dealer + 1) % n;
     S.turn = S.mano;
+    S.handMano = S.mano;
+    S.active = S.seats.map((_, i) => i);
+    // Pica pica: en 3v3 a 30, con los dos equipos entre 5 y 25, se alterna una redonda y una pica pica
+    const pica = S.cfg.pica && n === 6 && S.cfg.goal === 30 && Math.min(...S.score) >= 5 && Math.max(...S.score) < 25 && S.lastType === 'redonda';
+    S.lastType = pica ? 'pica' : 'redonda';
+    S.pica = pica ? { duel: -1, pairs: this.picaOrder(S.mano) } : null;
     for (let i = 0; i < n; i++) { this.hands[i] = deck.splice(0, 3); this.orig[i] = this.hands[i].slice(); }
     Object.assign(S, { phase: 'deal', tricks: [[]], results: [], trickWin: [], truco: { level: 0, canRaise: null }, envidoDone: false, pending: null, last: null });
     S.handNo++;
@@ -37,7 +44,23 @@ export class Engine {
     this.event({ kind: 'deal', dealer: S.dealer, mano: S.mano, n });
     // tiempo para la animación de mezclar y repartir
     clearTimeout(this.pause);
-    this.pause = setTimeout(() => { S.phase = 'play'; this.push(); }, (1300 + 3 * n * 110 + 500) * this.speed);
+    this.pause = setTimeout(() => { if (S.pica) this.startDuel(0); else { S.phase = 'play'; this.push(); } }, (1300 + 3 * n * 110 + 500) * this.speed);
+  }
+  picaOrder(mano) {
+    const pairs = PICA_PAIRS.map(p => p.slice());
+    const k = pairs.findIndex(p => p.includes(mano));
+    return [...pairs.slice(k), ...pairs.slice(0, k)];
+  }
+  startDuel(k) {
+    const S = this.S, n = S.seats.length;
+    const pair = S.pica.pairs[k];
+    // es mano el del par que está más cerca de la mano de la vuelta
+    const dist = s => (s - S.handMano + n) % n;
+    const [a, b] = pair.slice().sort((x, y) => dist(x) - dist(y));
+    S.pica.duel = k; S.duelNo++;
+    Object.assign(S, { phase: 'play', active: [a, b], mano: a, turn: a, tricks: [[]], results: [], trickWin: [], truco: { level: 0, canRaise: null }, envidoDone: false, pending: null });
+    this.event({ kind: 'duel', k, seats: [a, b] });
+    this.push();
   }
   push() {
     const S = this.S;
@@ -101,8 +124,8 @@ export class Engine {
     const tr = S.tricks[S.tricks.length - 1];
     tr.push({ seat, card });
     this.event({ seat, kind: 'play', card });
-    if (tr.length < S.seats.length) {
-      S.turn = (seat + 1) % S.seats.length;
+    if (tr.length < S.active.length) {
+      S.turn = nextActive(S, seat);
       this.push();
       return true;
     }
@@ -185,11 +208,11 @@ export class Engine {
     }
     const pts = envidoPoints(S, p.calls, true);
     // cantan los tantos desde la mano
-    const n = S.seats.length;
+    const act = S.active, n = act.length, start = act.indexOf(S.mano);
     let bestSeat = null, best = -1;
     const order = [];
     for (let k = 0; k < n; k++) {
-      const s = (S.mano + k) % n, t = envido(this.orig[s]);
+      const s = act[(start + k) % n], t = envido(this.orig[s]);
       order.push({ seat: s, t });
       if (t > best) { best = t; bestSeat = s; }
     }
@@ -238,7 +261,8 @@ export class Engine {
     if (this.checkGameEnd()) return;
     this.push();
     clearTimeout(this.pause);
-    this.pause = setTimeout(() => this.newHand(), 2600 * this.speed);
+    if (S.pica && S.pica.duel < 2) this.pause = setTimeout(() => this.startDuel(S.pica.duel + 1), 2400 * this.speed);
+    else this.pause = setTimeout(() => this.newHand(), 2600 * this.speed);
   }
 
   checkGameEnd() {

@@ -3,6 +3,7 @@ import {
   THREE, renderer, scene, camera, sunFollow, updateEnv, clearWorld, getWorld, updateAnims, updateParticles, fx, sfx,
   unlockAudio, toggleMute, isMuted, groundAt, pushOut, WATER_Y, PREVIEW, box, cyl, colBox, colCyl, island, addTree, addFlower,
   addBalloon, addAnim, toon, GEO, canvasTex, checkerTex, shade, labelTex,
+  ceilingAt, solidAt, IS_TOUCH,
 } from './core.js';
 import { makeCharacter, animateCharacter, squash, makeKart, animateKart, COLORS, CSS_COLORS } from './character.js';
 import { MINIGAMES } from './minigames.js';
@@ -26,7 +27,7 @@ let myId = null;
 const players = new Map();
 const me = {
   pos: new THREE.Vector3(), vel: new THREE.Vector3(), ry: 0, onGround: false, ground: null, alive: true, frozen: true, finished: false,
-  coyote: 0, jumpBuf: 0, jumpCut: false, stunT: 0, invulnT: 0, dashT: 0, dashCd: 0, lastLandVy: 0, airT: 0,
+  coyote: 0, jumpBuf: 0, jumpCut: false, mantleCd: 0, stunT: 0, invulnT: 0, dashT: 0, dashCd: 0, lastLandVy: 0, airT: 0,
   kart: { speed: 0, steer: 0, drifting: false, driftDir: 0, driftT: 0, boostT: 0, spinT: 0, spinVis: 0, starT: 0 },
 };
 let round = null, totals = {}, tiePts = {}, podiumData = null, spectate = null; // totals = coronas
@@ -439,7 +440,10 @@ addEventListener('mousemove', e => {
 });
 document.addEventListener('pointerlockchange', () => { $('hint').classList.toggle('dim', document.pointerLockElement === canvas); });
 
+// Entrada táctil (celulares): joystick analógico + botones
+const touch = { x: 0, y: 0, on: false };
 function input() {
+  if (touch.on) return { ix: touch.x, iz: -touch.y };
   let ix = 0, iz = 0;
   if (keys.KeyW || keys.ArrowUp) iz += 1;
   if (keys.KeyS || keys.ArrowDown) iz -= 1;
@@ -489,6 +493,11 @@ function updateCamera(dt) {
     const dist = round.mg.camDist || 8.5;
     gl = new THREE.Vector3(focus.x, focus.y + 1.3, focus.z);
     gp = new THREE.Vector3(gl.x + Math.sin(camYaw) * Math.cos(camPitch) * dist, gl.y + Math.sin(camPitch) * dist + 0.6, gl.z + Math.cos(camYaw) * Math.cos(camPitch) * dist);
+    // que la cámara no quede del otro lado de una pared o arriba de un techo
+    for (let k = 1; k <= 12; k++) {
+      const t = k / 12, px = gl.x + (gp.x - gl.x) * t, py = gl.y + (gp.y - gl.y) * t, pz = gl.z + (gp.z - gl.z) * t;
+      if (solidAt(px, py, pz)) { gp.set(gl.x + (gp.x - gl.x) * Math.max(0.12, t - 0.12), gl.y + (gp.y - gl.y) * Math.max(0.12, t - 0.12), gl.z + (gp.z - gl.z) * Math.max(0.12, t - 0.12)); break; }
+    }
     if (Math.abs(camera.fov - 62) > 0.1) { camera.fov += (62 - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
   }
   if (round.phase === 'intro') {
@@ -577,6 +586,22 @@ function updatePlayer(dt) {
   if (hit && hit.col && hit.col.bumper) {
     me.vel.x = hit.x * hit.col.bumper; me.vel.z = hit.z * hit.col.bumper; me.vel.y = Math.max(me.vel.y, 5);
     sfx.pop(); if (hit.col.mesh) hit.col.squash = 1;
+  } else if (hit && hit.col && can && me.mantleCd <= 0) {
+    // Parkour simple: si empujás contra un borde de hasta ~2 m y saltás (o ya estás en el aire), te trepás
+    const rise = hit.col.top - me.pos.y;
+    const into = -(wx * hit.x + wz * hit.z);
+    if (rise > 0.5 && rise < 2.1 && into > 0.35 && (!me.onGround || keys.Space) && me.vel.y < 7) {
+      me.vel.y = Math.sqrt(2 * 34 * (rise + 0.35));
+      me.vel.x = -hit.x * 4.5; me.vel.z = -hit.z * 4.5;
+      me.onGround = false; me.mantleCd = 0.45; me.jumpCut = false;
+      squash(players.get(myId).ch, 0.22); sfx.jump(); fx.dust(me.pos, 3);
+    }
+  }
+  me.mantleCd -= dt;
+  // techo: no atravesar losas ni techos al saltar
+  if (me.vel.y > 0) {
+    const c = ceilingAt(me.pos.x, me.pos.z, me.pos.y + 1.75, me.pos.y + 1.75 + me.vel.y * dt);
+    if (c !== null) { me.vel.y = 0; me.pos.y = c - 1.76; me.jumpCut = false; }
   }
   bodyCollisions();
   const g = groundAt(me.pos.x, me.pos.z, me.pos.y);
@@ -782,8 +807,44 @@ function showCount(v) {
   c.classList.toggle('ya', typeof v === 'string');
 }
 
+// ---------------- Controles táctiles ----------------
+function setupTouch() {
+  if (!IS_TOUCH) return;
+  document.body.classList.add('touch');
+  const stick = $('stick'), knob = $('knob');
+  let sid = null, cx = 0, cy = 0;
+  stick.addEventListener('pointerdown', e => { sid = e.pointerId; stick.setPointerCapture(sid); const r = stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; touch.on = true; moveStick(e); unlockAudio(); });
+  const moveStick = e => {
+    if (e.pointerId !== sid) return;
+    let dx = e.clientX - cx, dy = e.clientY - cy; const d = Math.hypot(dx, dy), R = 50;
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    touch.x = dx / R; touch.y = dy / R;
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  };
+  stick.addEventListener('pointermove', moveStick);
+  const endStick = e => { if (e.pointerId !== sid) return; sid = null; touch.on = false; touch.x = touch.y = 0; knob.style.transform = ''; };
+  stick.addEventListener('pointerup', endStick); stick.addEventListener('pointercancel', endStick);
+  const hold = (el, down, up) => {
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.classList.add('on'); down(); unlockAudio(); });
+    const off = () => { el.classList.remove('on'); if (up) up(); };
+    el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
+  };
+  hold($('tJump'), () => { keys.Space = true; pressed.Space = true; }, () => { keys.Space = false; });
+  hold($('tAct'), () => { pressed.KeyF = true; });
+  // arrastrar en el resto de la pantalla gira la cámara
+  let camId = null, lx = 0, ly = 0;
+  canvas.addEventListener('pointerdown', e => { if (e.pointerType !== 'touch') return; camId = e.pointerId; lx = e.clientX; ly = e.clientY; });
+  canvas.addEventListener('pointermove', e => {
+    if (e.pointerId !== camId) return;
+    camYaw -= (e.clientX - lx) * 0.009; camPitch = Math.max(-0.1, Math.min(1.2, camPitch + (e.clientY - ly) * 0.006));
+    lx = e.clientX; ly = e.clientY; mouseIdle = 0;
+  });
+  canvas.addEventListener('pointerup', e => { if (e.pointerId === camId) camId = null; });
+}
+
 // ---------------- Inicio ----------------
 function wire() {
+  setupTouch();
   Arcade.on('p', (d, from) => {
     const pl = players.get(from);
     if (!pl || !d) return;

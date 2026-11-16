@@ -388,63 +388,125 @@ function createHex(G) {
 // 3) BOMBA CALIENTE
 // =====================================================================
 function createBomba(G) {
-  const RA = 13;
-  G.island(0, 0, RA + 1.5, 0, 10);
-  G.colCyl(0, 0, RA + 1.5, 0, 1);
-  // valla
-  ring(G, 40, RA + 0.6, 0, (x, y, z) => { G.colCyl(x, z, 0.7, 1.4, 1.4); });
-  ring(G, 28, RA + 0.6, 0, (x, y, z, a, i) => {
-    const post = new THREE.Mesh(G.GEO.cyl, G.toon(i % 2 ? 0xffffff : 0xff6b6b)); post.scale.set(0.16, 1.1, 0.16); post.position.set(x, 0.55, z); post.castShadow = true; G.world.add(post);
-    const cap = new THREE.Mesh(G.GEO.sphere, G.toon(0xffd43b)); cap.scale.setScalar(0.2); cap.position.set(x, 1.15, z); G.world.add(cap);
+  // ---------- Mapa: "La Casona" ----------
+  const HALF = 23, HW = 3.2, T = 0.4;
+  G.island(0, 0, 34, 0, 16, 0x8ce99a);
+  G.colBox(0, 0, HALF * 2, HALF * 2, 0, 2);
+  const cream = 0xfff1d6, trim = 0xd9480f, wood = 0xa0673a, frame = 0x6b3f20, hedge = 0x40c057;
+  // Pared a lo largo de X (en z) o de Z (en x), con huecos: puertas (bot = 0) y ventanas (bot > 0)
+  function wall(axis, at, from, to, holes, color = cream, H = HW) {
+    const seg = (a, b, top, h) => {
+      if (b - a < 0.02 || h <= 0.01) return;
+      const c = (a + b) / 2, len = b - a;
+      if (axis === 'x') G.box(c, at, len, T, top, h, color, { edge: false });
+      else G.box(at, c, T, len, top, h, color, { edge: false });
+    };
+    const fr = (a, b, y0, y1) => { // marco de madera
+      const add = (cx, cy, sx, sy) => { const m = new THREE.Mesh(G.GEO.box, G.toon(frame)); m.scale.set(axis === 'x' ? sx : T + 0.08, sy, axis === 'x' ? T + 0.08 : sx); m.position.set(axis === 'x' ? cx : at, cy, axis === 'x' ? at : cx); m.castShadow = true; G.world.add(m); };
+      add((a + b) / 2, y1 + 0.06, b - a + 0.2, 0.12);
+      if (y0 > 0) add((a + b) / 2, y0 - 0.06, b - a + 0.2, 0.12);
+      add(a - 0.05, (y0 + y1) / 2, 0.1, y1 - y0); add(b + 0.05, (y0 + y1) / 2, 0.1, y1 - y0);
+    };
+    let cur = from;
+    holes.slice().sort((p, q) => p.a - q.a).forEach(h => {
+      seg(cur, h.a, H, H);
+      if (h.bot > 0) seg(h.a, h.b, h.bot, h.bot);
+      seg(h.a, h.b, H, H - h.top);
+      fr(h.a, h.b, h.bot, h.top);
+      cur = h.b;
+    });
+    seg(cur, to, H, H);
+  }
+  const door = (a, b) => ({ a, b, bot: 0, top: 2.4 }), win = (a, b) => ({ a, b, bot: 1.0, top: 2.8 });
+  // casa principal (14 x 10) con techo transitable
+  wall('x', 5, -7.2, 7.2, [door(-1.1, 1.1), win(-5, -3.4), win(3.4, 5)]);
+  wall('x', -5, -7.2, 7.2, [door(2.6, 4.6), win(-4.8, -3)]);
+  wall('z', 7, -4.8, 4.8, [win(-1, 1)]);
+  wall('z', -7, -4.8, 4.8, [door(-2.6, -0.6), win(1.6, 3.4)]);
+  wall('z', -1.5, -4.8, 4.8, [door(-1, 1), win(2.4, 3.6)], 0xffe3b3);
+  const roof = G.box(0, 0, 14.8, 10.8, HW + 0.4, 0.4, 0xc0392b, { edgeColor: 0x8f2a1f });
+  void roof;
+  const floor = new THREE.Mesh(G.GEO.box, G.toon(0xd9a066)); floor.scale.set(13.6, 0.04, 9.6); floor.position.set(0, 0.02, 0); floor.receiveShadow = true; G.world.add(floor);
+  // chimenea
+  G.box(4.5, -2.5, 1.2, 1.2, HW + 1.6, 1.2, 0xa65a3a, { edgeColor: 0x6b3a26 });
+  // muebles para hacer parkour adentro
+  G.box(2.5, 1.8, 2.2, 1.2, 0.9, 0.9, wood, { edgeColor: 0x7a4a26 });   // mesa
+  G.box(5.6, -3.6, 2.6, 0.8, 2.0, 2.0, 0x8d5a3b, { edgeColor: 0x6b3f20 }); // biblioteca
+  G.box(-4.5, -3.8, 2.8, 1, 0.6, 0.6, 0x4dabff, { edgeColor: 0x1971c2 }); // sillón
+  G.box(-4.5, -4.35, 2.8, 0.3, 1.2, 0.6, 0x4dabff, { edgeColor: 0x1971c2, col: {} });
+  G.box(-5.6, 3.6, 1.1, 1.1, 1.1, 1.1, wood, { edgeColor: 0x7a4a26 });  // caja
+  G.box(-4.4, 3.6, 1.1, 1.1, 2.2, 2.2, wood, { edgeColor: 0x7a4a26 });
+  // cajas apiladas afuera (escalera al techo)
+  const crate = (x, z, lvl, c = wood) => G.box(x, z, 1.2, 1.2, 1.2 * (lvl + 1), 1.2 * (lvl + 1), c, { edgeColor: 0x6b3f20 });
+  crate(8.4, 6.2, 1); crate(9.6, 6.2, 0); crate(8.4, 7.4, 0);
+  crate(-8.4, -6.2, 1); crate(-9.6, -6.2, 0); crate(-8.4, -7.4, 0);
+  [[13, -4, 0], [14.2, -4, 1], [-14, 5, 0], [-12, 12, 0], [-12, 13.2, 1], [4, 12, 0], [16, 15, 0], [-17, -13, 0], [-15.8, -13, 1]].forEach(([x, z, l]) => crate(x, z, l));
+  // camas elásticas para subir al techo
+  [[-9, 5.6], [9.4, -5.8], [0, 9.5]].forEach(([x, z]) => {
+    const c = G.cyl(x, z, 1.2, 0.5, 0.5, 0xff4d8d, { col: { bounce: 17 } });
+    const top = new THREE.Mesh(G.GEO.cyl, G.toon(0xffffff)); top.scale.set(0.7, 0.04, 0.7); top.position.set(x, 0.52, z); G.world.add(top);
+    G.addAnim(dt => { c.col.squash = Math.max(0, (c.col.squash || 0) - dt * 4); const k = c.col.squash; c.mesh.scale.set(1.2 + k * 0.3, 0.5 * (1 - k * 0.4), 1.2 + k * 0.3); });
   });
-  [0.45, 0.85].forEach(h => { const rail = new THREE.Mesh(new THREE.TorusGeometry(RA + 0.6, 0.07, 6, 80), G.toon(0xffffff)); rail.rotation.x = Math.PI / 2; rail.position.y = h; G.world.add(rail); });
-  // hongos rebotadores
-  const bumpers = [[6, 0], [-6, 0], [0, 6], [0, -6]].map(([x, z], i) => {
-    const stem = G.cyl(x, z, 0.5, 0.9, 0.9, 0xfff4e6, { noCol: true });
-    const cap = new THREE.Mesh(G.GEO.sphere, G.toon([0xff4d6d, 0x4dabff, 0x51cf66, 0xffd43b][i]));
-    cap.scale.set(1.3, 0.8, 1.3); cap.position.set(x, 1.2, z); cap.castShadow = true; G.world.add(cap);
-    for (let s = 0; s < 4; s++) { const dot = new THREE.Mesh(G.GEO.sphere, G.toon(0xffffff)); dot.scale.setScalar(0.2); const a = s * 1.6; dot.position.set(Math.cos(a) * 0.9, 0.45, Math.sin(a) * 0.9); cap.add(dot); dot.scale.set(0.15, 0.25, 0.15); }
-    const col = G.colCyl(x, z, 1.25, 1.8, 1.8, { bumper: 15 });
-    col.mesh = cap;
-    G.addAnim(dt => { col.squash = Math.max(0, (col.squash || 0) - dt * 4); const s = col.squash; cap.scale.set(1.3 + s * 0.3, 0.8 - s * 0.3, 1.3 + s * 0.3); });
-    return stem;
+  // galpón chico
+  const hut = (cx, cz) => {
+    wall('x', cz + 2, cx - 2.2, cx + 2.2, [door(cx - 0.8, cx + 0.8)], 0xd0bfff, 2.6);
+    wall('x', cz - 2, cx - 2.2, cx + 2.2, [], 0xd0bfff, 2.6);
+    wall('z', cx + 2, cz - 1.8, cz + 1.8, [win(cz - 0.6, cz + 0.6)], 0xd0bfff, 2.6);
+    wall('z', cx - 2, cz - 1.8, cz + 1.8, [], 0xd0bfff, 2.6);
+    G.box(cx, cz, 4.8, 4.8, 2.9, 0.3, 0x5f3dc4, { edgeColor: 0x3b2a8a });
+  };
+  hut(13, 10); hut(-14, -2);
+  // muritos bajos (se saltan)
+  [[0, 15, 8, 0.6], [-6, -11, 0.6, 6], [15, -12, 6, 0.6], [-17, 9, 0.6, 5], [8, -14, 0.6, 5]].forEach(([x, z, w, d]) => G.box(x, z, w, d, 1.0, 1.0, 0xced4da, { edgeColor: 0xadb5bd }));
+  // barriles
+  [[6, 9], [-3, 10.5], [-11, -9], [11, 3], [-19, 18], [19, -18]].forEach(([x, z]) => {
+    G.cyl(x, z, 0.55, 1.1, 1.1, 0x8d5a3b);
+    [0.25, 0.85].forEach(y => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.04, 6, 20), G.toon(0x495057)); r.rotation.x = Math.PI / 2; r.position.set(x, y, z); G.world.add(r); });
   });
-  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + 0.4; G.addTree(Math.cos(a) * (RA + 6), -2, Math.sin(a) * (RA + 6), 1.3); G.island(Math.cos(a) * (RA + 6), Math.sin(a) * (RA + 6), 2.5, -2, 5); }
-  // bomba
+  // seto perimetral
+  [[0, HALF, HALF * 2 + 1, 1], [0, -HALF, HALF * 2 + 1, 1], [HALF, 0, 1, HALF * 2 + 1], [-HALF, 0, 1, HALF * 2 + 1]].forEach(([x, z, w, d]) => G.box(x, z, w, d, 1.4, 1.4, hedge, { edgeColor: 0x2f9e44 }));
+  for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2; G.addTree(Math.cos(a) * 28, 0, Math.sin(a) * 28, 1.4 + (i % 3) * 0.3); }
+  [[-19, -19], [19, 19], [-19, 15], [18, -8], [-8, 19]].forEach(([x, z]) => { G.addTree(x, 0, z, 1.3); G.colCyl(x, z, 0.5, 4, 4); });
+  for (let i = 0; i < 40; i++) { const x = (Math.random() - 0.5) * 42, z = (Math.random() - 0.5) * 42; if (Math.abs(x) > 8 || Math.abs(z) > 6) G.addFlower(x, 0, z); }
+  const SPAWN_R = 12.5;
+
+  // ---------- Bomba ----------
   const bomb = new THREE.Group();
   const ball = new THREE.Mesh(G.GEO.sphere, G.toon(0x2b2d42)); ball.scale.setScalar(0.42); bomb.add(ball);
   const shine = new THREE.Mesh(G.GEO.sphere, G.toon(0xffffff)); shine.scale.setScalar(0.08); shine.position.set(0.17, 0.2, 0.25); bomb.add(shine);
   const cap = new THREE.Mesh(G.GEO.cyl, G.toon(0x868e96)); cap.scale.set(0.14, 0.12, 0.14); cap.position.y = 0.43; bomb.add(cap);
   const fuse = new THREE.Mesh(G.GEO.cyl, G.toon(0xc59a6d)); fuse.scale.set(0.03, 0.25, 0.03); fuse.position.set(0.05, 0.6, 0); fuse.rotation.z = -0.4; bomb.add(fuse);
   bomb.visible = false; G.world.add(bomb);
-  const flashMat = G.toon(0xff6b6b, { emissive: 0xff2020, emissiveIntensity: 0.8 });
+  const flashMat = G.toon(0xff6b6b, { emissive: 0xff2020, emissiveIntensity: 0.8 }), darkMat = G.toon(0x2b2d42);
+  // flecha que marca al que tiene la bomba (se ve a través de las paredes)
+  const marker = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.6, 4), new THREE.MeshBasicMaterial({ color: 0xff4d4d, depthTest: false, transparent: true, opacity: 0.85 }));
+  marker.rotation.x = Math.PI; marker.renderOrder = 20; marker.visible = false; G.world.add(marker);
   let holder = null, fuseLeft = 0, passCd = 0;
-  // host
   let hHolder = null, hTimer = 0, hWait = 2.5 * G.TS + 1, hLastPass = 0, hClock = 0;
   const tip = new THREE.Vector3();
   return {
-    introCam: { x: 0, z: 0, y: 0, r: 22, h: 13 },
+    introCam: { x: 0, z: 0, y: 0, r: 30, h: 19 },
     collide: true,
     fallY: -10,
-    spawn(i, n) { const a = (i / n) * Math.PI * 2; return { x: Math.sin(a) * 8, y: 0.2, z: Math.cos(a) * 8, ry: a + Math.PI }; },
-    respawnPoint: () => ({ x: R(3), y: 0.5, z: R(3), ry: 0 }),
-    speedMul: () => (holder === G.myId() ? 1.15 : 1),
+    spawn(i, n) { const a = (i / n) * Math.PI * 2; return { x: Math.sin(a) * SPAWN_R, y: 0.2, z: Math.cos(a) * SPAWN_R, ry: a + Math.PI }; },
+    respawnPoint() { const a = Math.random() * Math.PI * 2; return { x: Math.sin(a) * SPAWN_R, y: 0.5, z: Math.cos(a) * SPAWN_R, ry: a + Math.PI }; },
+    speedMul: () => (holder === G.myId() ? 1.12 : 1),
     update(dt, t) {
       passCd -= dt;
       fuseLeft = Math.max(0, fuseLeft - dt);
       const ch = holder && G.characterOf(holder);
-      bomb.visible = !!(ch && ch.visible);
+      bomb.visible = marker.visible = !!(ch && ch.visible);
       if (bomb.visible) {
         bomb.position.copy(ch.position); bomb.position.y += 2.35 + Math.sin(t * 10) * 0.05;
+        marker.position.copy(ch.position); marker.position.y += 3.4 + Math.sin(t * 5) * 0.15; marker.rotation.y += dt * 3;
+        marker.visible = holder !== G.myId();
         const urgent = fuseLeft < 3;
-        const pulse = 1 + Math.sin(t * (urgent ? 26 : 10)) * (urgent ? 0.14 : 0.05);
-        bomb.scale.setScalar(pulse);
-        ball.material = urgent && Math.sin(t * 26) > 0 ? flashMat : G.toon(0x2b2d42);
+        bomb.scale.setScalar(1 + Math.sin(t * (urgent ? 26 : 10)) * (urgent ? 0.14 : 0.05));
+        ball.material = urgent && Math.sin(t * 26) > 0 ? flashMat : darkMat;
         tip.set(bomb.position.x + 0.15, bomb.position.y + 0.75, bomb.position.z);
         G.fx.sparks(tip, 0xffd43b, 1);
         if (urgent && Math.floor(t * 6) !== Math.floor((t - dt) * 6)) G.sfx.tick();
       }
-      // pasar la bomba
       const me = G.me;
       if (holder === G.myId() && me.alive && G.playing() && passCd <= 0) {
         for (const id of G.aliveIds()) {
@@ -461,16 +523,13 @@ function createBomba(G) {
         const alive = G.aliveIds();
         if (hWait <= 0 && alive.length >= (G.ids().length >= 2 ? 2 : 1)) {
           hHolder = alive[Math.floor(Math.random() * alive.length)];
-          hTimer = (9 + Math.random() * 7) * Math.max(0.4, G.TS);
+          hTimer = (14 + Math.random() * 8) * Math.max(0.4, G.TS);
           G.hostBroadcast('bomb', { h: hHolder, t: +hTimer.toFixed(2) });
         }
         return;
       }
       hTimer -= dt;
-      if (hTimer <= 0) {
-        G.hostBroadcast('boom', { h: hHolder });
-        hHolder = null; hWait = 2.5;
-      }
+      if (hTimer <= 0) { G.hostBroadcast('boom', { h: hHolder }); hHolder = null; hWait = 2.5; }
     },
     onMsg(k, d, from) {
       if (k === 'pass' && G.isHost()) {
@@ -488,7 +547,7 @@ function createBomba(G) {
         const ch = G.characterOf(d.h);
         if (ch) G.fx.explosion(ch.position);
         G.sfx.boom();
-        holder = null; bomb.visible = false;
+        holder = null; bomb.visible = marker.visible = false;
         if (d.h === G.myId()) G.eliminate(); else G.markOut(d.h);
       }
     },
@@ -807,8 +866,8 @@ export const MINIGAMES = {
   bomba: {
     name: 'Bomba Caliente', emoji: '💣', time: 150, create: createBomba,
     goal: 'Que no te explote encima',
-    desc: 'Si tenés la bomba, corré a tocar a otro para pasársela. Cuando explota, el que la tiene queda afuera. Los hongos te hacen rebotar.',
-    controls: CTL_MOVE,
+    desc: 'Una casona con ventanas, techo y cajas. Si tenés la bomba, tocá a otro para pasársela. Saltá por las ventanas, trepate a las cajas (empujá contra el borde y saltá) y usá las camas elásticas para subir al techo.',
+    controls: [['W A S D', 'Moverse'], ['Espacio', 'Saltar'], ['Espacio contra un borde', 'Trepar'], ['Mouse', 'Cámara']],
   },
   monedas: {
     name: 'Lluvia de Monedas', emoji: '🪙', time: 50, create: createMonedas,
