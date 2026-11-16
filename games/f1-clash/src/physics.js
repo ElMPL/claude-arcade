@@ -56,7 +56,7 @@ function tire(c, i, w, vl, vs, Fz) {
   const sx = kap / CAR.kp, sy = ta / TAN_AP, s = Math.hypot(sx, sy);
   if (s < 1e-6 || Fz <= 0) return [0, 0, kap, ta, 0];
   let mu = CAR.mu * (1 - CAR.loadSens * (Fz / CAR.Fz0 - 1));
-  mu = Math.max(CAR.mu * 0.7, mu) * surfMu(c.surf[i]) * (i > 1 ? 1.07 : 1) * (1 - 0.3 * Math.min(1, c.dmg[4 + i]));
+  mu = Math.max(CAR.mu * 0.7, mu) * surfMu(c.surf[i]) * (i > 1 ? 1.07 : 1) * (1 - 0.3 * Math.min(1, c.dmg[4 + i])) * (c.gripX || 1);
   const F = mu * Fz * MF(s);
   return [F * sx / s, -F * sy / s, kap, ta, s];
 }
@@ -107,7 +107,7 @@ export function step(c, inp, dt) {
   if (c.shiftT > 0) c.shiftT -= dt;
   let Te = 0;
   if (c.gear !== 0 && c.shiftT <= 0) {
-    if (c.thr > 0.02 && rpmW < CAR.limiter) Te = torqueAt(rpm) * c.thr * c.tcCut * clutch * (1 - 0.45 * Math.min(1, D[10])) * (c.limiter && v > c.limiter ? 0 : 1);
+    if (c.thr > 0.02 && rpmW < CAR.limiter) Te = torqueAt(rpm) * c.thr * c.tcCut * clutch * (1 - 0.45 * Math.min(1, D[10])) * (c.limiter && v > c.limiter ? 0 : 1) * (c.powerF ?? 1);
     else Te = -(25 + rpmW * 0.004) * (1 - c.thr); // freno motor
   }
   const Tdrive = Te * ratio * CAR.eff / 2; // por rueda trasera
@@ -133,7 +133,7 @@ export function step(c, inp, dt) {
     const g = Math.max(0, (t1[0] - t0[0]) / eps);
     let wn = w + dt * (Td - t0[0] * CAR.R) / (Iw + dt * g * CAR.R * CAR.R);
     // freno (fricción: no puede invertir el giro)
-    let Tb = (front ? CAR.brakeF : CAR.brakeR) * c.brk * c.absF[i];
+    let Tb = (front ? CAR.brakeF : CAR.brakeR * (1 - 0.35 * Math.min(1, Math.abs(c.ays) / 25))) * c.brk * c.absF[i];
     if (c.surf[i] >= 2) Tb += 0; // nada extra
     const dw = Tb * dt / (Iw + dt * g * CAR.R * CAR.R);
     if (Math.abs(wn) <= dw) wn = 0; else wn -= Math.sign(wn) * dw;
@@ -153,8 +153,10 @@ export function step(c, inp, dt) {
     Fx += bx; Fy += by; Mz += lx * by - ly * bx;
     // ABS por rueda
     if (c.assist.abs) {
-      if (kap < -0.13 && c.brk > 0.05) c.absF[i] = Math.max(0.15, c.absF[i] - dt * 9);
-      else c.absF[i] = Math.min(1, c.absF[i] + dt * 6);
+      // considera el deslizamiento combinado: frenando en curva libera presión antes de bloquear
+      const over = kap < -0.1 || (s > 1.0 && kap < -0.03);
+      if (over && c.brk > 0.05) c.absF[i] = Math.max(0.1, c.absF[i] - dt * 14);
+      else if (s < 0.9) c.absF[i] = Math.min(1, c.absF[i] + dt * 5);
     } else c.absF[i] = 1;
   }
   // diferencial autoblocante

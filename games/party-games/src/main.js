@@ -99,8 +99,10 @@ function renderPlayers() {
 const byScore = (a, b) => (totals[b] || 0) - (totals[a] || 0) || (tiePts[b] || 0) - (tiePts[a] || 0);
 
 // ---------------- Acciones de juego ----------------
+const adm = k => !!(window.Arcade && Arcade.admin && Arcade.admin.get(k));
 function eliminate() {
   if (!me.alive || !playing()) return;
+  if (adm('pg.god')) { const p = round.mg.respawnPoint ? round.mg.respawnPoint() : round.mg.spawn(Math.max(0, round.ids.indexOf(myId)), round.ids.length); respawn(p); return; }
   me.alive = false;
   me.vel.set(0, 0, 0);
   sfx.out();
@@ -127,7 +129,7 @@ function respawn(pt, { poof = true } = {}) {
   if (poof) { fx.poof(me.pos, 0xffffff, 16); sfx.poof(); }
 }
 function knock(dir, power = 14, up = 7, stun = 0.45) {
-  if (me.invulnT > 0 || !me.alive) return false;
+  if (me.invulnT > 0 || !me.alive || adm('pg.god')) return false;
   me.vel.x = dir.x * power; me.vel.z = dir.z * power; me.vel.y = Math.max(me.vel.y, up);
   me.onGround = false; me.stunT = Math.max(me.stunT, stun);
   squash(players.get(myId).ch, -0.3);
@@ -554,7 +556,7 @@ function updatePlayer(dt) {
   let wx = fx_ * iz + rx * ix, wz = fz * iz + rz * ix;
   const wl = Math.hypot(wx, wz);
   if (wl > 1) { wx /= wl; wz /= wl; }
-  const max = MOVE.max * (mg.speedMul ? mg.speedMul() : 1);
+  const max = MOVE.max * (mg.speedMul ? mg.speedMul() : 1) * (adm('pg.speed') ? 1.7 : 1);
   if (me.dashT <= 0) {
     const acc = me.onGround ? (wl > 0 ? MOVE.accel : MOVE.decel) : MOVE.airAccel;
     if (me.stunT > 0) moveToward(me.vel, 0, 0, (me.onGround ? 18 : 2) * dt);
@@ -564,8 +566,8 @@ function updatePlayer(dt) {
   if (pressed.Space) me.jumpBuf = MOVE.buffer;
   me.jumpBuf -= dt;
   me.coyote -= dt;
-  if (me.jumpBuf > 0 && me.coyote > 0 && can) {
-    me.vel.y = MOVE.jump; me.jumpBuf = 0; me.coyote = 0; me.onGround = false; me.jumpCut = true;
+  if (me.jumpBuf > 0 && (me.coyote > 0 || adm('pg.air')) && can) {
+    me.vel.y = MOVE.jump * (adm('pg.jump') ? 1.6 : 1); me.jumpBuf = 0; me.coyote = 0; me.onGround = false; me.jumpCut = true;
     squash(players.get(myId).ch, 0.25); fx.dust(me.pos, 3); sfx.jump();
   }
   if (me.jumpCut && !keys.Space && me.vel.y > 0) { me.vel.y *= 0.5; me.jumpCut = false; }
@@ -628,7 +630,7 @@ function updatePlayer(dt) {
 
 function handleFall() {
   if (me.pos.y < WATER_Y + 3) { fx.splash(me.pos); sfx.splash(); }
-  if (round.mg.onFall) round.mg.onFall();
+  if (round.mg.onFall && !adm('pg.god')) round.mg.onFall();
   else {
     const p = round.mg.respawnPoint ? round.mg.respawnPoint() : round.mg.spawn(Math.max(0, round.ids.indexOf(myId)), round.ids.length);
     respawn(p);
@@ -641,7 +643,7 @@ function updateKart(dt) {
   const { ix, iz } = can ? input() : { ix: 0, iz: 0 };
   k.steer += (-ix - k.steer) * Math.min(1, dt * 10);
   const off = mg.isOffroad ? mg.isOffroad(me.pos) : false;
-  let max = off ? 12 : 25;
+  let max = (off && !adm('pg.speed') ? 12 : 25) * (adm('pg.speed') ? 1.35 : 1);
   if (k.starT > 0) { k.starT -= dt; max = 32; if (Math.random() < 0.7) fx.trail({ x: me.pos.x, y: me.pos.y + 0.5, z: me.pos.z }, COLORS[Math.floor(clock * 12) % 8], 0.35); }
   if (k.boostT > 0) { k.boostT -= dt; max = 35; k.speed = Math.max(k.speed, 30); if (Math.random() < 0.6) fx.trail({ x: me.pos.x - Math.sin(me.ry) * 1.4, y: me.pos.y + 0.6, z: me.pos.z - Math.cos(me.ry) * 1.4 }, 0xffa94d, 0.3); }
   if (k.spinT > 0) {
@@ -897,6 +899,16 @@ function startPreview() {
 (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => Arcade.ready()).then(ctx => {
   if (PREVIEW) return startPreview();
   myId = ctx.me.id;
+  if (Arcade.admin) {
+    Arcade.admin.define([
+      { id: 'pg.speed', label: 'Súper velocidad', type: 'toggle' },
+      { id: 'pg.jump', label: 'Súper salto', type: 'toggle' },
+      { id: 'pg.air', label: 'Saltos infinitos (volar)', type: 'toggle' },
+      { id: 'pg.god', label: 'Inmortal (no te empujan ni te eliminan)', type: 'toggle' },
+      { id: 'pg.home', label: '📍 Volver al punto de inicio', type: 'button' },
+    ]);
+    Arcade.admin.on('pg.home', () => { if (round && round.mg && me.alive) respawn(round.mg.respawnPoint ? round.mg.respawnPoint() : round.mg.spawn(Math.max(0, round.ids.indexOf(myId)), round.ids.length)); });
+  }
   ctx.players.forEach(addPlayer);
   wire();
   renderPlayers();

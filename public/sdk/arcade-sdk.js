@@ -14,6 +14,15 @@
  *   Arcade.end({ winners, text })  termina la partida (solo cuenta si lo llama el host) y vuelve al lobby.
  *                            winners: ids de los ganadores (cada uno suma 1 corona 👑 en la sala). text: opcional.
  *
+ *
+ * Modo admin (panel oculto de la plataforma, se abre con F7):
+ *   Arcade.admin.define([{ id: 'speed', label: 'Velocidad x2', type: 'toggle' }, { id: 'win', label: 'Ganar ya', type: 'button' }])
+ *   Arcade.admin.active            true si el jugador activó el modo admin
+ *   Arcade.admin.get('speed')      valor actual del toggle (false si no es admin)
+ *   Arcade.admin.on('speed', v => {})   cambios de un toggle / botón apretado
+ *   Los handlers de Arcade.on reciben un 3er parámetro { admin: true } si el mensaje lo mandó un admin
+ *   (lo marca el servidor, así el host puede confiar en pedidos de admins).
+ *
  * Si abrís el juego directo (sin la plataforma), funciona en modo solo: online=false, 1 jugador.
  */
 (function () {
@@ -54,8 +63,19 @@
     if (!m || m.__arcade !== 1) return;
     if (m.kind === 'init') return finish(m.ctx);
     if (!ctx) return;
+    if (m.kind === 'admin') {
+      admActive = !!m.active;
+      var vals = m.values || {};
+      Object.keys(Object.assign({}, admVals, vals)).forEach(function (k) {
+        var v = admActive ? vals[k] : undefined;
+        if (admVals[k] !== v) { admVals[k] = v; emit('$adm:' + k, v); }
+      });
+      emit('$adm', admActive);
+      return;
+    }
+    if (m.kind === 'adminPress') { if (admActive) emit('$adm:' + m.id, true); return; }
     if (m.kind === 'msg') {
-      emit(m.type, m.data, m.from);
+      emit(m.type, m.data, m.from, { admin: !!m.adm });
     } else if (m.kind === 'playerLeft') {
       ctx.players = ctx.players.filter(function (p) { return p.id !== m.id; });
       var changed = m.hostId && m.hostId !== ctx.hostId;
@@ -65,6 +85,12 @@
       if (changed) emit('$hostChanged', ctx.hostId);
     }
   });
+
+  // F7 abre el panel oculto de la plataforma (también con el foco dentro del juego)
+  var admActive = false, admVals = {}, admDefs = [];
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'F7' || e.code === 'F7') { e.preventDefault(); post({ kind: 'f7' }); }
+  }, true);
 
   if (inFrame) {
     var tries = 0;
@@ -101,6 +127,13 @@
     off: function (type, fn) { listeners[type] = (listeners[type] || []).filter(function (f) { return f !== fn; }); },
     onPlayerLeft: function (fn) { this.on('$playerLeft', fn); },
     onHostChanged: function (fn) { this.on('$hostChanged', fn); },
+    admin: {
+      get active() { return admActive; },
+      define: function (list) { admDefs = (list || []).slice(0, 24); post({ kind: 'adminDefine', list: admDefs }); },
+      get: function (id) { return admActive ? !!admVals[id] : false; },
+      on: function (id, fn) { (listeners['$adm:' + id] = listeners['$adm:' + id] || []).push(fn); },
+      onChange: function (fn) { (listeners['$adm'] = listeners['$adm'] || []).push(fn); }
+    },
     end: function (results) {
       if (!inFrame) { console.log('[Arcade] fin de partida', results); return; }
       post({ kind: 'end', results: results || null });

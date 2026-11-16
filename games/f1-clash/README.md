@@ -12,11 +12,12 @@ Carreras de fórmula en 3D (Three.js) con física realista, de 1 a 8 autos (los 
 
 ## Ayudas
 - Dirección asistida: la tecla a fondo pide la curva más cerrada que permite el agarre y corrige sola si la cola se va.
-- Asistencia de frenado: frena por vos si llegás muy rápido a la curva.
+- Aviso de frenada: se prende "FRENÁ" en el tablero si llegás muy rápido (no frena por vos).
+- ABS por deslizamiento combinado: frenando en curva libera presión antes de que se bloqueen las ruedas.
 
 ## Daño, boxes y penalizaciones
 - Daño por partes (alerones, trompa, suspensiones/ruedas, pontones, motor): cambia la aerodinámica, el agarre, la dirección y la potencia. Las piezas rotas se desprenden y quedan en la pista.
-- `P` pide entrar a boxes en esa vuelta (calle con límite de 80 km/h + reparación según el daño). `R` es el auxilio: el auto aparece en su box y paga tiempo extra.
+- `P` pide entrar a boxes en esa vuelta (calle con límite de 80 km/h + reparación según el daño). `R` (o automático si el auto queda destrozado o atascado): reaparecés en la pista titilando y con menos potencia por 6 s.
 - Límites de pista: 3 avisos y después +5 s. Chocar fuerte de atrás: +5 s.
 
 ## Red

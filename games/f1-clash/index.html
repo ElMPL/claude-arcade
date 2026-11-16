@@ -46,7 +46,7 @@
         <label><input type="checkbox" id="aAbs" checked> ABS</label>
         <label><input type="checkbox" id="aTc" checked> Control de tracción</label>
         <label><input type="checkbox" id="aSteer" checked> Dirección asistida</label>
-        <label><input type="checkbox" id="aBrake" checked> Asistencia de frenado</label>
+        <label><input type="checkbox" id="aBrake" checked> Aviso de frenada</label>
         <label><input type="checkbox" id="aLine"> Línea ideal en la pista</label>
       </div>
       <button id="goBtn" class="go">LISTO</button>
@@ -54,7 +54,7 @@
   </div>
   <div class="lb-keys">
     <span><kbd>W</kbd><kbd>S</kbd> acelerar / frenar</span><span><kbd>A</kbd><kbd>D</kbd> doblar</span>
-    <span><kbd>E</kbd><kbd>Q</kbd> cambios (manual)</span><span><kbd>Espacio</kbd> DRS</span><span><kbd>C</kbd> cámara</span><span><kbd>P</kbd> entrar a boxes</span><span><kbd>R</kbd> auxilio (a boxes)</span><span>🎮 joystick compatible</span>
+    <span><kbd>E</kbd><kbd>Q</kbd> cambios (manual)</span><span><kbd>Espacio</kbd> DRS</span><span><kbd>C</kbd> cámara</span><span><kbd>P</kbd> entrar a boxes</span><span><kbd>R</kbd> reaparecer</span><span>🎮 joystick compatible</span>
   </div>
 </div>
 
@@ -66,7 +66,7 @@
   <div id="flagY" hidden>🟨 BANDERA AMARILLA</div>
   <div id="boxReq" hidden>📻 BOX ESTA VUELTA</div>
   <div id="pitbox" hidden><div id="pitTxt"></div><div class="pbar"><i id="pitBar"></i></div></div>
-  <div id="dmgWarn" hidden>💥 Daño grave — <b>R</b> para auxilio a boxes</div>
+  <div id="dmgWarn" hidden>💥 Daño grave — reaparecés en un momento (o <b>R</b>)</div>
   <div id="dmgBox">
     <svg viewBox="0 0 60 120" width="46" height="92">
       <rect id="d2" x="25" y="4" width="10" height="26" rx="4"/>
@@ -83,7 +83,7 @@
   <div id="dash">
     <div id="leds"></div>
     <div class="dmain"><div class="spd"><b id="spd">0</b><small>KM/H</small></div><div class="gear" id="gear">N</div></div>
-    <div class="dfoot"><span id="drs">DRS</span><span id="tow">REBUFO</span><span id="bas">FRENO</span><span id="lim">PIT</span><span id="asst"></span></div>
+    <div class="dfoot"><span id="drs">DRS</span><span id="tow">REBUFO</span><span id="bas">FRENÁ</span><span id="lim">PIT</span><span id="asst"></span></div>
     <div class="pedals"><i id="pThr"></i><i id="pBrk"></i></div>
   </div>
   <div id="lights"><i></i><i></i><i></i><i></i><i></i></div>

@@ -192,7 +192,7 @@ body.touch #lights { top: 120px; }
 #dmgWarn { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); background: rgba(225,6,0,.9); padding: 6px 16px; border-radius: 8px; font-weight: 700; animation: blink .7s infinite alternate; white-space: nowrap; }
 #dmgBox { position: absolute; right: 300px; bottom: 16px; background: var(--panel); border-radius: 12px; padding: 8px 10px 4px; }
 #dmgBox rect { fill: #2bd46a; transition: fill .2s; }
-#bas.on { background: #ffb020; color: #221; } #lim.on { background: #4a7dff; color: #fff; }
+#bas.on { background: #ff2a2a; color: #fff; animation: blink .25s infinite alternate; } #lim.on { background: #4a7dff; color: #fff; }
 #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 30; transition: opacity .3s; }
 #fade.on { opacity: 1; }
 .tr .n em { font-style: normal; color: #ff5a5a; font-size: 11px; }

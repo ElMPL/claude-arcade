@@ -36,7 +36,7 @@ export function drive(T, c, B, others, dt) {
   // velocidad objetivo (mirando un poco adelante)
   const D = c.dmg || [];
   const dm = 1 - 0.1 * Math.min(1, ((D[0] || 0) + (D[1] || 0)) / 2) - 0.12 * Math.min(1, D[3] || 0);
-  let tgt = at(T, T.vmax, s + Math.max(0, v) * 0.18) * B.skill * dm;
+  let tgt = at(T, T.vmax, s + Math.max(0, v) * 0.18) * B.skill * dm * (B.slow || 1);
   tgt = Math.min(tgt, cap);
   let thr = 0, brk = 0;
   if (v > tgt + 0.8) brk = Math.min(1, (v - tgt) / 5 + 0.25);

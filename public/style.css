@@ -133,3 +133,28 @@ input.invalid { outline: 2px solid var(--err); border-color: transparent; }
   .logo { font-size: 20px; }
   .gamebar #gameControls { display: none; }
 }
+
+/* ---------- modo admin ---------- */
+#admPrompt { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1000; background: #111219; border: 1px solid #333; border-radius: 10px; padding: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+#admPrompt form { display: flex; gap: 6px; }
+#admPrompt input { background: #000; color: #7CFC9A; border: 1px solid #2a2a2a; border-radius: 6px; padding: 6px 10px; font: 600 14px ui-monospace, Menlo, Consolas, monospace; width: 170px; outline: none; }
+#admPrompt button { background: #2a2a35; color: #ddd; border: 0; border-radius: 6px; padding: 0 10px; cursor: pointer; }
+#admPrompt small { display: block; color: #ff6b6b; font: 12px ui-monospace, monospace; margin-top: 4px; min-height: 0; }
+#admPrompt small:empty { display: none; }
+#admPrompt.shake { animation: admShake .35s; }
+@keyframes admShake { 25% { transform: translateX(calc(-50% - 8px)); } 75% { transform: translateX(calc(-50% + 8px)); } }
+#admPanel { position: fixed; top: 64px; right: 14px; z-index: 1000; width: 280px; max-height: calc(100vh - 90px); overflow: auto; background: rgba(12,13,20,.96); border: 1px solid #2c7a4b; border-radius: 12px; padding: 10px 12px 12px; color: #e6e6e6; font: 14px system-ui, sans-serif; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+.admHead { display: flex; justify-content: space-between; align-items: center; color: #7CFC9A; font: 700 14px ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+.admHead button { background: none; border: 0; color: #aaa; font-size: 16px; cursor: pointer; }
+#admPanel h5 { margin: 12px 0 6px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #8a8fa0; }
+.admTg { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; padding: 5px 6px; border-radius: 7px; cursor: pointer; }
+.admTg:hover { background: rgba(255,255,255,.05); }
+.admTg input { accent-color: #2bd46a; width: 16px; height: 16px; }
+.admTg small { grid-column: 2; color: #8a8fa0; font-size: 11.5px; }
+.admBtn { display: block; width: 100%; margin: 4px 0; padding: 7px; border: 1px solid #2c7a4b; background: rgba(43,212,106,.1); color: #c9f7d8; border-radius: 7px; cursor: pointer; font-weight: 600; text-align: left; }
+.admBtn:hover { background: rgba(43,212,106,.2); }
+.admP { display: flex; align-items: center; gap: 4px; padding: 3px 0; font-size: 13px; }
+.admP span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admP button { background: #22232d; border: 0; color: #ddd; border-radius: 5px; padding: 3px 6px; cursor: pointer; font-size: 12px; }
+.admNote { color: #8a8fa0; font-size: 12.5px; margin: 4px 0; }
+.admOff { margin-top: 12px; width: 100%; background: none; border: 1px solid #444; color: #999; border-radius: 7px; padding: 6px; cursor: pointer; }

@@ -2,6 +2,7 @@
 import { THREE, renderer, scene, camera, updateScene, makeCard, makeChair, makeStack, setTableShape, TABLE_Y, PREVIEW } from './scene.js';
 import { makeCharacter, setHeldCards, animateCharacter, react, MODELS, COLORS, HATS, randomSkin, validSkin } from './chars.js';
 import { Engine } from '../js/engine.js';
+import { rank as cardRank } from '../js/rules.js';
 import { canEnvido, canTruco, canPlay, canMazo, isResponder, envidoRaises, nextTrucoLevel, TRUCO_NAMES, ENVIDO_NAMES, teamOf } from '../js/rules.js';
 
 const $ = id => document.getElementById(id);
@@ -594,6 +595,19 @@ function startEngine() {
     event: e => { Arcade.send('ev', e); onEvent(e); },
     end: team => finishGame(team),
   });
+  // trucos de admin: cartas buenas al repartir y ver las manos de todos
+  engine.rig = (hands, deck, seats) => {
+    seats.forEach((st, i) => {
+      if (!st.id || !admGood.has(st.id)) return;
+      const pool = hands[i].concat(deck).sort((a, b) => cardRank(b) - cardRank(a));
+      const best = pool.slice(0, 3);
+      const rest = pool.slice(3);
+      hands[i] = best;
+      deck.length = 0; rest.sort(() => Math.random() - 0.5).forEach(c => deck.push(c));
+    });
+  };
+  const basePush = engine.pushFn;
+  engine.pushFn = st => { basePush(st); sendSeers(); };
   engine.start();
 }
 
@@ -643,12 +657,57 @@ function preview() {
   setTimeout(() => { window.__ready = true; }, 2500);
 }
 
+// ---------------- Modo admin (panel F7 de la plataforma) ----------------
+const admSee = new Set(), admGood = new Set();
+const SUIT = { e: '⚔️', b: '🪵', o: '🪙', c: '🍷' };
+function sendSeers() {
+  if (!engine || !admSee.size) return;
+  const all = engine.S.seats.map((st, i) => ({ name: st.name, team: st.team, cards: engine.hands[i] }));
+  for (const id of admSee) { if (id === myId) showSeen(all); else Arcade.send('seen', all, { to: id }); }
+}
+function showSeen(all) {
+  let el = document.getElementById('admSeen');
+  if (!el) { el = document.createElement('div'); el.id = 'admSeen'; el.style.cssText = 'position:fixed;left:12px;top:120px;z-index:40;background:rgba(10,12,18,.88);border:1px solid #2c7a4b;border-radius:10px;padding:8px 12px;font:600 13px system-ui;color:#ddd;pointer-events:none;max-width:260px'; document.body.appendChild(el); }
+  if (!all || !Arcade.admin.get('tr.see')) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = '<div style="color:#7CFC9A;font:700 11px monospace;letter-spacing:1px;margin-bottom:4px">🛠 CARTAS EN MANO</div>' + all.map((p, i) => i === mySeat ? '' : `<div>${esc(p.name)}: ${p.cards.length ? p.cards.map(c => `<b>${c.n}</b>${SUIT[c.s]}`).join(' ') : '—'}</div>`).join('');
+}
+function adminReq(k, v, from) {
+  if (!engine && k !== 'see' && k !== 'good') return;
+  if (k === 'see') { v ? admSee.add(from) : admSee.delete(from); sendSeers(); }
+  else if (k === 'good') v ? admGood.add(from) : admGood.delete(from);
+  else if (k === 'pts' || k === 'win') {
+    const seat = engine.S.seats.findIndex(s => s.id === from); if (seat < 0) return;
+    const team = engine.S.seats[seat].team;
+    engine.addPoints(team, k === 'win' ? engine.S.cfg.goal : 3);
+  }
+}
+function setupAdmin() {
+  if (!Arcade.admin) return;
+  Arcade.admin.define([
+    { id: 'tr.see', label: 'Ver las cartas de todos', type: 'toggle' },
+    { id: 'tr.good', label: 'Repartirme las mejores cartas', type: 'toggle', desc: 'Desde la próxima mano' },
+    { id: 'tr.pts', label: '➕ 3 puntos para mi equipo', type: 'button' },
+    { id: 'tr.win', label: '🏆 Ganar la partida', type: 'button' },
+  ]);
+  const req = (k, v) => { if (Arcade.isHost()) adminReq(k, v, myId); else Arcade.send('admReq', { k, v }, { to: Arcade.ctx.hostId }); };
+  Arcade.admin.on('tr.see', v => { req('see', !!v); if (!v) showSeen(null); });
+  Arcade.admin.on('tr.good', v => req('good', !!v));
+  Arcade.admin.on('tr.pts', () => req('pts', true));
+  Arcade.admin.on('tr.win', () => req('win', true));
+  Arcade.on('admReq', (d, from, meta) => { if (Arcade.isHost() && meta && meta.admin && d) adminReq(d.k, d.v, from); });
+  Arcade.on('seen', all => showSeen(all));
+  if (Arcade.admin.get('tr.see')) req('see', true);
+  if (Arcade.admin.get('tr.good')) req('good', true);
+}
+
 // ---------------- Inicio ----------------
 requestAnimationFrame(loop);
 Arcade.ready().then(ctx => {
   if (PREVIEW) return preview();
   myId = ctx.me.id;
   skins[myId] = mySkin;
+  setupAdmin();
   Arcade.on('st', st => onState(st));
   Arcade.on('hd', d => onHand(d.cards));
   Arcade.on('ev', e => onEvent(e));

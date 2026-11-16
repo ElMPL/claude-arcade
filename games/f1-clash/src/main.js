@@ -8,7 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TRACKS } from './tracks.js';
 import { buildTrack, at, pointAt, headingAt } from './track.js';
 import { CAR, makeCar, gearbox, speed, assistSteer, repair, PARTS } from './physics.js';
-import { simulate, trackInfo, progress, collideCars, gridSlot, updateSurface, brakeAssist, worldVel } from './world.js';
+import { simulate, trackInfo, progress, collideCars, gridSlot, updateSurface, worldVel } from './world.js';
 import { drive, makeBrain } from './ai.js';
 import { buildScene } from './scene.js';
 import { makeCarMesh, poseCar, LIVERIES, damageVisual, resetDamageVisual } from './car3d.js';
@@ -23,6 +23,8 @@ const AUTOPILOT = store0('f1:autopilot');
 const DIFF = [{ n: 'Fácil', k: 0.87 }, { n: 'Normal', k: 0.925 }, { n: 'Difícil', k: 0.97 }];
 const LAPS = [1, 3, 5, 8];
 const BOT_NAMES = ['Rossetti', 'Lindqvist', 'Okafor', 'Tanaka', 'Moreau', 'Duarte', 'Kowalski', 'Hayes', 'Navarro', 'Brandt', 'Ferreira', 'Sato'];
+const admin = k => !!(window.Arcade && Arcade.admin && Arcade.admin.get(k));
+let slowBots = false;
 const PIT_LIMIT = 22.2; // 80 km/h
 const fmt = t => { if (t == null || !isFinite(t)) return '—'; const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(3); };
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } } };
@@ -468,7 +470,7 @@ function beginRace(msg, late = false) {
   if (!cars.includes(me)) me = null;
   camInit = false;
   if (prefs.line && me) addLine();
-  hint(IS_TOUCH ? '◀ ▶ doblar · ACEL / FRENO · DRS en las rectas · BOX = entrar a boxes · ↺ = auxilio' : 'W/S acelerar y frenar · A/D doblar · Espacio DRS · P entrar a boxes · R auxilio · C cámara');
+  hint(IS_TOUCH ? '◀ ▶ doblar · ACEL / FRENO · DRS en las rectas · BOX = entrar a boxes · ↺ = reaparecer' : 'W/S acelerar y frenar · A/D doblar · Espacio DRS · P entrar a boxes · R reaparecer · C cámara');
   $('lights').className = ''; [...$('lights').children].forEach(l => l.className = '');
   world.setLights(0);
   if (late) race.outAt = now;
@@ -514,8 +516,8 @@ const inRange = (s, a, b) => a <= b ? s >= a && s <= b : s >= a || s <= b;
 
 // ---------- Boxes ----------
 function repairTime(c) {
-  const W = [3, 3, 4, 5, 4, 4, 4, 4, 2, 2, 6];
-  return 2.4 + c.dmg.reduce((a, d, i) => a + Math.min(1, d) * W[i], 0);
+  const W = [1.5, 1.5, 2, 2.5, 2, 2, 2, 2, 1, 1, 3];
+  return 2.2 + c.dmg.reduce((a, d, i) => a + Math.min(1, d) * W[i], 0);
 }
 function requestBox() {
   if (!me || me.pit || me.finTime != null) return;
@@ -523,10 +525,23 @@ function requestBox() {
   flash(me.boxReq ? '📻 BOX, BOX — entrá a boxes en esta vuelta' : 'Entrada a boxes cancelada', me.boxReq ? 'gold' : '', 2000);
 }
 function rescueMe() {
-  if (!me || me.pit || me.finTime != null) return;
-  const extra = goToPits(me, true);
-  $('fade').classList.add('on'); setTimeout(() => $('fade').classList.remove('on'), 650);
-  flash(`🚛 Auxilio: volvés a boxes (+${Math.round(extra)} s)`, 'gold', 3200);
+  if (!me || me.pit || me.finTime != null || phase !== 'race') return;
+  respawnCar(me);
+}
+// Reaparece en la pista un poco más atrás: titila (sin choques) y va más lento unos segundos.
+// Las partes destrozadas vuelven "dañadas" para poder seguir; en boxes se arreglan del todo.
+function respawnCar(car) {
+  const c = car.c, s = c.ts - 25;
+  const off = Math.max(-T.hw + 2, Math.min(T.hw - 2, at(T, T.line, s)));
+  const [x, z] = pointAt(T, s, off);
+  const v = Math.min(18, at(T, T.vmax, s) * 0.6);
+  Object.assign(c, { x, z, h: headingAt(T, s), vx: v, vy: 0, r: 0, steer: 0, gear: 2, tcCut: 1, drs: false });
+  for (let i = 0; i < 4; i++) c.w[i] = v / CAR.R;
+  for (let i = 0; i < 11; i++) if (c.dmg[i] > 0.45) c.dmg[i] = 0.45;
+  resetDamageVisual(car.mesh); damageVisual(car.mesh, c.dmg);
+  trackInfo(T, c); c.prevS = c.ts;
+  car.ghost = 4; car.slowT = 6; car.stuck = 0; car.critT = 0; car.boxReq = false;
+  if (car === me) { $('fade').classList.add('on'); setTimeout(() => $('fade').classList.remove('on'), 350); flash('↺ Reapareciste · 6 s con menos potencia', 'gold', 2600); }
 }
 function goToPits(car, teleport) {
   const c = car.c, P = T.pit, sBox = P.boxes[car.slot % P.boxes.length], sBoxA = sAbs(sBox);
@@ -765,7 +780,8 @@ function showResults(msg) {
   showResults.iv = setInterval(() => { n--; $('rsCount').textContent = n > 0 ? `Volviendo al menú en ${n}…` : 'Volviendo al menú…'; if (n <= 0) clearInterval(showResults.iv); }, 1000);
 }
 
-function resetCar(car) {
+function resetCar(car) { respawnCar(car); }
+function resetCarOld(car) {
   const c = car.c, s = c.ts;
   const [x, z] = pointAt(T, s, Math.max(-T.hw + 2, Math.min(T.hw - 2, at(T, T.line, s))));
   c.x = x; c.z = z; c.h = headingAt(T, s);
@@ -815,7 +831,7 @@ function frame(now) {
     if (car === me && car.finTime == null && !AUTOPILOT) {
       inp = { thr: inp0.thr, brk: inp0.brk, steer: steerAngle(c, inp0.st, inp0.analog) };
       if (c.gear === -1) { const t = inp.thr; inp.thr = inp.brk; inp.brk = t; }
-      else if (prefs.brakeA && racing) brakeAssist(T, c, inp);
+      else if (racing) c.bAssist = prefs.brakeA && c.vx > 15 && c.vx > Math.min(at(T, T.vsafe, c.ts + c.vx * 0.55), at(T, T.vsafe, c.ts + c.vx * 0.9) + 4) + 2;
     } else {
       if (!car.brain) car.brain = makeBrain(0.85);
       inp = drive(T, c, car.brain, cars.map(x => x.c), dt);
@@ -824,7 +840,10 @@ function frame(now) {
     inp.dt = dt; inp.up = car === me && upPress; inp.down = car === me && downPress;
     if (!racing) { c.thr += (inp.thr - c.thr) * Math.min(1, dt * 10); c.rpm += ((4000 + c.thr * 7000) - c.rpm) * Math.min(1, dt * 8); continue; }
     car.drsAvail = false;
-    if (race.laps > 1 && (c.lap || 0) >= 2 && car.finTime == null) {
+    if (car === me) { c.gripX = admin('f1.grip') ? 1.45 : 1; c.dmgScale = admin('f1.god') ? 0 : 1; if (admin('f1.ghost')) car.ghost = Math.max(car.ghost, 0.15); }
+    if (car.bot && car.brain) car.brain.slow = slowBots ? 0.72 : 1;
+    if (car === me && admin('f1.drs') && car.finTime == null) { car.drsAvail = true; }
+    else if (race.laps > 1 && (c.lap || 0) >= 2 && car.finTime == null) {
       for (const z of drsZones) {
         if (Math.abs(sAbs(c.ts) - z.det) < 25 && car.drsZone !== z) { car.drsZone = null; const ahead = carAhead(car); if (ahead && ahead.gapT < 1.0) car.drsZone = z; }
         if (car.drsZone === z && inRange(sAbs(c.ts), z.a, z.b)) car.drsAvail = true;
@@ -859,12 +878,14 @@ function frame(now) {
     }
     if (car.ghost > 0) car.ghost -= dt;
     if (car.hitDebris > 0) car.hitDebris -= dt;
-    if (car !== me || car.finTime != null || AUTOPILOT) {
-      car.stuck = (Math.abs(c.vx) < 3 || Math.abs(c.td) > T.hw + 6) ? car.stuck + dt : 0;
+    {
+      const human = car === me && !AUTOPILOT && car.finTime == null;
+      car.stuck = (Math.abs(c.vx) < 2.5 || Math.abs(c.td) > T.hw + 8) ? car.stuck + dt : 0;
       const crit = c.dmg[4] >= 1 || c.dmg[5] >= 1 || c.dmg[6] >= 1 || c.dmg[7] >= 1 || c.dmg[2] >= 1;
-      if (car.bot && crit && car.finTime == null) goToPits(car, true);
-      else if (car.stuck > 3) resetCar(car);
+      car.critT = crit ? (car.critT || 0) + dt : 0;
+      if (car.critT > (human ? 2.5 : 1) || car.stuck > (human ? 6 : 3)) respawnCar(car);
     }
+    if (car.slowT > 0) { car.slowT -= dt; c.powerF = 0.55; } else c.powerF = admin('f1.power') ? 1.6 : 1;
   }
   upPress = downPress = drsPress = false;
   for (const car of cars) if (!car.own) interpRemote(car, now, dt);
@@ -898,7 +919,7 @@ function frame(now) {
     poseCar(car.mesh, car.c);
     const newly = damageVisual(car.mesh, car.c.dmg);
     for (const p of newly) spawnDebris(car, p);
-    car.mesh.visible = !(car.ghost > 0 && !car.pit && (now / 120 | 0) % 2 === 0);
+    car.mesh.visible = !(car.ghost > 0.2 && !car.pit && (now / 120 | 0) % 2 === 0);
     car.mesh.userData.rain.material.emissiveIntensity = car.c.brk > 0.2 ? 4 : (car.c.dmg[10] > 0.5 || car.pit ? ((now / 250 | 0) % 2) * 3 : 0.6);
     if (racing && !car.pit) carFx(car, dt);
     if (car.pit && speed(car.c) < 0.5 && (!crewCar || car === me)) crewCar = car;
@@ -1005,7 +1026,48 @@ function wireNet() {
 
 // ---------- Inicio ----------
 let lobbyReceived = false;
+// ---------- Modo admin (panel F7 de la plataforma) ----------
+function setupAdmin() {
+  if (!Arcade.admin) return;
+  Arcade.admin.define([
+    { id: 'f1.power', label: 'Motor turbo (+60 % potencia)', type: 'toggle' },
+    { id: 'f1.grip', label: 'Súper agarre', type: 'toggle' },
+    { id: 'f1.god', label: 'Indestructible (sin daño)', type: 'toggle' },
+    { id: 'f1.ghost', label: 'Fantasma (atravesás autos)', type: 'toggle' },
+    { id: 'f1.drs', label: 'DRS en cualquier lado (Espacio)', type: 'toggle' },
+    { id: 'f1.slow', label: 'Bots lentos', type: 'toggle', desc: 'Lo aplica el host' },
+    { id: 'f1.lead', label: '🚀 Pasar al primer puesto', type: 'button' },
+    { id: 'f1.fix', label: '🔧 Reparar el auto', type: 'button' },
+    { id: 'f1.finish', label: '🏁 Cruzar la meta ya', type: 'button' },
+  ]);
+  const setSlow = v => { if (isHost) slowBots = !!v; else Arcade.send('admReq', { k: 'slow', v: !!v }); };
+  Arcade.admin.on('f1.slow', setSlow);
+  Arcade.admin.on('f1.fix', () => { if (!me) return; repair(me.c); resetDamageVisual(me.mesh); flash('🔧 Auto reparado', 'green', 1200); });
+  Arcade.admin.on('f1.lead', () => {
+    if (!me || phase !== 'race' || me.finTime != null) return;
+    const lead = standings().find(c => c !== me && c.finTime == null);
+    if (!lead) return;
+    const c = me.c, s = lead.c.ts + 35;
+    const [x, z] = pointAt(T, s, at(T, T.line, s));
+    Object.assign(c, { x, z, h: headingAt(T, s), vx: Math.max(30, lead.c.vx), vy: 0, r: 0 });
+    for (let i = 0; i < 4; i++) c.w[i] = c.vx / CAR.R;
+    trackInfo(T, c); c.lap = lead.c.lap + (sAbs(lead.c.ts) > sAbs(s) ? 1 : 0); c.prevS = c.ts; c.half = sAbs(s) > T.L / 2; c.prog = (c.lap - 1) * T.L + c.ts;
+    me.ghost = 1.5; flash('🚀 ¡Primero!', 'gold', 1200);
+  });
+  Arcade.admin.on('f1.finish', () => {
+    if (!me || phase !== 'race' || me.finTime != null) return;
+    const c = me.c, s = T.L - 40;
+    const [x, z] = pointAt(T, s, 0);
+    Object.assign(c, { x, z, h: headingAt(T, s), vx: 60, vy: 0, r: 0 });
+    for (let i = 0; i < 4; i++) c.w[i] = c.vx / CAR.R;
+    trackInfo(T, c); c.lap = race.laps; c.half = true; c.prevS = c.ts; me.ghost = 1;
+  });
+  Arcade.on('admReq', (d, from, meta) => { if (isHost && meta && meta.admin && d && d.k === 'slow') slowBots = !!d.v; });
+  if (Arcade.admin.get('f1.slow')) setSlow(true);
+}
+
 Arcade.ready().then(ctx => {
+  setupAdmin();
   online = !!ctx.online; myId = ctx.me.id; isHost = online ? !!ctx.isHost : true;
   players = ctx.players && ctx.players.length ? ctx.players.slice() : [{ id: myId, name: ctx.me.name || 'Vos' }];
   lobby.cars[myId] = { liv: prefs.liv, num: prefs.num, ready: false };

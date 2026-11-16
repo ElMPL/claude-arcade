@@ -37,7 +37,9 @@ export class Engine {
     const pica = S.cfg.pica && n === 6 && S.cfg.goal === 30 && Math.min(...S.score) >= 5 && Math.max(...S.score) < 25 && S.lastType === 'redonda';
     S.lastType = pica ? 'pica' : 'redonda';
     S.pica = pica ? { duel: -1, pairs: this.picaOrder(S.mano) } : null;
-    for (let i = 0; i < n; i++) { this.hands[i] = deck.splice(0, 3); this.orig[i] = this.hands[i].slice(); }
+    for (let i = 0; i < n; i++) this.hands[i] = deck.splice(0, 3);
+    if (this.rig) this.rig(this.hands, deck, S.seats);
+    for (let i = 0; i < n; i++) this.orig[i] = this.hands[i].slice();
     Object.assign(S, { phase: 'deal', tricks: [[]], results: [], trickWin: [], truco: { level: 0, canRaise: null }, envidoDone: false, pending: null, last: null });
     S.handNo++;
     this.push();
@@ -263,6 +265,14 @@ export class Engine {
     clearTimeout(this.pause);
     if (S.pica && S.pica.duel < 2) this.pause = setTimeout(() => this.startDuel(S.pica.duel + 1), 2400 * this.speed);
     else this.pause = setTimeout(() => this.newHand(), 2600 * this.speed);
+  }
+
+  // modo admin: sumar puntos a un equipo
+  addPoints(team, pts) {
+    const S = this.S;
+    S.score[team] = Math.min(S.cfg.goal, S.score[team] + pts);
+    this.event({ kind: 'points', team, pts, text: 'truco de admin' });
+    if (!this.checkGameEnd()) this.push();
   }
 
   checkGameEnd() {

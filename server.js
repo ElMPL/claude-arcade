@@ -4,11 +4,20 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const GAMES_DIR = path.join(__dirname, 'games');
 const MAX_ROOM_SIZE = 8;          // tope duro de una sala (cada juego define su propio max)
 const MAX_MSGS_PER_SEC = 150;     // anti-spam por jugador
+// Modo admin (panel oculto con F7). Solo se guarda el hash del código; ADMIN_CODE lo reemplaza si está definido.
+const ADMIN_HASH = process.env.ADMIN_CODE
+  ? crypto.createHash('sha256').update(process.env.ADMIN_CODE).digest()
+  : Buffer.from('68bda044787b788d756bc261271f3611aab80294bcfeb3704279137149081d50', 'hex');
+function checkAdmin(code) {
+  const h = crypto.createHash('sha256').update(String(code || '').slice(0, 64)).digest();
+  return crypto.timingSafeEqual(h, ADMIN_HASH);
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -207,6 +216,9 @@ io.on('connection', socket => {
 
   socket.on('room:end', payload => {
     if (!room || room.hostId !== socket.id || room.state !== 'playing') return;
+    endGame(room, payload);
+  });
+  function endGame(room, payload) {
     room.state = 'lobby';
     // Coronas: cada juego ganado suma 1 corona al ganador (o ganadores) en la sala
     const winners = payload && Array.isArray(payload.winners) ? [...new Set(payload.winners)].filter(id => room.players.has(id)).slice(0, 8) : [];
@@ -217,6 +229,43 @@ io.on('connection', socket => {
     const results = { text, winners, gameName: game ? game.name : '' };
     io.to(room.code).emit('game:end', { results });
     io.to(room.code).emit('room:update', publicRoom(room));
+  }
+
+  // ---------- Admin ----------
+  let adminTries = 0;
+  socket.data.leave = () => leave();
+  socket.on('admin:auth', (payload, cb) => {
+    if (typeof cb !== 'function') return;
+    if (++adminTries > 8) return cb({ ok: false, error: 'Demasiados intentos' });
+    const ok = checkAdmin(payload && payload.code);
+    if (ok) socket.data.admin = true;
+    cb({ ok });
+  });
+  socket.on('admin:action', (p, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!socket.data.admin) return reply({ ok: false, error: 'No sos admin' });
+    if (!room) return reply({ ok: false, error: 'Tenés que estar en una sala' });
+    const act = p && p.act;
+    if (act === 'crown') {
+      const pl = room.players.get(p.id || socket.id); if (!pl) return reply({ ok: false });
+      pl.crowns = Math.max(0, pl.crowns + (p.d === -1 ? -1 : 1));
+      io.to(room.code).emit('room:update', publicRoom(room));
+    } else if (act === 'win') {
+      if (room.state !== 'playing') return reply({ ok: false, error: 'No hay partida en juego' });
+      endGame(room, { winners: [socket.id] });
+    } else if (act === 'end') {
+      if (room.state !== 'playing') return reply({ ok: false, error: 'No hay partida en juego' });
+      endGame(room, { text: 'Partida terminada por un admin' });
+    } else if (act === 'host') {
+      if (room.state !== 'lobby') return reply({ ok: false, error: 'Solo en el lobby' });
+      room.hostId = socket.id;
+      io.to(room.code).emit('room:update', publicRoom(room));
+    } else if (act === 'kick') {
+      if (!p.id || p.id === socket.id || !room.players.has(p.id)) return reply({ ok: false });
+      const target = io.sockets.sockets.get(p.id);
+      if (target) { target.emit('room:kicked'); target.data.leave && target.data.leave(); }
+    } else return reply({ ok: false });
+    reply({ ok: true });
   });
 
   // Relay genérico: el juego manda {type, data, to?, v?}
@@ -224,6 +273,7 @@ io.on('connection', socket => {
     if (!room || room.state !== 'playing' || !msg || typeof msg.type !== 'string' || msg.type.length > 32) return;
     if (++msgCount > MAX_MSGS_PER_SEC) return;
     const out = { type: msg.type, data: msg.data, from: socket.id };
+    if (socket.data.admin) out.adm = 1; // los juegos pueden confiar en pedidos de un admin
     if (msg.to) {
       if (!room.players.has(msg.to)) return;
       (msg.v ? io.to(msg.to).volatile : io.to(msg.to)).emit('relay', out);

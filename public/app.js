@@ -78,7 +78,7 @@
   function ensureSocket() {
     if (socket) return socket;
     socket = io({ transports: ['websocket', 'polling'] });
-    socket.on('room:update', r => { room = r; renderLobby(); });
+    socket.on('room:update', r => { room = r; renderLobby(); Admin.render(); });
     socket.on('game:start', startOnline);
     socket.on('game:end', ({ results }) => {
       closeFrame();
@@ -89,7 +89,9 @@
       }
       if (room) show('viewLobby');
     });
-    socket.on('relay', m => toFrame({ kind: 'msg', type: m.type, data: m.data, from: m.from }));
+    socket.on('relay', m => toFrame({ kind: 'msg', type: m.type, data: m.data, from: m.from, adm: m.adm ? 1 : 0 }));
+    socket.on('room:kicked', () => { toast('Un admin te sacó de la sala'); });
+    socket.on('connect', () => Admin.reauth());
     socket.on('game:playerLeft', p => {
       if (!current) return;
       current.ctx.players = current.ctx.players.filter(x => x.id !== p.id);
@@ -242,6 +244,7 @@
   }
 
   function closeFrame() {
+    setTimeout(() => Admin.render(), 0);
     if (!current) return;
     current = null;
     frame.src = 'about:blank';
@@ -278,8 +281,11 @@
     if (!current || e.source !== frame.contentWindow) return;
     const m = e.data;
     if (!m || m.__arcade !== 1) return;
+    if (m.kind === 'f7') return Admin.f7();
+    if (m.kind === 'adminDefine') { Admin.define(current.game.id, m.list); return; }
     if (m.kind === 'hello') {
       toFrame({ kind: 'init', ctx: current.ctx });
+      setTimeout(() => Admin.sync(), 50);
     } else if (m.kind === 'send') {
       if (current.ctx.online && socket) socket.emit('relay', { type: m.type, data: m.data, to: m.to, v: !!m.volatile });
     } else if (m.kind === 'end') {
@@ -304,6 +310,72 @@
     if (document.fullscreenElement) document.exitFullscreen();
     else if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   });
+
+  // ---------- Modo admin (oculto: F7 + código) ----------
+  const Admin = (() => {
+    const ss = { get: k => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { } } };
+    let on = false, defs = {}, open = false;
+    const vals = id => { try { return JSON.parse(ss.get('arcade:adm:' + id) || '{}'); } catch { return {}; } };
+    const box = document.createElement('div'); box.id = 'admPrompt'; box.hidden = true;
+    box.innerHTML = '<form><input id="admCode" type="password" autocomplete="off" spellcheck="false" placeholder="código"><button>OK</button></form><small id="admMsg"></small>';
+    const panel = document.createElement('div'); panel.id = 'admPanel'; panel.hidden = true;
+    document.body.append(box, panel);
+    box.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const code = $('#admCode').value.trim(); if (!code) return;
+      ensureSocket().emit('admin:auth', { code }, res => {
+        if (res && res.ok) { ss.set('arcade:admcode', code); on = true; box.hidden = true; $('#admCode').value = ''; toast('🛠 Modo admin activado'); open = true; render(); sync(); }
+        else { $('#admMsg').textContent = (res && res.error) || 'Código incorrecto'; box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
+      });
+    });
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') box.hidden = true; e.stopPropagation(); });
+    function f7() {
+      if (!on) { box.hidden = !box.hidden; $('#admMsg').textContent = ''; if (!box.hidden) setTimeout(() => $('#admCode').focus(), 30); else if (current) frame.focus(); return; }
+      open = !open; render();
+      if (!open && current) frame.focus();
+    }
+    function reauth() { const c = ss.get('arcade:admcode'); if (c && socket) socket.emit('admin:auth', { code: c }, r => { on = !!(r && r.ok); render(); sync(); }); }
+    function sync() { if (current) toFrame({ kind: 'admin', active: on, values: on ? vals(current.game.id) : {} }); }
+    function define(id, list) { defs[id] = Array.isArray(list) ? list.slice(0, 24) : []; render(); }
+    function act(a, extra = {}) { ensureSocket().emit('admin:action', { act: a, ...extra }, r => { if (r && !r.ok && r.error) toast(r.error); }); }
+    function render() {
+      if (!on || !open) { panel.hidden = true; return; }
+      panel.hidden = false;
+      const g = current && current.game, list = g ? (defs[g.id] || []) : [], v = g ? vals(g.id) : {};
+      let h = '<div class="admHead"><b>🛠 MODO ADMIN</b><button data-x="close">✕</button></div>';
+      if (g) {
+        h += `<h5>${esc(g.name)}</h5>`;
+        if (!list.length) h += '<p class="admNote">Este juego no tiene trucos todavía.</p>';
+        for (const d of list) {
+          if (d.type === 'button') h += `<button class="admBtn" data-press="${esc(d.id)}">${esc(d.label)}</button>`;
+          else h += `<label class="admTg"><input type="checkbox" data-tg="${esc(d.id)}" ${v[d.id] ? 'checked' : ''}><span>${esc(d.label)}</span>${d.desc ? `<small>${esc(d.desc)}</small>` : ''}</label>`;
+        }
+      } else h += '<p class="admNote">Abrí un juego para ver sus trucos.</p>';
+      if (room) {
+        h += '<h5>Sala ' + esc(room.code) + '</h5><div class="admRow">';
+        if (room.state === 'playing') h += '<button class="admBtn" data-act="win">🏆 Ganar esta partida</button><button class="admBtn" data-act="end">⏹ Terminar partida</button>';
+        else if (room.hostId !== myId) h += '<button class="admBtn" data-act="host">⭐ Hacerme host</button>';
+        h += '</div>';
+        for (const p of room.players) h += `<div class="admP"><span>${esc(p.name)}${p.id === myId ? ' (vos)' : ''} · 👑${p.crowns || 0}</span><button data-act="crown" data-id="${p.id}" data-d="1">👑+</button><button data-act="crown" data-id="${p.id}" data-d="-1">👑−</button>${p.id !== myId ? `<button data-act="kick" data-id="${p.id}">Echar</button>` : ''}</div>`;
+      }
+      h += '<button class="admOff" data-x="off">Salir del modo admin</button>';
+      panel.innerHTML = h;
+    }
+    panel.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.x === 'close') { open = false; render(); if (current) frame.focus(); }
+      else if (b.dataset.x === 'off') { on = false; open = false; ss.set('arcade:admcode', null); render(); sync(); toast('Modo admin desactivado'); }
+      else if (b.dataset.press && current) toFrame({ kind: 'adminPress', id: b.dataset.press });
+      else if (b.dataset.act) act(b.dataset.act, { id: b.dataset.id, d: +b.dataset.d || 1 });
+    });
+    panel.addEventListener('change', e => {
+      const t = e.target; if (!t.dataset.tg || !current) return;
+      const v = vals(current.game.id); v[t.dataset.tg] = t.checked; ss.set('arcade:adm:' + current.game.id, JSON.stringify(v)); sync();
+    });
+    window.addEventListener('keydown', e => { if (e.key === 'F7') { e.preventDefault(); f7(); } });
+    if (ss.get('arcade:admcode')) { ensureSocket(); }
+    return { f7, define, sync, render, reauth };
+  })();
 
   // ---------- Inicio ----------
   async function init() {

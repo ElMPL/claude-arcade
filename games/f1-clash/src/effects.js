@@ -118,7 +118,7 @@ export function makeDebris(scene) {
             const [wx, wz] = worldVel(c);
             d.vx = wx * 1.1 + (Math.random() - 0.5) * 4; d.vz = wz * 1.1 + (Math.random() - 0.5) * 4; d.vy = 2 + Math.random() * 3; d.rest = false;
             d.ax = (Math.random() - 0.5) * 20; d.az = (Math.random() - 0.5) * 20;
-            if (car.own && speed(c) > 20 && !car.hitDebris) { car.hitDebris = 0.5; c.dmg[0 + (Math.random() < 0.5 ? 0 : 1)] += 0.06; }
+            if (car.own && speed(c) > 20 && !car.hitDebris && c.dmgScale !== 0) { car.hitDebris = 0.5; c.dmg[0 + (Math.random() < 0.5 ? 0 : 1)] += 0.06; }
           }
         }
       }
