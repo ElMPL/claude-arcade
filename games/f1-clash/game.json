@@ -1,0 +1,12 @@
+{
+  "name": "F1 Clash",
+  "description": "Carreras de fórmula en 3D con física realista: neumáticos, carga aerodinámica, rebufo y DRS. Hasta 8 autos, con bots.",
+  "author": "ClaudeArcade",
+  "mode": "multi",
+  "minPlayers": 1,
+  "maxPlayers": 8,
+  "emoji": "🏎️",
+  "color": "#e10600",
+  "thumbnail": "thumb.jpg",
+  "controls": "W/S acelerar y frenar · A/D doblar · Espacio DRS · E/Q cambios · C cámara · R volver a pista"
+}

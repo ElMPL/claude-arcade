@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>F1 Clash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,600;0,700;0,900;1,700;1,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="view"></div>
+
+<!-- SALA -->
+<div id="lobby" hidden>
+  <div class="lb-head">
+    <div class="logo"><b>F1</b><span>CLASH</span></div>
+    <div class="lb-sub" id="lbSub">Elegí tu auto y esperá la largada</div>
+  </div>
+  <div class="lb-body">
+    <section class="col">
+      <h3>Circuito</h3>
+      <div id="tracks" class="tracks"></div>
+      <div class="row">
+        <div class="field"><h4>Vueltas</h4><div id="laps" class="seg"></div></div>
+        <div class="field"><h4>Rivales bot</h4><div class="stepper"><button id="botMinus">−</button><span id="botN">5</span><button id="botPlus">+</button></div></div>
+      </div>
+      <div class="field"><h4>Nivel de los bots</h4><div id="diff" class="seg"></div></div>
+      <p class="hostonly-note" id="hostNote" hidden>Solo el host cambia el circuito y la carrera.</p>
+    </section>
+    <section class="col">
+      <h3>Pilotos <small id="pCount"></small></h3>
+      <div id="plist" class="plist"></div>
+    </section>
+    <section class="col">
+      <h3>Tu auto</h3>
+      <div id="swatches" class="swatches"></div>
+      <div class="row">
+        <div class="field"><h4>Número</h4><input id="num" type="number" min="1" max="99" value="7"></div>
+        <div class="field grow"><h4>Pintura</h4><div id="livName" class="livname"></div></div>
+      </div>
+      <h4>Ayudas de manejo</h4>
+      <div class="assists">
+        <label><input type="checkbox" id="aAuto" checked> Cambios automáticos</label>
+        <label><input type="checkbox" id="aAbs" checked> ABS</label>
+        <label><input type="checkbox" id="aTc" checked> Control de tracción</label>
+        <label><input type="checkbox" id="aSteer" checked> Dirección asistida</label>
+        <label><input type="checkbox" id="aLine"> Línea ideal en la pista</label>
+      </div>
+      <button id="goBtn" class="go">LISTO</button>
+    </section>
+  </div>
+  <div class="lb-keys">
+    <span><kbd>W</kbd><kbd>S</kbd> acelerar / frenar</span><span><kbd>A</kbd><kbd>D</kbd> doblar</span>
+    <span><kbd>E</kbd><kbd>Q</kbd> cambios (manual)</span><span><kbd>Espacio</kbd> DRS</span><span><kbd>C</kbd> cámara</span><span><kbd>R</kbd> volver a pista</span><span>🎮 joystick compatible</span>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" hidden>
+  <div id="tower"></div>
+  <div id="lapbox"><div class="lap"><small>VUELTA</small><b id="lapN">1/3</b></div><div class="clock" id="clock">0:00.000</div></div>
+  <canvas id="mini" width="220" height="220"></canvas>
+  <div id="times"><div><small>ÚLTIMA</small><b id="tLast">—</b></div><div><small>MEJOR</small><b id="tBest">—</b></div><div id="deltaBox"><small>DELTA</small><b id="tDelta">—</b></div></div>
+  <div id="dash">
+    <div id="leds"></div>
+    <div class="dmain"><div class="spd"><b id="spd">0</b><small>KM/H</small></div><div class="gear" id="gear">N</div></div>
+    <div class="dfoot"><span id="drs">DRS</span><span id="tow">REBUFO</span><span id="asst"></span></div>
+    <div class="pedals"><i id="pThr"></i><i id="pBrk"></i></div>
+  </div>
+  <div id="lights"><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="msg"></div>
+  <div id="wrong" hidden>⟲ CONTRAMANO</div>
+  <div id="topBtns"><button id="camBtn" title="Cámara (C)">🎥</button><button id="muteBtn" title="Sonido">🔊</button></div>
+  <div id="hint"></div>
+</div>
+
+<!-- Controles táctiles -->
+<div id="touch" hidden>
+  <div class="tleft"><button id="tL">◀</button><button id="tR">▶</button></div>
+  <div class="tright"><button id="tBrk">FRENO</button><button id="tGas">ACEL.</button></div>
+  <div class="tmid"><button id="tDrs">DRS</button><button id="tReset">↺</button></div>
+</div>
+
+<!-- Resultados -->
+<div id="results" hidden>
+  <div class="rs-card">
+    <div class="rs-head"><span class="flag"></span><h2 id="rsTitle">RESULTADO FINAL</h2><span class="flag"></span></div>
+    <table id="rsTable"></table>
+    <p id="rsCount"></p>
+  </div>
+</div>
+
+<div id="rotate"><div>📱↻<br>Girá el teléfono para correr</div></div>
+<div id="loading">Cargando circuito…</div>
+
+<script src="/sdk/arcade-sdk.js"></script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
