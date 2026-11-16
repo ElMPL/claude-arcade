@@ -178,3 +178,32 @@ body.touch #lights { top: 120px; }
 @media (orientation: portrait) and (max-width: 760px) {
   #rotate { display: grid; position: fixed; inset: 0; z-index: 100; place-items: center; background: #0b0b10; text-align: center; font: italic 900 24px var(--font); }
 }
+
+/* ---------- nuevos elementos ---------- */
+#pen { background: #ff2a2a; display: grid; place-items: center; padding: 0 12px; font: italic 900 18px var(--font); }
+#sectors { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; }
+#sectors span { min-width: 58px; text-align: center; background: var(--panel); border-radius: 5px; padding: 2px 8px; font: 700 13px var(--font); color: #999; font-variant-numeric: tabular-nums; border-bottom: 3px solid #333; }
+#sectors span.purple { border-color: #b24dff; color: #e0b7ff; } #sectors span.green { border-color: #2bd46a; color: #b9f5cf; } #sectors span.yellow { border-color: #ffd21a; color: #ffeaa0; }
+#flagY { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); background: #ffd21a; color: #15151e; font: italic 900 15px var(--font); padding: 3px 14px; border-radius: 6px; animation: blink .5s infinite alternate; }
+#boxReq { position: absolute; top: 128px; left: 50%; transform: translateX(-50%); background: #4a7dff; font: italic 900 15px var(--font); padding: 3px 14px; border-radius: 6px; }
+#pitbox { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 10px 18px; border-radius: 10px; min-width: 300px; text-align: center; font: italic 900 17px var(--font); border-left: 5px solid #4a7dff; }
+.pbar { height: 6px; background: rgba(255,255,255,.12); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.pbar i { display: block; height: 100%; background: #2bd46a; width: 0; transition: width .1s linear; }
+#dmgWarn { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); background: rgba(225,6,0,.9); padding: 6px 16px; border-radius: 8px; font-weight: 700; animation: blink .7s infinite alternate; white-space: nowrap; }
+#dmgBox { position: absolute; right: 300px; bottom: 16px; background: var(--panel); border-radius: 12px; padding: 8px 10px 4px; }
+#dmgBox rect { fill: #2bd46a; transition: fill .2s; }
+#bas.on { background: #ffb020; color: #221; } #lim.on { background: #4a7dff; color: #fff; }
+#fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 30; transition: opacity .3s; }
+#fade.on { opacity: 1; }
+.tr .n em { font-style: normal; color: #ff5a5a; font-size: 11px; }
+.penT { font-style: normal; color: #ff5a5a; font-size: 13px; }
+#msg.red { color: #ff5a5a; }
+@media (max-height: 520px), (max-width: 760px) {
+  #sectors { top: 50px; transform: translateX(-50%) scale(.8); }
+  #dmgBox { right: auto; left: 8px; bottom: auto; top: 150px; transform: scale(.7); transform-origin: top left; }
+  #pitbox { bottom: 120px; min-width: 240px; font-size: 14px; }
+  #dmgWarn { bottom: 120px; font-size: 13px; }
+}
+body.touch #dmgBox { right: auto; left: 8px; bottom: auto; top: 150px; transform: scale(.7); transform-origin: top left; }
+body.touch #sectors, body.touch #flagY, body.touch #boxReq { display: none !important; }
+body.touch #dmgWarn::after { content: ' (↺)'; }

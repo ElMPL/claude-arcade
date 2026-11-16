@@ -10,6 +10,15 @@ Carreras de fórmula en 3D (Three.js) con física realista, de 1 a 8 autos (los 
 - Rebufo detrás de otro auto y DRS en las rectas largas (a menos de 1 s del de adelante, desde la vuelta 2).
 - Superficies: asfalto, pianos, pasto y grava con distinto agarre y frenado.
 
+## Ayudas
+- Dirección asistida: la tecla a fondo pide la curva más cerrada que permite el agarre y corrige sola si la cola se va.
+- Asistencia de frenado: frena por vos si llegás muy rápido a la curva.
+
+## Daño, boxes y penalizaciones
+- Daño por partes (alerones, trompa, suspensiones/ruedas, pontones, motor): cambia la aerodinámica, el agarre, la dirección y la potencia. Las piezas rotas se desprenden y quedan en la pista.
+- `P` pide entrar a boxes en esa vuelta (calle con límite de 80 km/h + reparación según el daño). `R` es el auxilio: el auto aparece en su box y paga tiempo extra.
+- Límites de pista: 3 avisos y después +5 s. Chocar fuerte de atrás: +5 s.
+
 ## Red
 Cada jugador simula su propio auto y lo transmite a 20 Hz. El host simula los bots, junta las llegadas y muestra el resultado. Si el host se va, otro jugador toma los bots.
 
@@ -18,4 +27,4 @@ Cada jugador simula su propio auto y lo transmite a 20 Hz. El host simula los bo
 ```
 npx esbuild src/main.js --bundle --minify --format=esm --outfile=game.js
 ```
-Circuitos en `src/tracks.js` (puntos de control unidos con splines). La línea ideal y el perfil de velocidad de los bots se calculan solos.
+Circuitos (Bahía Azul, Monte Niebla y Puerto Nocturno) en `src/tracks.js` (puntos de control unidos con splines). La línea ideal y el perfil de velocidad de los bots se calculan solos.

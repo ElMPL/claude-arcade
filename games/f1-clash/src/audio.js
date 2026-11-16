@@ -81,6 +81,18 @@ export const Audio = {
       const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
       const g = ctx.createGain(); g.gain.setValueAtTime(0.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
       s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.4);
+    } else if (kind === 'crash') {
+      const s = ctx.createBufferSource(); s.buffer = noiseBuf(ctx);
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(1800, t); f.frequency.exponentialRampToValueAtTime(200, t + 0.6);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+      s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.9);
+      const o = ctx.createOscillator(), og = ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+      og.gain.setValueAtTime(0.5, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.35); o.connect(og).connect(master); o.start(t); o.stop(t + 0.4);
+    } else if (kind === 'pop') {
+      const s = ctx.createBufferSource(); s.buffer = noiseBuf(ctx);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 0.8;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + 0.6);
     } else if (kind === 'shift') {
       const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.06);
       g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);

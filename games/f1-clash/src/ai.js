@@ -9,7 +9,7 @@ export function drive(T, c, B, others, dt) {
   // ¿hay un auto adelante cerca?
   let wantOff = 0, cap = 1e9;
   for (const o of others) {
-    if (o === c || o.prog == null || c.prog == null) continue;
+    if (o === c || o.prog == null || c.prog == null || o.limiter) continue;
     let gap = o.prog - c.prog; if (gap < -T.L / 2) gap += T.L; if (gap > T.L / 2) gap -= T.L;
     const dd = (o.td ?? 0) - (c.td ?? 0);
     if (gap > 0 && gap < 30) {
@@ -34,7 +34,9 @@ export function drive(T, c, B, others, dt) {
   let steer = Math.atan(CAR.wb * 2 * py / d2) - c.r * 0.04;
   if (v < 0) steer = -steer;
   // velocidad objetivo (mirando un poco adelante)
-  let tgt = at(T, T.vmax, s + Math.max(0, v) * 0.18) * B.skill;
+  const D = c.dmg || [];
+  const dm = 1 - 0.1 * Math.min(1, ((D[0] || 0) + (D[1] || 0)) / 2) - 0.12 * Math.min(1, D[3] || 0);
+  let tgt = at(T, T.vmax, s + Math.max(0, v) * 0.18) * B.skill * dm;
   tgt = Math.min(tgt, cap);
   let thr = 0, brk = 0;
   if (v > tgt + 0.8) brk = Math.min(1, (v - tgt) / 5 + 0.25);

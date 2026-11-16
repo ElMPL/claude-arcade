@@ -1,10 +1,10 @@
-// Geometría de pista: spline cerrada, muestras uniformes, línea ideal y perfil de velocidad.
+// Geometría de pista: spline cerrada, muestras uniformes, línea ideal, perfil de velocidad,
+// calle de boxes, escapatorias y objetos (conos, carteles).
 import { CAR } from './physics.js';
 
 const SP = 3; // metros entre muestras
 
 function catmull(p0, p1, p2, p3, t) {
-  // Catmull-Rom centrípeta
   const d = (a, b) => Math.pow(Math.hypot(b[0] - a[0], b[1] - a[1]), 0.5) || 1e-4;
   const t0 = 0, t1 = t0 + d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
   const u = t1 + (t2 - t1) * t;
@@ -16,19 +16,17 @@ function catmull(p0, p1, p2, p3, t) {
 
 export function buildTrack(def) {
   const P = def.pts, n = P.length;
-  // muestreo fino
   const fine = [];
   for (let i = 0; i < n; i++) {
     const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
     const steps = Math.max(8, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 0.5));
     for (let k = 0; k < steps; k++) fine.push(catmull(p0, p1, p2, p3, k / steps));
   }
-  // longitud acumulada
   const cum = [0];
   for (let i = 1; i <= fine.length; i++) { const a = fine[i - 1], b = fine[i % fine.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
   const total = cum[fine.length];
   const N = Math.round(total / SP), ds = total / N;
-  const px = new Float64Array(N), pz = new Float64Array(N);
+  let px = new Float64Array(N), pz = new Float64Array(N);
   let j = 0;
   for (let i = 0; i < N; i++) {
     const s = i * ds;
@@ -36,7 +34,28 @@ export function buildTrack(def) {
     const a = fine[j], b = fine[(j + 1) % fine.length], f = (s - cum[j]) / (cum[j + 1] - cum[j] || 1);
     px[i] = a[0] + (b[0] - a[0]) * f; pz[i] = a[1] + (b[1] - a[1]) * f;
   }
-  const T = { def, N, ds, L: total, px, pz, width: def.width, hw: def.width / 2 };
+  // La largada va en la recta más larga (≈40 % adentro), así la grilla queda en la recta
+  const c0 = new Float64Array(N);
+  for (let i = 0; i < N; i++) { let m = 0; for (let k = -3; k <= 3; k++) m = Math.max(m, Math.abs(signedCurv(px, pz, N, (i + k + N) % N, 4))); c0[i] = m; }
+  let bestA = 0, bestLen = 0;
+  {
+    let o = 0; while (c0[o] < 1 / 700 && o < N) o++;
+    let st = -1;
+    for (let k = 0; k <= N; k++) {
+      const i = (o + k) % N, ok = k < N && c0[i] < 1 / 700;
+      if (ok && st < 0) st = k;
+      if (!ok && st >= 0) { if (k - st > bestLen) { bestLen = k - st; bestA = (o + st) % N; } st = -1; }
+    }
+  }
+  const strLen = bestLen * ds;
+  const back = Math.min(strLen - 160, Math.max(strLen * 0.42, 270));
+  const rot = (bestA + Math.round(back / ds)) % N;
+  const rx = new Float64Array(N), rz = new Float64Array(N);
+  for (let i = 0; i < N; i++) { rx[i] = px[(i + rot) % N]; rz[i] = pz[(i + rot) % N]; }
+  px = rx; pz = rz;
+
+  const T = { def, N, ds, L: total, px, pz, width: def.width, hw: def.width / 2, street: !!def.street };
+  T.straight = { a: -back, b: strLen - back };
   const tx = new Float64Array(N), tz = new Float64Array(N), nx = new Float64Array(N), nz = new Float64Array(N), curv = new Float64Array(N);
   for (let i = 0; i < N; i++) {
     const a = (i - 1 + N) % N, b = (i + 1) % N;
@@ -45,25 +64,58 @@ export function buildTrack(def) {
   }
   for (let i = 0; i < N; i++) curv[i] = signedCurv(px, pz, N, i, 4);
   Object.assign(T, { tx, tz, nx, nz, curv });
-  // ángulo de cada muestra (heading): forward = (sin h, cos h)
-  T.head = i => Math.atan2(tx[i], tz[i]);
+  T.head = i => Math.atan2(tx[((i % N) + N) % N], tz[((i % N) + N) % N]);
+  T.idx = s => Math.floor((((s % total) + total) % total) / ds) % N;
 
-  // Escapatorias y muros. Exterior de curva: grava; interior: pasto.
+  // Escapatorias y muros
   const wallL = new Float64Array(N), wallR = new Float64Array(N), gravL = new Uint8Array(N), gravR = new Uint8Array(N);
   const kerbL = new Uint8Array(N), kerbR = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     let cmax = 0; for (let k = -12; k <= 30; k++) { const c = curv[(i + k + N) % N]; if (Math.abs(c) > Math.abs(cmax)) cmax = c; }
     const tight = Math.min(1, Math.abs(cmax) * 70);
-    const outerL = cmax < 0; // curva a la derecha -> exterior a la izquierda
-    const base = 9, outer = base + 14 * tight;
-    wallL[i] = T.hw + (outerL ? outer : base + 2);
-    wallR[i] = T.hw + (outerL ? base + 2 : outer);
-    if (tight > 0.35) { if (outerL) gravL[i] = 1; else gravR[i] = 1; }
+    const outerL = cmax < 0;
+    if (T.street) {
+      const base = 3.2, outer = base + 7 * tight;
+      wallL[i] = T.hw + (outerL ? outer : base); wallR[i] = T.hw + (outerL ? base : outer);
+    } else {
+      const base = 9, outer = base + 14 * tight;
+      wallL[i] = T.hw + (outerL ? outer : base + 2);
+      wallR[i] = T.hw + (outerL ? base + 2 : outer);
+      if (tight > 0.35) { if (outerL) gravL[i] = 1; else gravR[i] = 1; }
+    }
   }
-  // pianos donde la curva es cerrada
   for (let i = 0; i < N; i++) {
-    const c = curv[i];
-    if (Math.abs(c) > 1 / 260) for (let k = -6; k <= 6; k++) { const q = (i + k + N) % N; kerbL[q] = 1; kerbR[q] = 1; }
+    if (Math.abs(curv[i]) > 1 / 260) for (let k = -6; k <= 6; k++) { const q = (i + k + N) % N; kerbL[q] = 1; kerbR[q] = 1; }
+  }
+  // Calle de boxes (lado izquierdo de la recta principal)
+  const pit = {
+    side: 1, inS: T.straight.a + 15, outS: T.straight.b - 70, blend: 75,
+    lane: T.hw + 7.4, width: 7, wall: T.hw + 2.8,
+  };
+  pit.boxes = [];
+  for (let k = 0; k < 8; k++) pit.boxes.push(pit.inS + pit.blend + 40 + k * 14);
+  pit.limitA = pit.inS + pit.blend; pit.limitB = pit.outS - pit.blend;
+  // desplazamiento lateral del camino de boxes en función de s (relativo a la recta)
+  pit.offsetAt = (s, fromD = 0) => {
+    const u = rel(s);
+    const sm = x => x * x * (3 - 2 * x);
+    if (u < pit.inS) return fromD;
+    if (u < pit.inS + pit.blend) return fromD + (pit.lane - fromD) * sm((u - pit.inS) / pit.blend);
+    if (u < pit.outS - pit.blend) return pit.lane;
+    if (u < pit.outS) return pit.lane + (T.hw - 2.5 - pit.lane) * sm((u - (pit.outS - pit.blend)) / pit.blend);
+    return T.hw - 2.5;
+  };
+  const rel = s => { let u = ((s % total) + total) % total; if (u > total / 2) u -= total; return u; };
+  T.rel = rel;
+  T.pit = pit;
+  for (let i = 0; i < N; i++) {
+    const u = rel(i * ds);
+    if (u > pit.inS - 10 && u < pit.outS + 10) {
+      const gap = u < pit.inS + pit.blend * 0.85 || u > pit.outS - pit.blend * 0.85;
+      wallL[i] = gap ? Math.max(wallL[i], pit.lane + pit.width / 2 + 1) : pit.wall;
+      gravL[i] = 0; kerbL[i] = 0;
+      if (u > pit.inS - 10 && u < pit.outS + 10) gravR[i] = 0;
+    }
   }
   // limitar muros para que no se crucen con otra parte de la pista
   const cell = 40, grid = new Map();
@@ -82,18 +134,48 @@ export function buildTrack(def) {
       arr[i] = w;
     }
   }
-  smoothArr(wallL, 6, N); smoothArr(wallR, 6, N);
-  // la grava no puede pasar el muro
+  smoothArr(wallL, 3, N); smoothArr(wallR, 6, N);
   Object.assign(T, { wallL, wallR, gravL, gravR, kerbL, kerbR });
   racingLine(T);
   speedProfile(T);
-  // grilla de largada: la línea está en la muestra 0, autos hacia atrás
+  // sectores
+  T.sectors = [T.L / 3, 2 * T.L / 3];
+  // objetos: conos en el vértice interno de las curvas lentas y en la salida de boxes
+  const props = [];
+  for (let i = 0; i < N; i++) {
+    const v = T.vmax[i];
+    if (v < 38 && v <= T.vmax[(i - 1 + N) % N] && v <= T.vmax[(i + 1) % N]) {
+      const side = curv[i] > 0 ? 1 : -1;
+      const u = rel(i * ds); if (u > pit.inS - 20 && u < pit.outS + 20) continue;
+      for (let k = -1; k <= 1; k++) {
+        const q = (i + k * 3 + N) % N, d = side * (T.hw + 2.4 + Math.abs(k) * 0.4);
+        props.push({ type: 'cone', x: px[q] + nx[q] * d, z: pz[q] + nz[q] * d });
+      }
+      i += 15;
+    }
+  }
+  for (let s = pit.outS - pit.blend * 0.9; s < pit.outS + 30; s += 9) {
+    const i = T.idx(s), d = T.hw + 0.9 + Math.max(0, Math.min(1, (pit.outS - s) / pit.blend)) * 1.5;
+    props.push({ type: 'cone', x: px[i] + nx[i] * d, z: pz[i] + nz[i] * d });
+  }
+  // carteles de distancia antes de las frenadas fuertes (se pueden voltear)
+  for (let i = 0; i < N; i++) {
+    const a = T.vmax[i];
+    if (a > 75 && a - T.vmax[(i + 40) % N] > 25 && T.vmax[(i - 1 + N) % N] >= a - 0.01 && a - T.vmax[(i + 8) % N] > 1) {
+      const side = curv[(i + 40) % N] > 0 ? -1 : 1;
+      for (const dist of [150, 100, 50]) {
+        const q = T.idx(i * ds + 120 - dist), d = side * (T.hw + 2.6);
+        props.push({ type: 'board', n: dist, x: px[q] + nx[q] * d, z: pz[q] + nz[q] * d, h: T.head(q) + Math.PI });
+      }
+      i += 40;
+    }
+  }
+  T.props = props;
   T.startIdx = 0;
   return T;
 }
 
 function nearestFar(T, x, z, self) {
-  // distancia a la pista desde (x,z) ignorando muestras cercanas en índice
   let best = 1e9; const c = T.cell, cx = Math.floor(x / c), cz = Math.floor(z / c);
   for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
     const L = T.grid.get((cx + a) + ',' + (cz + b)); if (!L) continue;
@@ -113,10 +195,9 @@ function smoothArr(a, r, N) {
 function signedCurv(X, Z, N, i, k) {
   const a = (i - k + N) % N, b = (i + k) % N;
   const ax = X[i] - X[a], az = Z[i] - Z[a], bx = X[b] - X[i], bz = Z[b] - Z[i];
-  const cross = ax * bz - az * bx; // >0 => giro a la derecha en este sistema (x der, z abajo)... se corrige el signo abajo
+  const cross = ax * bz - az * bx;
   const la = Math.hypot(ax, az), lb = Math.hypot(bx, bz), lc = Math.hypot(X[b] - X[a], Z[b] - Z[a]);
-  const k2 = 2 * cross / (la * lb * lc || 1);
-  return -k2; // positivo = gira a la izquierda (hacia la normal izquierda)
+  return -2 * cross / (la * lb * lc || 1); // positivo = gira a la izquierda
 }
 
 function racingLine(T) {
@@ -141,24 +222,29 @@ function racingLine(T) {
 function speedProfile(T) {
   const { N, ds } = T, g = 9.81, mu = 1.5;
   const k = 0.5 * 1.225 * CAR.ClA / CAR.mass, kd = 0.5 * 1.225 * CAR.CdA / CAR.mass;
-  const v = new Float64Array(N), lc = new Float64Array(N);
+  const v = new Float64Array(N), lc = new Float64Array(N), cc = new Float64Array(N);
   for (let i = 0; i < N; i++) lc[i] = Math.abs(signedCurv(T.lx, T.lz, N, i, 5));
-  for (let i = 0; i < N; i++) {
-    let c = 0; for (let q = -2; q <= 2; q++) c = Math.max(c, lc[(i + q + N) % N]);
-    const den = c - mu * k;
-    v[i] = den <= 0 ? 95 : Math.min(95, Math.sqrt(mu * g / den));
-  }
-  // frenadas (hacia atrás, dos vueltas para cerrar el circuito)
-  for (let r = 0; r < 2; r++) for (let i = N - 1; i >= 0; i--) {
-    const nv = v[(i + 1) % N];
-    const a = 1.25 * (g + k * nv * nv) + kd * nv * nv;
-    const lim = Math.sqrt(nv * nv + 2 * a * ds);
-    if (v[i] > lim) v[i] = lim;
-  }
-  T.vmax = v;
+  for (let i = 0; i < N; i++) cc[i] = Math.abs(signedCurv(T.px, T.pz, N, i, 5));
+  // perfil para la línea ideal (bots) y uno más conservador por el centro (asistencia de frenado)
+  const prof = (curvArr, muX) => {
+    const out = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      let c = 0; for (let q = -2; q <= 2; q++) c = Math.max(c, curvArr[(i + q + N) % N]);
+      const den = c - muX * k;
+      out[i] = den <= 0 ? 95 : Math.min(95, Math.sqrt(muX * g / den));
+    }
+    for (let r = 0; r < 2; r++) for (let i = N - 1; i >= 0; i--) {
+      const nv = out[(i + 1) % N];
+      const a = 1.25 * (g + k * nv * nv) + kd * nv * nv;
+      const lim = Math.sqrt(nv * nv + 2 * a * ds);
+      if (out[i] > lim) out[i] = lim;
+    }
+    return out;
+  };
+  T.vmax = prof(lc, mu);
+  T.vsafe = prof(cc, 1.32);
 }
 
-// Ubica (x,z) sobre la pista. hint: índice anterior (o -1 para búsqueda completa)
 export function locate(T, x, z, hint = -1) {
   const { N, px, pz } = T;
   let best = -1, bd = 1e18;
@@ -168,7 +254,6 @@ export function locate(T, x, z, hint = -1) {
     for (let k = -25; k <= 25; k++) { const i = (hint + k + N) % N; const d = (px[i] - x) ** 2 + (pz[i] - z) ** 2; if (d < bd) { bd = d; best = i; } }
     if (bd > 60 * 60) return locate(T, x, z, -1);
   }
-  // proyectar sobre el segmento
   const i = best, j = (i + 1) % N, h = (i - 1 + N) % N;
   let seg = i, f = 0;
   const proj = (a, b) => { const ex = px[b] - px[a], ez = pz[b] - pz[a]; return ((x - px[a]) * ex + (z - pz[a]) * ez) / (ex * ex + ez * ez); };
@@ -181,7 +266,6 @@ export function locate(T, x, z, hint = -1) {
   return { i: best, seg, f, s: (seg + f) * T.ds, d };
 }
 
-// valor interpolado de un arreglo por muestra en s
 export function at(T, arr, s) {
   const u = ((s / T.ds) % T.N + T.N) % T.N, i = Math.floor(u), f = u - i;
   return arr[i] + (arr[(i + 1) % T.N] - arr[i]) * f;
@@ -192,3 +276,4 @@ export function pointAt(T, s, off = 0) {
   const nx = T.nx[i] + (T.nx[j] - T.nx[i]) * f, nz = T.nz[i] + (T.nz[j] - T.nz[i]) * f;
   return [x + nx * off, z + nz * off];
 }
+export function headingAt(T, s) { return Math.atan2(at(T, T.tx, s), at(T, T.tz, s)); }

@@ -39,13 +39,14 @@ export function makeCar(x, z, h) {
     surf: [0, 0, 0, 0], // 0 asfalto, 1 piano, 2 pasto, 3 grava
     gear: 1, rpm: CAR.idle, shiftT: 0, steer: 0, thr: 0, brk: 0, axs: 0, ays: 0,
     tcCut: 1, absF: [1, 1, 1, 1], drs: false, tow: 0, revCount: 0,
+    dmg: new Array(11).fill(0),
     assist: { abs: true, tc: true, auto: true },
   };
 }
 
 export function speed(c) { return Math.hypot(c.vx, c.vy); }
 
-function surfMu(s) { return s === 0 ? 1 : s === 1 ? 0.93 : s === 2 ? 0.55 : 0.45; }
+function surfMu(s) { return s === 0 ? 1 : s === 1 ? 0.93 : s === 2 ? 0.55 : s === 3 ? 0.45 : 0.88; }
 
 // tire force for wheel i given ang. velocity w; returns [Fl, Fs]
 function tire(c, i, w, vl, vs, Fz) {
@@ -55,7 +56,7 @@ function tire(c, i, w, vl, vs, Fz) {
   const sx = kap / CAR.kp, sy = ta / TAN_AP, s = Math.hypot(sx, sy);
   if (s < 1e-6 || Fz <= 0) return [0, 0, kap, ta, 0];
   let mu = CAR.mu * (1 - CAR.loadSens * (Fz / CAR.Fz0 - 1));
-  mu = Math.max(CAR.mu * 0.7, mu) * surfMu(c.surf[i]) * (i > 1 ? 1.07 : 1);
+  mu = Math.max(CAR.mu * 0.7, mu) * surfMu(c.surf[i]) * (i > 1 ? 1.07 : 1) * (1 - 0.3 * Math.min(1, c.dmg[4 + i]));
   const F = mu * Fz * MF(s);
   return [F * sx / s, -F * sy / s, kap, ta, s];
 }
@@ -74,19 +75,24 @@ export function step(c, inp, dt) {
   const v2 = v * v;
   const drsOn = c.drs ? 1 : 0;
   const tow = c.tow || 0; // 0..1 rebufo
-  const CdA = CAR.CdA * (1 - 0.18 * drsOn) * (1 - 0.28 * tow);
-  const ClA = CAR.ClA * (1 - 0.12 * drsOn) * (1 - 0.12 * tow);
-  const down = 0.5 * RHO * ClA * v2;
-  const drag = 0.5 * RHO * CdA * v2 * Math.sign(v);
+  const D = c.dmg;
+  const fwL = D[2] >= 1 ? 1 : Math.min(1, D[0]), fwR = D[2] >= 1 ? 1 : Math.min(1, D[1]), rw = Math.min(1, D[3]);
+  const body = 1 - 0.12 * (Math.min(1, D[8]) + Math.min(1, D[9]));
+  const CdA = CAR.CdA * (1 - 0.18 * drsOn) * (1 - 0.28 * tow) * (1 - 0.22 * rw) * (1 + 0.04 * (fwL + fwR));
+  const ClA = CAR.ClA * (1 - 0.12 * tow) * body;
+  const q = 0.5 * RHO * v2;
+  const downF = q * ClA * CAR.aeroFront, downR = q * ClA * (1 - CAR.aeroFront) * (1 - 0.12 * drsOn) * (1 - 0.7 * rw);
+  const drag = q * CdA * Math.sign(v);
 
-  // cargas por rueda
+  // cargas por rueda (el alerón delantero roto descarga ese lado)
   const L = CAR.wb, Wf = m * G * CAR.b / L, Wr = m * G * CAR.a / L;
   const dLong = m * c.axs * CAR.h / L;
-  const fF = (Wf + down * CAR.aeroFront - dLong) / 2, fR = (Wr + down * (1 - CAR.aeroFront) + dLong) / 2;
+  const fF = (Wf - dLong) / 2, fR = (Wr + downR + dLong) / 2;
   const dLat = m * c.ays * CAR.h / CAR.tw * 0.5;
   const Fz = c.Fz;
-  Fz[0] = Math.max(0, fF - dLat); Fz[1] = Math.max(0, fF + dLat);
+  Fz[0] = Math.max(0, fF + downF / 2 * (1 - 0.75 * fwL) - dLat); Fz[1] = Math.max(0, fF + downF / 2 * (1 - 0.75 * fwR) + dLat);
   Fz[2] = Math.max(0, fR - dLat); Fz[3] = Math.max(0, fR + dLat);
+  for (let i = 0; i < 4; i++) if (D[4 + i] >= 1) Fz[i] = 0; // rueda perdida
 
   // motor y caja
   const ratio = c.gear > 0 ? CAR.gears[c.gear - 1] : c.gear < 0 ? -14 : 0;
@@ -101,7 +107,7 @@ export function step(c, inp, dt) {
   if (c.shiftT > 0) c.shiftT -= dt;
   let Te = 0;
   if (c.gear !== 0 && c.shiftT <= 0) {
-    if (c.thr > 0.02 && rpmW < CAR.limiter) Te = torqueAt(rpm) * c.thr * c.tcCut * clutch;
+    if (c.thr > 0.02 && rpmW < CAR.limiter) Te = torqueAt(rpm) * c.thr * c.tcCut * clutch * (1 - 0.45 * Math.min(1, D[10])) * (c.limiter && v > c.limiter ? 0 : 1);
     else Te = -(25 + rpmW * 0.004) * (1 - c.thr); // freno motor
   }
   const Tdrive = Te * ratio * CAR.eff / 2; // por rueda trasera
@@ -109,13 +115,14 @@ export function step(c, inp, dt) {
 
   // ruedas
   let Fx = 0, Fy = 0, Mz = 0;
-  const cs = Math.cos(c.steer), sn = Math.sin(c.steer);
-  let maxSlipR = 0, minSlip = 0, useR = 0;
+    let maxSlipR = 0, minSlip = 0, useR = 0;
   for (let i = 0; i < 4; i++) {
     const [lx, ly] = WL[i];
     const vxw = c.vx - c.r * ly, vyw = c.vy + c.r * lx;
     const front = i < 2;
-    const ca = front ? cs : 1, sa = front ? sn : 0;
+    const toe = D[4 + i] > 0.15 ? (ly > 0 ? 1 : -1) * 0.04 * Math.min(1, D[4 + i]) : 0;
+    const ang = (front ? c.steer : 0) + toe;
+    const ca = toe || front ? Math.cos(ang) : 1, sa = toe || front ? Math.sin(ang) : 0;
     const vl = vxw * ca + vyw * sa, vs = -vxw * sa + vyw * ca;
     const Iw = front ? CAR.IwF : IwR;
     const Td = front ? 0 : Tdrive;
@@ -137,6 +144,7 @@ export function step(c, inp, dt) {
     minSlip = Math.min(minSlip, kap);
     // rodadura + superficie blanda
     let roll = -0.012 * Fz[i] * Math.sign(vl);
+    if (D[4 + i] >= 1) roll -= m * G / 4 * 0.75 * Math.sign(vl) * Math.min(1, Math.abs(vl)); // arrastra el piso
     if (c.surf[i] === 2) roll -= m / 4 * (0.9 + 0.06 * Math.abs(vl)) * Math.sign(vl);
     if (c.surf[i] === 3) roll -= m / 4 * (3.2 + 0.16 * Math.abs(vl)) * Math.sign(vl);
     if (Math.abs(vl) < 0.5) roll *= Math.abs(vl) / 0.5;
@@ -215,4 +223,54 @@ export function hitWall(c, nx, nz, pen) {
   // las ruedas acompañan
   for (let i = 0; i < 4; i++) c.w[i] = c.vx / CAR.R;
   return -vn;
+}
+
+// ---------- Daño ----------
+// Partes: 0 alerón del. izq, 1 alerón del. der, 2 trompa, 3 alerón trasero, 4-7 suspensión FL FR RL RR,
+// 8 pontón izq, 9 pontón der, 10 motor. 0 = sano, 1 = roto / desprendido.
+export const PARTS = ['Alerón del. izq.', 'Alerón del. der.', 'Trompa', 'Alerón trasero', 'Suspensión del. izq.', 'Suspensión del. der.', 'Suspensión tras. izq.', 'Suspensión tras. der.', 'Pontón izq.', 'Pontón der.', 'Motor'];
+const STRENGTH = [9, 9, 15, 11, 15, 15, 17, 17, 18, 18, 30];
+// punto de contacto en coordenadas del auto (x adelante, y izquierda) y velocidad de impacto (m/s)
+export function damageAt(c, lx, ly, imp, scale = 1) {
+  const e = imp - 4.5; if (e <= 0) return [];
+  const add = (p, k = 1) => { const before = c.dmg[p]; c.dmg[p] = Math.min(1, c.dmg[p] + e / STRENGTH[p] * k * scale); if (before < 1 && c.dmg[p] >= 1) broke.push(p); };
+  const broke = [];
+  const L = ly > 0;
+  if (lx > 2.2) { // trompa / alerón delantero
+    if (Math.abs(ly) < 0.35) { add(0); add(1); if (imp > 13) add(2, 0.7); }
+    else { add(L ? 0 : 1, 1.2); if (imp > 12) { add(L ? 4 : 5, 0.6); add(2, 0.35); } }
+  } else if (lx > 0.9) { // rueda delantera
+    add(L ? 4 : 5); add(L ? 0 : 1, 0.6);
+  } else if (lx > -1.0) { // pontón
+    add(L ? 8 : 9); if (imp > 12) add(L ? 4 : 5, 0.3);
+  } else if (lx > -2.2) { // rueda trasera
+    add(L ? 6 : 7); if (imp > 12) add(3, 0.4);
+  } else { add(3, 1.1); if (imp > 14) add(L ? 6 : 7, 0.4); }
+  if (imp > 16) add(10, 0.6);
+  if (imp > 22) { add(L ? 8 : 9, 0.5); add(3, 0.3); }
+  return broke;
+}
+// puntos extremos del auto para saber dónde tocó un muro
+const EXT = [[2.95, 0.9], [2.95, -0.9], [3.05, 0], [1.98, 1.0], [1.98, -1.0], [0, 0.85], [0, -0.85], [-1.62, 1.0], [-1.62, -1.0], [-2.55, 0.48], [-2.55, -0.48]];
+export function contactPoint(c, nx, nz) {
+  // n apunta hacia la pista: el contacto es el punto más extremo en dirección -n
+  const fx = Math.sin(c.h), fz = Math.cos(c.h), lx = Math.cos(c.h), lz = -Math.sin(c.h);
+  let best = EXT[0], bd = -1e9;
+  for (const p of EXT) { const wx = fx * p[0] + lx * p[1], wz = fz * p[0] + lz * p[1]; const d = -(wx * nx + wz * nz); if (d > bd) { bd = d; best = p; } }
+  return best;
+}
+export function repair(c) { c.dmg.fill(0); }
+export function dmgTotal(c) { return c.dmg.reduce((a, b) => a + b, 0); }
+
+// Dirección asistida: la tecla a fondo pide la curva más cerrada que permite el agarre a esa velocidad.
+// Corrige sola si la cola se va (control de estabilidad).
+export function assistSteer(c, st, analog) {
+  const v = Math.max(0.5, c.vx);
+  const k = 0.5 * RHO * CAR.ClA / CAR.mass;
+  const aMax = 1.45 * (G + k * v * v);
+  const rDes = st * Math.min(aMax / v, v / 6); // velocidad de giro objetivo
+  let d = Math.atan(CAR.wb * rDes / v) + st * Math.min(0.07, 0.0009 * v) ;
+  d += (rDes - c.r) * (v > 8 ? 0.09 : 0.03);
+  if (v > 5) d += Math.max(-0.14, Math.min(0.14, Math.atan2(c.vy, v) * 0.8));
+  return Math.max(-CAR.maxSteer, Math.min(CAR.maxSteer, d * (analog ? 1 : 1)));
 }
