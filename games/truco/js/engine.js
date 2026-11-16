@@ -68,6 +68,7 @@ export class Engine {
     this.event({ seat: a, kind: 'info', text: 'Se le acabó el tiempo' });
     this.botMove(a);
   }
+  setSkin(seat, skin) { if (this.S.seats[seat]) { this.S.seats[seat].skin = skin; this.push(); } }
   setBot(seat, name) {
     const st = this.S.seats[seat];
     st.bot = true; st.id = null; if (name) st.name = name;
