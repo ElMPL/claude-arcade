@@ -10,12 +10,13 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
+renderer.autoClear = false;
 document.body.prepend(renderer.domElement);
 
 export const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d0805);
 scene.fog = new THREE.FogExp2(0x0d0805, 0.075);
-export const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 60);
+export const camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.05, 60);
 scene.add(camera);
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
@@ -179,7 +180,7 @@ function faceTexture(c) {
     t.repeat.set(1 / 10, 1 / 4);
     t.offset.set(ORDER_N.indexOf(c.n) / 10, 1 - (ORDER_S.indexOf(c.s) + 1) / 4);
     t.needsUpdate = true;
-    faceCache.set(k, new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.5, roughness: 0.55, side: THREE.FrontSide }));
+    faceCache.set(k, new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.5, roughness: 0.95, metalness: 0, color: 0xd9d0c0, side: THREE.FrontSide }));
   }
   return faceCache.get(k);
 }
@@ -221,5 +222,13 @@ export function makeCard(c, { lit = true } = {}) {
   g.userData.front = front;
   scene.add(g);
   return g;
+}
+const deckSide = new THREE.MeshStandardMaterial({ color: 0xf3ede0, roughness: 0.8 });
+export function makeStack(count) {
+  const h = Math.max(0.004, count * 0.0011);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(CARD_W, h, CARD_H), [deckSide, deckSide, backMat, backMat, deckSide, deckSide]);
+  m.castShadow = true; m.userData.h = h;
+  scene.add(m);
+  return m;
 }
 export function setCardFace(g, c) { g.userData.front.material = c ? faceTexture(c) : backMat; }

@@ -31,10 +31,13 @@ export class Engine {
     S.mano = (S.dealer + 1) % n;
     S.turn = S.mano;
     for (let i = 0; i < n; i++) { this.hands[i] = deck.splice(0, 3); this.orig[i] = this.hands[i].slice(); }
-    Object.assign(S, { phase: 'play', tricks: [[]], results: [], trickWin: [], truco: { level: 0, canRaise: null }, envidoDone: false, pending: null, last: null });
+    Object.assign(S, { phase: 'deal', tricks: [[]], results: [], trickWin: [], truco: { level: 0, canRaise: null }, envidoDone: false, pending: null, last: null });
     S.handNo++;
-    this.event({ kind: 'deal' });
     this.push();
+    this.event({ kind: 'deal', dealer: S.dealer, mano: S.mano, n });
+    // tiempo para la animación de mezclar y repartir
+    clearTimeout(this.pause);
+    this.pause = setTimeout(() => { S.phase = 'play'; this.push(); }, (1300 + 3 * n * 110 + 500) * this.speed);
   }
   push() {
     const S = this.S;
@@ -192,7 +195,12 @@ export class Engine {
     }
     S.pending = null; S.phase = 'pause';
     this.push();
-    order.forEach((o, k) => setTimeout(() => this.event({ seat: o.seat, kind: 'tantos', text: String(o.t) }), (500 + k * 650) * this.speed));
+    let shown = -1;
+    order.forEach((o, k) => {
+      const text = o.t > shown ? `Tengo ${o.t}` : 'Son buenas';
+      if (o.t > shown) shown = o.t;
+      setTimeout(() => this.event({ seat: o.seat, kind: 'tantos', text, num: text.startsWith('Tengo') }), (500 + k * 750) * this.speed);
+    });
     clearTimeout(this.pause);
     this.pause = setTimeout(() => {
       const team = teamOf(S, bestSeat);
@@ -201,7 +209,7 @@ export class Engine {
       S.pending = p.savedTruco || null;
       S.phase = 'play';
       if (!this.checkGameEnd()) this.push();
-    }, (900 + n * 650) * this.speed);
+    }, (900 + n * 750) * this.speed);
     return true;
   }
 
@@ -210,11 +218,14 @@ export class Engine {
     if (!canMazo(S, seat)) return false;
     const other = 1 - teamOf(S, seat);
     const lvl = S.pending && S.pending.kind === 'truco' ? S.pending.to - 1 : S.truco.level;
+    // En primera, sin que se haya cantado nada (ni envido ni truco), irse al mazo da 2 puntos
+    const nothingSung = S.tricks.length === 1 && !S.envidoDone && S.truco.level === 0 && !S.pending;
+    const pts = nothingSung ? 2 : trucoValue(lvl);
     this.event({ seat, kind: 'call', text: 'Me voy al mazo' });
     S.pending = null; S.phase = 'pause';
     this.push();
     clearTimeout(this.pause);
-    this.pause = setTimeout(() => this.endHand(other, trucoValue(lvl), 'se fueron al mazo'), 900 * this.speed);
+    this.pause = setTimeout(() => this.endHand(other, pts, nothingSung ? 'se fueron al mazo en primera' : 'se fueron al mazo'), 900 * this.speed);
     return true;
   }
 
