@@ -3,8 +3,9 @@
 import * as THREE from 'three';
 import { loadMap } from './mapdata.js';
 import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked } from './world.js';
-import { buildMeshes, buildEnvironment, themeOf } from './mesher.js';
+import { buildMeshes, buildFromModel, buildEnvironment, themeOf } from './mesher.js';
 import { buildNav } from './nav.js';
+import { applyWingman, wingmanMesh } from './wingman.js';
 import { makePlayer, movePlayer, eyeH, PM, fallDamage } from './player.js';
 import { WEAPONS, BUY, slotOf } from './weapons.js';
 import { makeHost, ROUND, LENGTHS, sideOf } from './host.js';
@@ -16,6 +17,7 @@ import { makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, upd
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
+import { makeSettings, styleCrosshair } from './settings.js';
 import { hud, radarImage, drawRadar, renderBoard, buildBuy, refreshBuy, weaponInfo, showWeaponInfo, WNAME } from './ui.js';
 
 const U = 0.0254, D2R = Math.PI / 180;
@@ -23,7 +25,6 @@ const $ = id => document.getElementById(id);
 const MAPS = [
   { id: 'dust2', name: 'Dust II', sub: 'Desierto · clásico' },
   { id: 'mirage', name: 'Mirage', sub: 'Pueblo marroquí' },
-  { id: 'vertigo', name: 'Vertigo', sub: 'Rascacielos en obra' },
 ];
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } } };
 
@@ -63,10 +64,12 @@ const M = {
 const me = () => G.players.get(myId);
 
 // ---------------- entrada ----------------
-const keys = new Set(); let mouseL = false, mouseR = false, locked = false, sens = store.get('ls:sens', 0.0021);
+const settings = makeSettings(store, S => { A.setVolume(S.vol * 0.7); });
+const CFG = settings.S; A.setVolume(CFG.vol * 0.7);
+const keys = new Set(); let mouseL = false, mouseR = false, locked = false, lockAt = 0, mAvg = 6;
 const touchState = { mx: 0, mz: 0, fire: false, look: null };
 const isTouch = matchMedia('(pointer: coarse)').matches;
-const QUALITY = store.get('ls:q', isTouch ? 0 : 2);
+const QUALITY = isTouch ? Math.min(1, CFG.quality) : CFG.quality;
 addEventListener('keydown', e => {
   if (e.repeat && !['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) { if (e.code === 'Tab') e.preventDefault(); return; }
   if (G.phase === 'lobby') return;
@@ -99,8 +102,14 @@ addEventListener('mouseup', e => { if (e.button === 0) mouseL = false; if (e.but
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => {
   if (!locked || !M.pl || G.phase === 'lobby') return;
-  const z = M.scope ? zoomOf() : 1;
-  look(e.movementX * sens / z, e.movementY * sens / z);
+  // el navegador a veces manda saltos enormes de movementX/Y (al bloquear el puntero o cuando el
+  // cursor toca el borde de la ventana): esos eventos se descartan para que la mira no pegue tirones
+  const mx = e.movementX, my = e.movementY, m = Math.abs(mx) + Math.abs(my), now = performance.now();
+  if (now - lockAt < 80) return;
+  if (m > 120 && m > mAvg * 7) return;
+  mAvg = mAvg * 0.85 + Math.min(m, 150) * 0.15;
+  const z = M.scope ? zoomOf() : 1, sens = CFG.sens / 1000;
+  look(mx * sens / z, my * sens / z * (CFG.invert ? -1 : 1));
 });
 addEventListener('wheel', e => { if (locked && G.phase !== 'lobby' && !buyOpen) cycleSlot(e.deltaY > 0 ? 1 : -1); }, { passive: true });
 function look(dx, dy) {
@@ -108,15 +117,21 @@ function look(dx, dy) {
   p.yaw -= dx; p.pitch = Math.max(-1.5, Math.min(1.5, p.pitch - dy));
   M.swayT[0] += dx * 4; M.swayT[1] += dy * 4;
 }
-function lockPointer() { const c = renderer.domElement; try { const r = c.requestPointerLock && c.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } catch (e) { } }
-document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === renderer.domElement; updateClickPlay(); });
-function updateClickPlay() { $('clickPlay').hidden = locked || isTouch || G.phase === 'lobby' || buyOpen || !loaded; }
+function lockPointer() {
+  if (settings.isOpen()) return;
+  const c = renderer.domElement; if (!c.requestPointerLock) return;
+  // movimiento sin aceleración del sistema (menos saltos); si el navegador no lo soporta, el pedido normal
+  const plain = () => { try { const r = c.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } catch (e) { } };
+  try { const r = c.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(plain); else if (!r) { } } catch (e) { plain(); }
+}
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === renderer.domElement; if (locked) lockAt = performance.now(); updateClickPlay(); });
+function updateClickPlay() { $('clickPlay').hidden = locked || isTouch || G.phase === 'lobby' || buyOpen || !loaded || settings.isOpen(); }
 
 function onKey(c) {
   const P = me(); if (!P) return;
   if (c === 'KeyB') { toggleBuy(); return; }
   if (c === 'Tab') return;
-  if (c === 'BracketLeft' || c === 'BracketRight') { sens = Math.max(0.0004, Math.min(0.01, sens * (c === 'BracketLeft' ? 0.9 : 1.1))); store.set('ls:sens', sens); hud.center('Sensibilidad ' + (sens * 1000).toFixed(2), 1200); return; }
+  if (c === 'BracketLeft' || c === 'BracketRight') { CFG.sens = +Math.max(0.4, Math.min(8, CFG.sens * (c === 'BracketLeft' ? 0.92 : 1.08))).toFixed(2); store.set('ls:cfg', CFG); hud.center('Sensibilidad ' + CFG.sens.toFixed(2), 1200); return; }
   if (!P.alive) { if (c === 'Space') nextSpec(1); return; }
   if (c === 'Digit1') pick('p'); else if (c === 'Digit2') pick('s');
   else if (c === 'Digit3') { if (M.slot === 'k' && P.inv.zeus) pick('z'); else if (M.slot === 'z') pick('k'); else pick('k'); }
@@ -614,7 +629,8 @@ function initRender() {
   const mz = makeFxMuzzle(); vm.userData.flash = mz;
   addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = vmCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix(); });
   renderer.domElement.addEventListener('click', () => { if (G.phase !== 'lobby' && !locked && !isTouch && !buyOpen) lockPointer(); });
-  $('clickPlay').addEventListener('click', () => { A.initAudio(); lockPointer(); });
+  $('clickPlay').addEventListener('click', e => { if (e.target.id === 'cpSettings') return; A.initAudio(); A.setVolume(CFG.vol * 0.7); lockPointer(); });
+  $('cpSettings').addEventListener('click', e => { e.stopPropagation(); settings.open(() => updateClickPlay()); updateClickPlay(); });
 }
 function makeFxMuzzle() {
   const m = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: '#ffd27a', transparent: true, opacity: 0.95, depthWrite: false }));
@@ -624,14 +640,27 @@ async function loadGame(id) {
   $('loading').hidden = false; $('loadMsg').textContent = 'Cargando ' + (MAPS.find(m => m.id === id)?.name || id) + '…';
   await new Promise(r => setTimeout(r, 30));
   const data = mapCache[id] || (mapCache[id] = await loadMap(id));
-  const W = data.W || (data.W = buildWorld(data.info, data.layers));
-  G.W = W; G.info = data.info;
-  G.nav = data.nav || (data.nav = buildNav(W));
+  let W, wing = null;
+  if (G.cfg.size === 2) {
+    // 2v2: copia del mundo con barricadas y un solo sitio
+    if (!data.wing) {
+      const L2 = data.layers.map(l => ({ ...l, cls: l.cls.slice(), top: l.top ? l.top.slice() : l.top, bot: l.bot ? l.bot.slice() : l.bot, h: l.h ? l.h.slice() : l.h }));
+      if (data.layers.flags) L2.flags = data.layers.flags.slice();
+      const W2 = buildWorld(data.info, L2); const r = applyWingman(W2, buildNav(W2));
+      data.wing = { W: W2, nav: buildNav(W2), r };
+    }
+    W = data.wing.W; G.nav = data.wing.nav; wing = data.wing.r;
+  } else {
+    W = data.W || (data.W = buildWorld(data.info, data.layers));
+    G.nav = data.nav || (data.nav = buildNav(W));
+  }
+  G.W = W; G.info = data.info; G.wingSite = wing ? wing.site : null;
   G.mapName = MAPS.find(m => m.id === id)?.name || id;
   // escena nueva
   while (scene.children.length) scene.remove(scene.children[0]);
   if (mapMesh) mapMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-  const built = buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
+  const built = data.mesh ? buildFromModel(W, data.mesh, data.info, id, G.nav) : buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
+  if (wing && wing.cells.length) mapMesh.add(wingmanMesh(W, wing.cells));
   buildEnvironment(scene, W, id, QUALITY);
   renderer.shadowMap.needsUpdate = true;
   fx = makeFx(scene); fx.floorAt = (x, z, y) => floorAt(G.W, x, z, y + 0.2);
@@ -890,9 +919,9 @@ function updateCamera(dt) {
   // HUD de mira
   $('scope').hidden = !sniperScope;
   const showX = !sniperScope && (P.alive || M.spec) && !(w && w.cat === 'sniper');
-  let gap = 4;
-  if (P.alive && w && w.dmg) gap = 3 + inaccuracy(w, { speed: Math.hypot(M.pl.vx, M.pl.vz), onGround: M.pl.onGround, duck: M.pl.duck, scoped: M.scope > 0, shots: M.shots }) * 900;
-  hud.crosshair(Math.min(60, gap), showX);
+  let gap = CFG.xGap;
+  if (!CFG.xStatic && P.alive && w && w.dmg) gap = CFG.xGap + Math.max(0, inaccuracy(w, { speed: Math.hypot(M.pl.vx, M.pl.vz), onGround: M.pl.onGround, duck: M.pl.duck, scoped: M.scope > 0, shots: M.shots }) * 900 - 1);
+  hud.crosshair(Math.min(60, gap), showX, CFG);
 }
 let hudT = 0, radarT = 0;
 function updateHud(dt) {
@@ -1047,7 +1076,7 @@ let begun = false;
 function beginMatch() {
   if (begun) return; begun = true;
   H = makeHost(G);
-  const humans = (ctx.players || [{ id: myId, name: 'Jugador', slot: 0 }]).map(p => { const pr = G.prefs[p.id] || {}; return { id: p.id, name: p.name, slot: p.slot, pref: pr.t ?? -1, sk: pr.sk || [0, 0], fin: pr.f || 0 }; });
+  const humans = (ctx.players || [{ id: myId, name: 'Jugador', slot: 0 }]).map(p => { const pr = G.prefs[p.id] || {}; return { id: p.id, name: p.name, slot: p.slot, pref: pr.t ?? -1 }; });
   H.setup(humans);
   BOTS = makeBots(G, H);
   H.startMatch();
@@ -1104,6 +1133,7 @@ async function boot() {
   G.emit = (type, data) => { if (type === 'start') { send('start', data); startGame(data); return; } origEmit(type, data); };
   menu = makeMenu({
     G, store, MAPS, LENGTHS, DIFF, mapThumb, ctx: () => ctx, myId: () => myId, isHost, pushCfg,
+    openSettings: (cb) => settings.open(cb),
     sendPref: (pr) => { G.prefs[myId] = pr; if (isHost()) pushCfg(); else send('pref', pr, { to: ctx.hostId }); },
     onStart: () => { A.initAudio(); if (!isTouch) goFullscreen(); G.emit('start', { cfg: G.cfg, prefs: G.prefs }); },
   });

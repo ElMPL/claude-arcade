@@ -1,4 +1,5 @@
 // HUD estilo CS2: radar, plata, reloj y marcador, vida/blindaje, munición, killfeed, tabla y menú de compra.
+import { styleCrosshair } from './settings.js';
 import { WEAPONS, BUY, DESC } from './weapons.js';
 import { iconURL } from './icons.js';
 const $ = id => document.getElementById(id);
@@ -10,12 +11,19 @@ export const WNAME = id => (WEAPONS[id] ? WEAPONS[id].name : id === 'c4' ? 'C4' 
 export function radarImage(W) {
   const n = W.n, cv = document.createElement('canvas'); cv.width = n; cv.height = n;
   const x = cv.getContext('2d'), img = x.createImageData(n, n), d = img.data;
+  let hmin = 1e9, hmax = -1e9;
+  for (let i = 0; i < n * n; i++) if (W.cls[0][i] === 1 || W.cls[0][i] === 2) { const t = W.top[0][i]; if (t < hmin) hmin = t; if (t > hmax) hmax = t; }
+  const span = Math.max(3, Math.min(hmax - hmin, 14));
   for (let i = 0; i < n * n; i++) {
-    let top = -1e9, cl = 0;
-    for (let l = W.L - 1; l >= 0; l--) { const t = W.top[l][i]; if (!isNaN(t) && W.cls[l][i] !== 3 && W.cls[l][i] !== 4) { if (l === W.L - 1 || top < -1e8) { top = t; cl = W.cls[l][i]; } break; } }
     let r = 0, g = 0, b = 0, a = 0;
-    if (top > -1e8) { const k = Math.max(0, Math.min(1, top / 6.5)); r = 70 + k * 120; g = 78 + k * 110; b = 88 + k * 70; a = 235; if (cl === 2) { r *= 0.62; g *= 0.62; b *= 0.62; } }
-    else { let wall = false; for (let l = 0; l < W.L; l++) if (W.cls[l][i] === 3) wall = true; if (wall) { r = g = b = 22; a = 230; } }
+    const c0 = W.cls[0][i], t0 = W.top[0][i];
+    if ((c0 === 1 || c0 === 2) && !isNaN(t0) && t0 - hmin < span + 1) {
+      const k = Math.max(0, Math.min(1, (t0 - hmin) / span)); r = 70 + k * 130; g = 78 + k * 118; b = 88 + k * 80; a = 235;
+      if (W.L > 1 && !isNaN(W.top[1][i])) { r *= 0.72; g *= 0.72; b *= 0.8; }
+    } else if (c0 === 3) {
+      let near = false; for (const d of [1, -1, n, -n]) { const j = i + d; if (j >= 0 && j < n * n && (W.cls[0][j] === 1)) near = true; }
+      if (near) { r = g = b = 22; a = 230; }
+    }
     const f = W.flags[i]; if ((f & 12) && a) { r = r * 0.6 + 120; g = g * 0.6 + 40; b *= 0.6; }
     d[i * 4] = r; d[i * 4 + 1] = g; d[i * 4 + 2] = b; d[i * 4 + 3] = a;
   }
@@ -73,10 +81,9 @@ export const hud = {
     this.el.slots.innerHTML = h;
   },
   showSlots() { this.el.slots.style.opacity = 1; clearTimeout(this._st); this._st = setTimeout(() => this.el.slots.style.opacity = 0.35, 1800); },
-  crosshair(gap, show, dot) {
-    const g = Math.round(gap), e = this.el.xhair; if (e._g === g + '' + show) return; e._g = g + '' + show;
-    e.style.display = show ? '' : 'none';
-    const [l, r, u, d] = e.children; l.style.left = -(g + 8) + 'px'; r.style.left = g + 'px'; u.style.top = -(g + 8) + 'px'; d.style.top = g + 'px';
+  crosshair(gap, show, S) {
+    const e = this.el.xhair; if (e._show !== show) { e._show = show; e.style.display = show ? '' : 'none'; }
+    if (show) styleCrosshair(e, S, gap);
   },
   hit(hs) { const h = this.el.hitmark; h.classList.remove('on'); void h.offsetWidth; h.classList.add('on'); h.style.filter = hs ? 'drop-shadow(0 0 2px red) sepia(1) saturate(8) hue-rotate(-30deg)' : ''; },
   center(txt, ms = 2200) { const c = this.el.centerMsg; c.textContent = txt; c.style.opacity = 1; clearTimeout(this._ct); if (ms) this._ct = setTimeout(() => c.style.opacity = 0, ms); },

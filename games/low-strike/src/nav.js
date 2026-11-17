@@ -73,21 +73,26 @@ export function buildNav(W) {
   nav.N = N;
   // componente principal: nodos a los que se llega desde el spawn CT y desde los que se puede volver
   const T = W.L * N, nb = [];
-  const rev = Array.from({ length: 0 });
-  const radj = new Map();
-  const fwd = new Uint8Array(T), bwd = new Uint8Array(T);
-  const seeds = zoneCells(W, 32);
-  let s0 = -1;
-  for (const c of seeds) { const x = (c % W.n + 0.5) * W.cell, z = (Math.floor(c / W.n) + 0.5) * W.cell; const j = Math.floor(z / nav.c) * m + Math.floor(x / nav.c); for (let l = W.L - 1; l >= 0; l--) if (!isNaN(H[l][j])) { s0 = l * N + j; break; } if (s0 >= 0) break; }
-  if (s0 < 0) { for (let i = 0; i < T && s0 < 0; i++) if (!isNaN(H[Math.floor(i / N)][i % N])) s0 = i; }
-  // ida
-  let st = [s0]; fwd[s0] = 1;
-  while (st.length) { const c = st.pop(); nav.neighbors(c, nb); for (let k = 0; k < nb.length; k += 2) { const t = nb[k]; let r = radj.get(t); if (!r) radj.set(t, r = []); r.push(c); if (!fwd[t]) { fwd[t] = 1; st.push(t); } } }
-  // vuelta (aristas invertidas)
-  st = [s0]; bwd[s0] = 1;
-  while (st.length) { const c = st.pop(); const r = radj.get(c); if (!r) continue; for (const t of r) if (!bwd[t]) { bwd[t] = 1; st.push(t); } }
-  nav.main = new Uint8Array(T);
-  for (let i = 0; i < T; i++) nav.main[i] = fwd[i] & bwd[i];
+  // se prueban varias semillas dentro del spawn CT (puede haber techos o recovecos) y gana la componente más grande
+  const seeds = zoneCells(W, 32), cand = [];
+  for (let k = 0; k < seeds.length && cand.length < 8; k += Math.max(1, Math.floor(seeds.length / 8))) {
+    const c = seeds[k]; const x = (c % W.n + 0.5) * W.cell, z = (Math.floor(c / W.n) + 0.5) * W.cell; const j = Math.floor(z / nav.c) * m + Math.floor(x / nav.c);
+    for (let l = 0; l < W.L; l++) if (!isNaN(H[l][j])) { cand.push(l * N + j); break; }
+  }
+  if (!cand.length) { for (let i = 0; i < T; i++) if (!isNaN(H[Math.floor(i / N)][i % N])) { cand.push(i); break; } }
+  let best = null, bestN = -1;
+  for (const s0 of cand) {
+    if (best && best[s0]) continue;
+    const fwd = new Uint8Array(T), bwd = new Uint8Array(T), radj = new Map();
+    let st = [s0]; fwd[s0] = 1;
+    while (st.length) { const c = st.pop(); nav.neighbors(c, nb); for (let k = 0; k < nb.length; k += 2) { const t = nb[k]; let r = radj.get(t); if (!r) radj.set(t, r = []); r.push(c); if (!fwd[t]) { fwd[t] = 1; st.push(t); } } }
+    st = [s0]; bwd[s0] = 1;
+    while (st.length) { const c = st.pop(); const r = radj.get(c); if (!r) continue; for (const t of r) if (!bwd[t]) { bwd[t] = 1; st.push(t); } }
+    const main = new Uint8Array(T); let n = 0;
+    for (let i = 0; i < T; i++) if (fwd[i] & bwd[i]) { main[i] = 1; n++; }
+    if (n > bestN) { bestN = n; best = main; }
+  }
+  nav.main = best;
   return nav;
 }
 

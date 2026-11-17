@@ -1,22 +1,15 @@
-// Menú de inicio estilo battle royale: personaje en 3D, pestañas JUGAR / CASILLERO,
+// Menú de inicio estilo battle royale: personaje en 3D, pestañas JUGAR / CONFIGURACIÓN,
 // tarjeta de modo (2v2, 3v3, 5v5 con o sin bots), mapa, duración y nivel de bots.
 import * as THREE from 'three';
-import { makePlayerModel, setModelGun, poseModel, SKINS, FINISHES, gunGeo, MAT } from './models.js';
-import { WEAPONS, BUY } from './weapons.js';
-import { iconURL } from './icons.js';
+import { makePlayerModel, setModelGun, poseModel } from './models.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const RARITY = ['#3b8cff', '#a64bff', '#ff8a2b', '#ffd43b'];
-const SKINNABLE = ['knife', ...new Set(BUY.slice(1, 4).flatMap(c => [...c.items.T, ...c.items.CT]))];
 
 export function makeMenu(o) {
   const { G, store } = o;
   const M = {};
-  let look = store.get('ls:look', { t: -1, sk: [0, 0], wf: {}, pw: 'ak47' });
-  if (!look.wf) look.wf = {}; if (!look.pw) look.pw = 'ak47';
-  const fin = id => look.wf[id] | 0;
-  let tab = 'play';
+  const look = { t: store.get('ls:look', { t: -1 }).t ?? -1 };
   // ---------- escena 3D ----------
   const scene = new THREE.Scene();
   const bg = document.createElement('canvas'); bg.width = 2; bg.height = 256;
@@ -35,20 +28,15 @@ export function makeMenu(o) {
   rays.position.set(0, 1.2, -6);
   const holder = new THREE.Group(); scene.add(holder);
   let model = null, modelKey = '', spin = 0.4, drag = null, t0 = 0;
-  const weaponShow = new THREE.Group(); scene.add(weaponShow);
 
   function myTeamPreview() { const p = look.t === 1 ? 'CT' : 'T'; return p; }
   function rebuildModel() {
-    const team = myTeamPreview(), si = look.sk[team === 'T' ? 0 : 1];
-    const w = tab === 'locker' ? look.pw : team === 'T' ? 'ak47' : 'm4a4';
-    const k = team + si + w + fin(w);
-    if (k === modelKey) return; modelKey = k;
+    const team = myTeamPreview(), w = team === 'T' ? 'ak47' : 'm4a4';
+    if (team === modelKey) return; modelKey = team;
     holder.clear();
-    model = makePlayerModel(team, si);
-    setModelGun(model, w, fin(w));
+    model = makePlayerModel(team, 0);
+    setModelGun(model, w, 0);
     holder.add(model);
-    weaponShow.clear();
-    if (tab === 'locker') { const m = new THREE.Mesh(gunGeo(w, fin(w)), MAT); m.scale.setScalar(1.8); m.rotation.y = Math.PI / 2; weaponShow.add(m); }
   }
   M.render = (renderer, dt) => {
     t0 += dt;
@@ -56,7 +44,6 @@ export function makeMenu(o) {
     holder.rotation.y = Math.PI + Math.sin(spin) * 0.6 + 0.35;
     if (model) poseModel(model, { speed: 0, duck: 0, pitch: Math.sin(t0 * 1.3) * 0.04 - 0.05, onGround: true, dead: 0 }, dt);
     rays.rotation.z += dt * 0.05;
-    weaponShow.position.set(-1.25, 1.3 + Math.sin(t0 * 1.5) * 0.04, 0.2); weaponShow.rotation.y = Math.PI / 2 + Math.sin(t0 * 0.7) * 0.4;
     const asp = innerWidth / innerHeight;
     cam.aspect = asp; cam.fov = asp < 1 ? 46 : 30; cam.updateProjectionMatrix();
     cam.position.set(asp < 1 ? 0 : 0.15, 1.15, 5.2); cam.lookAt(asp < 1 ? 0 : 0.15, 0.95, 0);
@@ -68,11 +55,11 @@ export function makeMenu(o) {
   addEventListener('pointerup', () => { drag = null; });
 
   // ---------- DOM ----------
-  function savePref() { store.set('ls:look', look); o.sendPref({ t: look.t, sk: look.sk, f: look.wf }); }
-  M.myPref = () => ({ t: look.t, sk: look.sk, f: look.wf });
+  function savePref() { store.set('ls:look', look); o.sendPref({ t: look.t }); }
+  M.myPref = () => ({ t: look.t });
   M.show = () => {
     $('lobby').hidden = false;
-    for (const b of document.querySelectorAll('#lobby nav button')) b.onclick = () => { tab = b.dataset.tab; render(); };
+    for (const b of document.querySelectorAll('#lobby nav button')) b.onclick = () => { if (b.dataset.tab === 'settings') { b.classList.add('on'); o.openSettings(() => render()); } else render(); };
     for (const b of document.querySelectorAll('[data-pref]')) b.onclick = () => { look.t = +b.dataset.pref; savePref(); render(); };
     $('goBtn').onclick = () => { if (!o.isHost()) return; if (!canStart()) return; o.onStart(); };
     $('modeBtn').onclick = () => { $('modeSel').hidden = false; render(); };
@@ -109,43 +96,9 @@ export function makeMenu(o) {
       o.mapThumb(m.id).then(img => { if (img) { const x = cv.getContext('2d'); x.fillStyle = '#0b1530'; x.fillRect(0, 0, 200, 200); x.drawImage(img, 0, 0, 200, 200); } });
     }
   }
-  function lockerUI() {
-    const el = $('lockerGrid'); el.innerHTML = '';
-    for (const [team, ti] of [['T', 0], ['CT', 1]]) {
-      const h = document.createElement('h5'); h.textContent = team === 'T' ? 'TERRORISTAS' : 'CONTRATERRORISTAS'; el.appendChild(h);
-      const row = document.createElement('div'); row.className = 'tiles';
-      SKINS[team].forEach((s, i) => {
-        const t = document.createElement('div'); t.className = 'tile' + (look.sk[ti] === i ? ' on' : '');
-        t.style.setProperty('--r', RARITY[i]);
-        t.innerHTML = `<div class="sw"><i style="background:${s.shirt}"></i><i style="background:${s.vest}"></i><i style="background:${s.hc}"></i></div><b>${esc(s.name)}</b><small>${['Común', 'Rara', 'Épica', 'Legendaria'][i]}</small>`;
-        t.onclick = () => { look.sk[ti] = i; if (look.t === -1) look.t = ti; else look.t = ti; savePref(); render(); };
-        row.appendChild(t);
-      });
-      el.appendChild(row);
-    }
-    const h2 = document.createElement('h5'); h2.textContent = 'SKINS DE ARMAS · ELEGÍ UN ARMA'; el.appendChild(h2);
-    const r2 = document.createElement('div'); r2.className = 'wpick';
-    for (const id of SKINNABLE) {
-      const b = document.createElement('button'); b.className = look.pw === id ? 'on' : ''; b.title = WEAPONS[id].name;
-      b.innerHTML = `<img src="${iconURL(id, 120, 40)}"><small>${WEAPONS[id].name}</small>${fin(id) ? `<i style="background:${FINISHES[fin(id)].sw}"></i>` : ''}`;
-      b.onclick = () => { look.pw = id; store.set('ls:look', look); render(); }; r2.appendChild(b);
-    }
-    el.appendChild(r2);
-    const h = document.createElement('h5'); h.textContent = 'ACABADO DE ' + WEAPONS[look.pw].name.toUpperCase(); el.appendChild(h);
-    const row = document.createElement('div'); row.className = 'tiles fin';
-    FINISHES.forEach((f, i) => {
-      const t = document.createElement('div'); t.className = 'tile' + (fin(look.pw) === i ? ' on' : ''); t.style.setProperty('--r', RARITY[Math.min(3, Math.floor(i / 2))]);
-      t.innerHTML = `<div class="sw"><i style="background:${f.sw}"></i><i style="background:${f.w || '#6b4a2a'}"></i></div><b>${esc(f.name)}</b>`;
-      t.onclick = () => { if (i) look.wf[look.pw] = i; else delete look.wf[look.pw]; savePref(); render(); };
-      row.appendChild(t);
-    });
-    el.appendChild(row);
-  }
   function render() {
     const ctx = o.ctx(), host = o.isHost(), me = o.myId();
-    for (const b of document.querySelectorAll('#lobby nav button')) b.classList.toggle('on', b.dataset.tab === tab);
-    $('tabPlay').hidden = tab !== 'play'; $('tabLocker').hidden = tab !== 'locker';
-    if (tab === 'locker') lockerUI();
+    for (const b of document.querySelectorAll('#lobby nav button')) b.classList.toggle('on', b.dataset.tab === 'play');
     $('meName').textContent = ctx.me.name;
     $('roomInfo').textContent = ctx.online ? `Sala ${ctx.roomCode || ''} · ${(ctx.players || []).length} jugador${(ctx.players || []).length === 1 ? '' : 'es'}` : 'Práctica sin conexión';
     for (const b of document.querySelectorAll('[data-pref]')) b.classList.toggle('on', +b.dataset.pref === look.t);

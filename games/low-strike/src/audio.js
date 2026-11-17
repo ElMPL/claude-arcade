@@ -1,18 +1,18 @@
 // Sonido sintetizado (sin archivos): disparos, pasos, granadas, bomba y avisos. Posicional en estéreo.
-let ctx = null, master = null, noiseBuf = null;
+let ctx = null, master = null, noiseBuf = null, vol0 = 0.55;
 const L = { x: 0, y: 0, z: 0, yaw: 0 };
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = 0.55;
+    master = ctx.createGain(); master.gain.value = vol0;
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 6;
     master.connect(comp); comp.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   } catch (e) { ctx = null; }
 }
-export function setVolume(v) { if (master) master.gain.value = v; }
+export function setVolume(v) { vol0 = v; if (master) master.gain.value = v; }
 export function setListener(x, y, z, yaw) { L.x = x; L.y = y; L.z = z; L.yaw = yaw; }
 // destino con volumen por distancia y paneo
 function out(pos, vol = 1, range = 30) {

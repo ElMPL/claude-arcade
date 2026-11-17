@@ -7,6 +7,13 @@ const q = v => Math.round(v / Q) * Q;
 // layers: [{ cls: Uint8Array, h: Float32Array }] (n*n). info: { n, cell, layers, zones, id }
 export function buildWorld(info, layers) {
   const n = info.n, cell = info.cell, L = layers.length, N = n * n;
+  if (info.format === 'spans') { // mapa importado de un modelo 3D: los tramos ya vienen hechos
+    const W = { n, cell, L, info, size: n * cell, top: [], bot: [], cls: [], flags: layers.flags || new Uint8Array(N), voidKill: false, imported: true };
+    for (const ly of layers) { W.top.push(ly.top); W.bot.push(ly.bot); W.cls.push(ly.cls); }
+    W.idx = (x, z) => { const cx = Math.floor(x / cell), cz = Math.floor(z / cell); return cx < 0 || cz < 0 || cx >= n || cz >= n ? -1 : cz * n + cx; };
+    W.props = []; W.propCell = [];
+    return W;
+  }
   const multi = L > 1;
   const W = { n, cell, L, info, size: n * cell, top: [], bot: [], cls: [], flags: new Uint8Array(N), voidKill: multi };
   // distancia a lo caminable para cerrar el mapa con paredes

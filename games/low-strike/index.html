@@ -57,7 +57,7 @@
 <div id="lobby" hidden>
   <div class="fn-top">
     <div class="logo">LOW<span>STRIKE</span></div>
-    <nav><button data-tab="play" class="on">JUGAR</button><button data-tab="locker">CASILLERO</button></nav>
+    <nav><button data-tab="play" class="on">JUGAR</button><button data-tab="settings">CONFIGURACIÓN</button></nav>
     <div class="fn-me"><b id="meName"></b><small id="roomInfo"></small></div>
   </div>
   <section id="tabPlay" class="fn-tab">
@@ -76,9 +76,6 @@
       <button id="goBtn" class="fn-play">JUGAR</button>
       <div id="goNote" class="note"></div>
     </div>
-  </section>
-  <section id="tabLocker" class="fn-tab" hidden>
-    <div id="lockerGrid" class="locker"></div>
   </section>
   <div class="lb-keys">
     <span><kbd>WASD</kbd> moverse</span><span><kbd>Shift</kbd> caminar</span><span><kbd>C</kbd> agacharse</span><span><kbd>Espacio</kbd> saltar</span>
@@ -103,7 +100,7 @@
 </div>
 
 <div id="loading"><div class="logo">LOW<span>STRIKE</span></div><div id="loadMsg">Cargando…</div></div>
-<div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small></div>
+<div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small><button id="cpSettings">⚙ CONFIGURACIÓN</button></div>
 <div id="touch" hidden>
   <div id="stick"><i></i></div>
   <button id="tFire">🔫</button><button id="tJump">⤒</button><button id="tDuck">⤓</button><button id="tReload">R</button><button id="tSwitch">⇄</button><button id="tBuy">$</button><button id="tUse">E</button><button id="tScope">◎</button>

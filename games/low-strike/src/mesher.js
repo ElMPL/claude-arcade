@@ -510,3 +510,72 @@ function addDetails(W, mapId, B, T) {
     }
   }
 }
+
+// ---------------- mapas importados de modelos 3D ----------------
+const MCOL = {
+  dust2: {
+    floor: [[0.84, 0.71, 0.52], 'sand', 2.4], road: [[0.74, 0.66, 0.54], 'tiles', 2.4], wall: [[0.93, 0.82, 0.64], 'blocks', 2.4], trim: [[0.78, 0.67, 0.5], 'stone', 1.6],
+    crate: [[1, 0.95, 0.88], 'crate', 1.6256], door: [[0.62, 0.45, 0.28], 'wood', 1.6], concrete: [[0.78, 0.74, 0.66], 'concrete', 2.4], rock: [[0.74, 0.63, 0.5], 'stone', 2],
+    metal: [[0.42, 0.44, 0.47], null, 1], dark: [[0.16, 0.14, 0.12], null, 1], ceiling: [[0.62, 0.48, 0.33], 'wood', 2],
+  },
+  mirage: {
+    floor: [[0.9, 0.8, 0.64], 'tiles', 2.4], wall: [[0.96, 0.88, 0.74], 'plaster', 2.6], ceiling: [[0.62, 0.44, 0.3], 'wood', 2],
+  },
+};
+export function buildFromModel(W, mesh, info, mapId, nav) {
+  const C = MCOL[mapId] || MCOL.dust2, T = themeOf(mapId), group = new THREE.Group();
+  const org = info.origin || [0, 0, 0];
+  let o = 0, tris = 0;
+  for (const part of info.parts) {
+    const nT = part.tris, pos = new Float32Array(nT * 9), col = new Float32Array(nT * 9), uv = new Float32Array(nT * 6), nor = new Float32Array(nT * 9);
+    const [base, tex, tile] = C[part.cat] || C.wall || [[0.8, 0.8, 0.8], null, 2];
+    for (let t = 0; t < nT; t++) {
+      for (let k = 0; k < 9; k++) pos[t * 9 + k] = mesh[o + t * 9 + k] / 100;
+      const a = t * 9;
+      const ux = pos[a + 3] - pos[a], uy = pos[a + 4] - pos[a + 1], uz = pos[a + 5] - pos[a + 2], vx = pos[a + 6] - pos[a], vy = pos[a + 7] - pos[a + 1], vz = pos[a + 8] - pos[a + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+      const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+      const k0 = 1 + (hash(Math.round(pos[a] * 3), Math.round(pos[a + 2] * 3 + pos[a + 1] * 7)) - 0.5) * 0.08;
+      let cb = base;
+      // tejados de terracota: superficies hacia arriba a las que no se puede llegar caminando
+      if (mapId === 'mirage' && part.cat === 'floor' && nav && isRoof(nav, (pos[a] + pos[a + 3] + pos[a + 6]) / 3, (pos[a + 1] + pos[a + 4] + pos[a + 7]) / 3, (pos[a + 2] + pos[a + 5] + pos[a + 8]) / 3)) cb = [0.72, 0.4, 0.28];
+      for (let v = 0; v < 3; v++) {
+        const px = pos[a + v * 3], py = pos[a + v * 3 + 1], pz = pos[a + v * 3 + 2];
+        nor[a + v * 3] = nx; nor[a + v * 3 + 1] = ny; nor[a + v * 3 + 2] = nz;
+        let k = k0;
+        if (ay < 0.5) { const f = floorAt(W, px, pz, py + 0.15); const dh = f > -1e8 ? py - f : 9; if (dh < 0.45) k *= 0.8; else if (dh < 1.0) k *= 0.92; }
+        col[a + v * 3] = cb[0] * k; col[a + v * 3 + 1] = cb[1] * k; col[a + v * 3 + 2] = cb[2] * k;
+        const X = px - org[0], Y = py - org[1], Z = pz - org[2];
+        let u, w;
+        if (ay >= ax && ay >= az) { u = X; w = Z; } else if (ax >= az) { u = Z; w = Y; } else { u = X; w = Y; }
+        uv[t * 6 + v * 2] = u / tile; uv[t * 6 + v * 2 + 1] = w / tile;
+      }
+    }
+    o += nT * 9; tris += nT;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map: tex ? texFor(tex) : null, side: THREE.DoubleSide }));
+    m.castShadow = true; m.receiveShadow = true; m.matrixAutoUpdate = false;
+    group.add(m);
+  }
+  group.matrixAutoUpdate = false;
+  return { mesh: group, tris, theme: T };
+}
+function isRoof(nav, x, y, z) {
+  if (y < 3.5) return false;
+  const cx = Math.floor(x / nav.c), cz = Math.floor(z / nav.c);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const xx = cx + dx, zz = cz + dz; if (xx < 0 || zz < 0 || xx >= nav.m || zz >= nav.m) continue;
+    const i = zz * nav.m + xx;
+    for (let l = 0; l < nav.L; l++) { const h = nav.H[l][i]; if (!isNaN(h) && Math.abs(h - y) < 0.9 && nav.main[l * nav.N + i]) return false; }
+  }
+  return true;
+}
+function floorAt(W, x, z, y) {
+  const i = W.idx(x, z); if (i < 0) return -Infinity;
+  let g = -Infinity;
+  for (let l = 0; l < W.L; l++) { const t = W.top[l][i]; if (!isNaN(t) && t <= y && t > g) g = t; }
+  return g;
+}

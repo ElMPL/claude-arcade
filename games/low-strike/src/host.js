@@ -26,13 +26,13 @@ export function makeHost(G) {
     for (const h of list) {
       let g = h.pref;
       if (g !== 0 && g !== 1) { g = cnt[0] <= cnt[1] ? 0 : 1; cnt[g]++; }
-      const P = mkP(h.id, h.name, false, g); P.skT = (h.sk && h.sk[0]) | 0; P.skCT = (h.sk && h.sk[1]) | 0; P.fin = h.fin && typeof h.fin === 'object' ? h.fin : (h.fin | 0); G.players.set(h.id, P);
+      const P = mkP(h.id, h.name, false, g); P.skT = 0; P.skCT = 0; P.fin = 0; G.players.set(h.id, P);
     }
     const per = cfg.bots ? Math.max(cnt[0], cnt[1], cfg.size || 5) : 0;
     let bi = 0;
     for (let g = 0; g < 2; g++) for (let k = cnt[g]; k < per; k++) {
       const id = 'bot' + (bi++);
-      const P = mkP(id, BOTN[bi % BOTN.length] + ' (bot)', true, g); P.skT = Math.floor(Math.random() * 4); P.skCT = Math.floor(Math.random() * 4); P.fin = Math.random() < 0.7 ? 0 : Math.floor(Math.random() * 6); G.players.set(id, P);
+      const P = mkP(id, BOTN[bi % BOTN.length] + ' (bot)', true, g); P.skT = 0; P.skCT = 0; P.fin = 0; G.players.set(id, P);
     }
     G.round = 0; G.score = [0, 0]; G.half = 0; lossStreak = [1, 1]; ended = false;
     for (const p of G.players.values()) p.team = sideOf(p.grp, 0);
