@@ -13,7 +13,7 @@ export function makeNade(type, owner, team, ox, oy, oz, yaw, pitch, pvx, pvz, po
   // como CS: el lanzamiento sale un poco hacia arriba de la mira
   const p = pitch + (10 * Math.PI / 180) * (1 - Math.abs(pitch) / (Math.PI / 2));
   const dx = -Math.sin(yaw) * Math.cos(p), dy = Math.sin(p), dz = -Math.cos(yaw) * Math.cos(p);
-  return { type, owner, team, x: ox + dx * 0.3, y: oy + dy * 0.3, z: oz + dz * 0.3, vx: dx * sp + pvx * 1.25, vy: dy * sp, vz: dz * sp + pvz * 1.25, t: 0, acc: 0, rest: false, state: 'fly', life: 0 };
+  return { type, owner, team, x: ox + dx * 0.1, y: oy + dy * 0.1 - 0.05, z: oz + dz * 0.1, vx: dx * sp + pvx * 1.25, vy: dy * sp, vz: dz * sp + pvz * 1.25, t: 0, acc: 0, rest: false, state: 'fly', life: 0 };
 }
 // avanza; devuelve lista de eventos { type:'det'|'bounce'|'end', g }
 export function stepNade(W, g, dt, out) {

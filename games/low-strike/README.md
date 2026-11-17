@@ -3,7 +3,7 @@
 Shooter táctico 5 contra 5 en low-poly para ClaudeArcade, inspirado en Counter-Strike 2. Los equipos se completan con bots.
 
 ## Qué tiene
-- **Mapas:** Dust II, Mirage y Vertigo. La forma de cada mapa sale de los radares oficiales de CS2: el plano visto desde arriba, con la altura codificada por color. Los radares no vienen con el juego, solo la geometría que se generó a partir de ellos (`maps/*.png`).
+- **Mapas propios** basados en Dust II, Mirage y Vertigo. La forma de cada mapa sale de los radares oficiales de CS2: el plano visto desde arriba, con la altura codificada por color. Los radares no vienen con el juego, solo la geometría que se generó a partir de ellos (`maps/*.png`).
 - **Armas:** todas las de CS2, con su precio, premio por baja, daño, penetración de blindaje, cadencia y cargador. El retroceso sigue un patrón y las balas atraviesan paredes finas.
 - **Menú de compra:** como el de CS2, en 5 columnas: Pistolas, Intermedias, Rifles, Equipo y Granadas. Se abre con **B** y se compra con las teclas 1-5 y después 1-n, o con el mouse.
 - **Economía de CS2:**
@@ -25,6 +25,14 @@ Shooter táctico 5 contra 5 en low-poly para ClaudeArcade, inspirado en Counter-
 - **Pestaña JUGAR:** tu personaje en 3D, el grupo de la sala, la elección de equipo (T, CT o automático) y la tarjeta de modo.
 - **Modos:** 2v2, 3v3 o 5v5, con bots o sin bots, en cualquiera de los 3 mapas. Se elige también la duración y el nivel de los bots.
 - **Pestaña CASILLERO:** 4 skins por equipo y 6 acabados para las armas. La elección se guarda y la ven los demás jugadores.
+
+## Mapas
+`tools/blockify.py` toma la planta derivada del radar y la rehace como arquitectura coherente:
+- bloques de 1 m, así las paredes quedan rectas;
+- pisos planos con escalones suaves de 30 cm;
+- en Dust II, alturas pensadas a mano: base T arriba, mid abajo, A sobre long y el pozo al fondo.
+
+El juego agrega detalles: ventanas con marco, postigos, toldos, puertas, marcos de madera en los pasos, barriles y plantas.
 
 ## Gráficos
 - Las paredes se arman con *marching squares*, así que los bordes quedan rectos o en diagonal, sin serrucho.

@@ -2,16 +2,20 @@
 // tarjeta de modo (2v2, 3v3, 5v5 con o sin bots), mapa, duración y nivel de bots.
 import * as THREE from 'three';
 import { makePlayerModel, setModelGun, poseModel, SKINS, FINISHES, gunGeo, MAT } from './models.js';
+import { WEAPONS, BUY } from './weapons.js';
+import { iconURL } from './icons.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const RARITY = ['#3b8cff', '#a64bff', '#ff8a2b', '#ffd43b'];
-const PREVIEW_W = [['ak47', 'AK-47'], ['m4a4', 'M4A4'], ['awp', 'AWP'], ['deagle', 'Desert Eagle'], ['usp', 'USP-S'], ['knife', 'Cuchillo']];
+const SKINNABLE = ['knife', ...new Set(BUY.slice(1, 4).flatMap(c => [...c.items.T, ...c.items.CT]))];
 
 export function makeMenu(o) {
   const { G, store } = o;
   const M = {};
-  let look = store.get('ls:look', { t: -1, sk: [0, 0], f: 0, pw: 'ak47' });
+  let look = store.get('ls:look', { t: -1, sk: [0, 0], wf: {}, pw: 'ak47' });
+  if (!look.wf) look.wf = {}; if (!look.pw) look.pw = 'ak47';
+  const fin = id => look.wf[id] | 0;
   let tab = 'play';
   // ---------- escena 3D ----------
   const scene = new THREE.Scene();
@@ -37,14 +41,14 @@ export function makeMenu(o) {
   function rebuildModel() {
     const team = myTeamPreview(), si = look.sk[team === 'T' ? 0 : 1];
     const w = tab === 'locker' ? look.pw : team === 'T' ? 'ak47' : 'm4a4';
-    const k = team + si + w + look.f;
+    const k = team + si + w + fin(w);
     if (k === modelKey) return; modelKey = k;
     holder.clear();
     model = makePlayerModel(team, si);
-    setModelGun(model, w, look.f);
+    setModelGun(model, w, fin(w));
     holder.add(model);
     weaponShow.clear();
-    if (tab === 'locker') { const m = new THREE.Mesh(gunGeo(w, look.f), MAT); m.scale.setScalar(1.8); m.rotation.y = Math.PI / 2; weaponShow.add(m); }
+    if (tab === 'locker') { const m = new THREE.Mesh(gunGeo(w, fin(w)), MAT); m.scale.setScalar(1.8); m.rotation.y = Math.PI / 2; weaponShow.add(m); }
   }
   M.render = (renderer, dt) => {
     t0 += dt;
@@ -64,8 +68,8 @@ export function makeMenu(o) {
   addEventListener('pointerup', () => { drag = null; });
 
   // ---------- DOM ----------
-  function savePref() { store.set('ls:look', look); o.sendPref({ t: look.t, sk: look.sk, f: look.f }); }
-  M.myPref = () => ({ t: look.t, sk: look.sk, f: look.f });
+  function savePref() { store.set('ls:look', look); o.sendPref({ t: look.t, sk: look.sk, f: look.wf }); }
+  M.myPref = () => ({ t: look.t, sk: look.sk, f: look.wf });
   M.show = () => {
     $('lobby').hidden = false;
     for (const b of document.querySelectorAll('#lobby nav button')) b.onclick = () => { tab = b.dataset.tab; render(); };
@@ -119,19 +123,23 @@ export function makeMenu(o) {
       });
       el.appendChild(row);
     }
-    const h = document.createElement('h5'); h.textContent = 'ACABADO DE ARMAS'; el.appendChild(h);
+    const h2 = document.createElement('h5'); h2.textContent = 'SKINS DE ARMAS · ELEGÍ UN ARMA'; el.appendChild(h2);
+    const r2 = document.createElement('div'); r2.className = 'wpick';
+    for (const id of SKINNABLE) {
+      const b = document.createElement('button'); b.className = look.pw === id ? 'on' : ''; b.title = WEAPONS[id].name;
+      b.innerHTML = `<img src="${iconURL(id, 120, 40)}"><small>${WEAPONS[id].name}</small>${fin(id) ? `<i style="background:${FINISHES[fin(id)].sw}"></i>` : ''}`;
+      b.onclick = () => { look.pw = id; store.set('ls:look', look); render(); }; r2.appendChild(b);
+    }
+    el.appendChild(r2);
+    const h = document.createElement('h5'); h.textContent = 'ACABADO DE ' + WEAPONS[look.pw].name.toUpperCase(); el.appendChild(h);
     const row = document.createElement('div'); row.className = 'tiles fin';
     FINISHES.forEach((f, i) => {
-      const t = document.createElement('div'); t.className = 'tile' + (look.f === i ? ' on' : ''); t.style.setProperty('--r', RARITY[Math.min(3, Math.floor(i / 1.6))]);
+      const t = document.createElement('div'); t.className = 'tile' + (fin(look.pw) === i ? ' on' : ''); t.style.setProperty('--r', RARITY[Math.min(3, Math.floor(i / 2))]);
       t.innerHTML = `<div class="sw"><i style="background:${f.sw}"></i><i style="background:${f.w || '#6b4a2a'}"></i></div><b>${esc(f.name)}</b>`;
-      t.onclick = () => { look.f = i; savePref(); render(); };
+      t.onclick = () => { if (i) look.wf[look.pw] = i; else delete look.wf[look.pw]; savePref(); render(); };
       row.appendChild(t);
     });
     el.appendChild(row);
-    const h2 = document.createElement('h5'); h2.textContent = 'VER CON'; el.appendChild(h2);
-    const r2 = document.createElement('div'); r2.className = 'chips';
-    for (const [id, n] of PREVIEW_W) { const b = document.createElement('button'); b.textContent = n; b.className = look.pw === id ? 'on' : ''; b.onclick = () => { look.pw = id; store.set('ls:look', look); render(); }; r2.appendChild(b); }
-    el.appendChild(r2);
   }
   function render() {
     const ctx = o.ctx(), host = o.isHost(), me = o.myId();

@@ -60,7 +60,7 @@ export function makeBots(G, H) {
     const m = () => p.money, T = p.team === 'T';
     const want = [];
     if (m() >= 4750 + 1000 && rnd() < 0.18) want.push('awp');
-    else if (m() >= 3700) want.push(T ? 'ak47' : (rnd() < 0.5 ? 'm4a4' : 'm4a1s'));
+    else if (m() >= 3700) want.push(T ? 'ak47' : 'm4a4');
     else if (m() >= 2900) want.push(T ? 'galil' : 'famas');
     else if (m() >= 1850 && G.round > 1) want.push(T ? 'mac10' : 'mp9');
     for (const w of want) H.buy(p, w);

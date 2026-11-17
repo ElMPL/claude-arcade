@@ -23,10 +23,10 @@
   </div>
   <div id="feed"></div>
   <div id="vitals">
-    <div class="vit"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><span id="hpV">100</span></div>
-    <div class="vit ar"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/></svg><span id="arV">0</span><i id="helmV" hidden>+🪖</i></div>
+    <div class="vit hp"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><span id="hpV">100</span><div class="bar"><i id="hpB"></i></div></div>
+    <div class="vit ar"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/></svg><span id="arV">0</span><i id="helmV" hidden>+ casco</i><div class="bar"><i id="arB"></i></div></div>
   </div>
-  <div id="ammo"><div id="wname"></div><div class="nums"><span id="magV">20</span><small>/ <span id="resV">120</span></small></div></div>
+  <div id="ammo"><div class="nums"><span id="magV">20</span><span class="sep">|</span><small id="resV">120</small></div><div id="wname"></div></div>
   <div id="slots"></div>
   <div id="xhair"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><b></b></div>
   <div id="hitmark"></div>
@@ -42,11 +42,12 @@
   <div id="buyHint" hidden>B · Comprar</div>
 </div>
 
-<!-- MENÚ DE COMPRA -->
+<!-- MENÚ DE COMPRA (como CS2) -->
 <div id="buy" hidden>
-  <div class="buy-head"><div class="bt">COMPRAR</div><div class="bm">$<span id="buyMoney">0</span></div><div class="btime" id="buyTime"></div><div class="bx">B / Esc para cerrar</div></div>
+  <div class="buy-head"><div class="bm">$<span id="buyMoney">0</span></div><div class="btime">Tiempo de compra <b id="buyTime">0:20</b></div></div>
   <div id="buyCols"></div>
-  <div id="buyInfo"></div>
+  <div class="buy-foot"><span>[ESC] VOLVER</span><span>[B] CERRAR</span><span>1-5 CATEGORÍA · 1-5 ARMA</span></div>
+  <div id="buyInfo" hidden><b id="biName"></b><ul id="biList"></ul><div id="biStats"></div></div>
 </div>
 
 <!-- TABLA (Tab) -->

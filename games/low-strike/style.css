@@ -64,6 +64,13 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #556; border-bo
 .tile .sw i { flex: 1; height: 30px; border-radius: 3px; box-shadow: inset 0 -6px rgba(0, 0, 0, .25); }
 .tile b { font: 400 22px 'Bebas Neue', sans-serif; letter-spacing: 1px; line-height: 1; }
 .tile small { font-size: 12px; color: rgba(255, 255, 255, .8); }
+.wpick { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.wpick button { position: relative; background: rgba(6, 18, 60, .7); border: 2px solid rgba(255, 255, 255, .15); border-radius: 4px; padding: 4px; cursor: pointer; color: #fff; display: flex; flex-direction: column; align-items: center; }
+.wpick button img { width: 100%; height: 30px; object-fit: contain; }
+.wpick button small { font: 600 11px 'Rajdhani', sans-serif; white-space: nowrap; overflow: hidden; max-width: 100%; }
+.wpick button.on { border-color: #ffe14a; background: rgba(40, 70, 160, .8); }
+.wpick button i { position: absolute; right: 4px; top: 4px; width: 9px; height: 9px; border-radius: 50%; }
+.tiles.fin { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button, .seg button { background: rgba(6, 18, 60, .7); color: #fff; border: 2px solid rgba(255, 255, 255, .25); border-radius: 4px; padding: 6px 12px; font: 700 15px 'Rajdhani', sans-serif; cursor: pointer; }
 .chips button.on, .seg button.on { background: #ffe14a; color: #1b1606; border-color: #ffe14a; }
@@ -108,32 +115,40 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #556; border-bo
 #top .sc { font-size: 30px; font-weight: 700; min-width: 50px; text-align: center; background: rgba(0, 0, 0, .5); padding: 2px 10px; }
 #top .t .sc { color: var(--t); border-bottom: 3px solid var(--t); } #top .ct .sc { color: var(--ct); border-bottom: 3px solid var(--ct); }
 .pips { display: flex; gap: 3px; }
-.pips i { width: 9px; height: 22px; border-radius: 2px; background: currentColor; opacity: .95; }
-.pips i.dead { opacity: .18; }
-#top .t .pips { color: var(--t); flex-direction: row-reverse; } #top .ct .pips { color: var(--ct); }
+.pips i { width: 26px; height: 30px; border-radius: 2px; background: currentColor; opacity: .95; font: 700 13px 'Rajdhani', sans-serif; color: #111; display: flex; align-items: flex-end; background: var(--pc); justify-content: center; font-style: normal; box-shadow: inset 0 -8px rgba(0, 0, 0, .2); }
+.pips i.dead { opacity: .2; filter: grayscale(1); }
+#top .t .pips { --pc: var(--t); flex-direction: row-reverse; } #top .ct .pips { --pc: var(--ct); }
 #clock { background: rgba(0, 0, 0, .6); padding: 2px 16px; font-size: 30px; font-weight: 700; min-width: 100px; text-align: center; position: relative; }
 #clock.red { color: #ff5a4f; }
 #bombIco { font-size: 26px; }
 #feed { position: absolute; right: 14px; top: 14px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
-#feed div { background: rgba(0, 0, 0, .55); padding: 3px 10px; border-radius: 4px; font-size: 16px; font-weight: 600; display: flex; gap: 8px; align-items: center; animation: fin .2s; }
+#feed div { background: rgba(0, 0, 0, .55); padding: 3px 10px; border-radius: 3px; font-size: 16px; font-weight: 600; display: flex; gap: 8px; align-items: center; animation: fin .2s; }
+#feed img { height: 20px; } #feed img.hs { height: 18px; }
 #feed div.mine { border: 2px solid #e04a3a; }
 #feed .T { color: var(--t); } #feed .CT { color: var(--ct); }
 #feed .w { color: #ddd; font-weight: 500; font-size: 14px; }
 @keyframes fin { from { opacity: 0; transform: translateX(10px); } }
-#vitals { position: absolute; left: 18px; bottom: 16px; display: flex; gap: 22px; align-items: center; }
-.vit { display: flex; align-items: center; gap: 6px; font-size: 40px; font-weight: 700; }
-.vit svg { width: 28px; height: 28px; fill: #f2f2f2; filter: drop-shadow(0 1px 2px #000); }
-.vit.low span, .vit.low svg { color: #ff4d4d; fill: #ff4d4d; }
-.vit i { font-style: normal; font-size: 16px; }
-#ammo { position: absolute; right: 22px; bottom: 16px; text-align: right; }
-#wname { font-size: 18px; color: #dfe4ea; font-weight: 600; }
-#ammo .nums { font-size: 44px; font-weight: 700; line-height: 1; }
-#ammo .nums small { font-size: 22px; color: #c8ced6; }
+#vitals { position: absolute; left: 16px; bottom: 14px; display: flex; gap: 10px; align-items: flex-end; }
+.vit { position: relative; display: flex; align-items: center; gap: 8px; min-width: 150px; padding: 6px 14px 10px 10px; background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .15)); font-size: 38px; font-weight: 700; line-height: 1; }
+.vit svg { width: 24px; height: 24px; fill: #f4f4f4; }
+.vit .bar { position: absolute; left: 10px; right: 14px; bottom: 4px; height: 3px; background: rgba(255, 255, 255, .15); }
+.vit .bar i { display: block; height: 100%; width: 100%; background: #f4f4f4; transition: width .2s; }
+.vit.low span, .vit.low svg { color: #ff4d4d; fill: #ff4d4d; } .vit.low .bar i { background: #ff4d4d; }
+.vit #helmV { font-style: normal; font-size: 13px; color: #cfd6e0; align-self: flex-start; margin-top: 4px; }
+#ammo { position: absolute; right: 18px; bottom: 14px; text-align: right; padding: 6px 12px 6px 30px; background: linear-gradient(270deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .1)); }
+#ammo .nums { font-size: 40px; font-weight: 700; line-height: 1; display: flex; align-items: baseline; gap: 8px; justify-content: flex-end; }
+#ammo .sep { color: rgba(255, 255, 255, .35); font-size: 30px; }
+#ammo small { font-size: 22px; color: #c8ced6; }
+#wname { font-size: 14px; color: #cfd6e0; font-weight: 600; letter-spacing: .5px; }
 #ammo.low #magV { color: #ff5a4f; }
-#slots { position: absolute; right: 18px; bottom: 100px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; transition: opacity .4s; }
-#slots div { font-size: 15px; font-weight: 600; color: rgba(255, 255, 255, .6); background: rgba(0, 0, 0, .35); padding: 2px 10px; border-radius: 4px; }
-#slots div.on { color: #fff; background: rgba(0, 0, 0, .6); border-right: 3px solid var(--t); }
-#slots b { color: #ffd76a; margin-right: 6px; }
+#slots { position: absolute; right: 18px; bottom: 92px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; transition: opacity .4s; }
+#slots .sl { display: flex; align-items: center; gap: 10px; opacity: .45; }
+#slots .sl.on { opacity: 1; }
+#slots .sl img { height: 30px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .9)); }
+#slots .sl b { font-size: 14px; color: #fff; min-width: 10px; text-align: right; }
+#slots .sl.on b { color: #ffd76a; }
+#slots .nades { display: flex; gap: 4px; } #slots .nades img { height: 26px; }
+#slots .nades img.on { filter: drop-shadow(0 0 4px #ffd76a); }
 #xhair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 #xhair i { position: absolute; background: #5dff6a; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); }
 #xhair .l, #xhair .r { height: 2px; width: 8px; top: -1px; } #xhair .u, #xhair .d { width: 2px; height: 8px; left: -1px; }
@@ -164,27 +179,33 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #556; border-bo
 #banner.T .b1 { color: var(--t); } #banner.CT .b1 { color: var(--ct); }
 #buyHint { position: absolute; left: 14px; top: 296px; font-size: 15px; color: #ffd76a; font-weight: 600; }
 
-/* ---------- compra ---------- */
-#buy { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1080px, 96vw); max-height: 92vh; overflow: auto; background: rgba(14, 16, 20, .93); border: 1px solid #333944; border-radius: 10px; z-index: 20; padding: 14px 16px 16px; }
-.buy-head { display: flex; align-items: baseline; gap: 22px; border-bottom: 1px solid #2e333c; padding-bottom: 8px; margin-bottom: 10px; }
-.buy-head .bt { font-size: 24px; font-weight: 700; letter-spacing: 4px; }
-.buy-head .bm { font-size: 26px; font-weight: 700; color: #8fe08f; }
-.buy-head .btime { color: #ffd76a; font-weight: 600; }
-.buy-head .bx { margin-left: auto; color: #8d95a2; font-size: 14px; }
-#buyCols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-.bcol h5 { font-size: 15px; letter-spacing: 2px; color: #aeb6c2; text-transform: uppercase; margin-bottom: 6px; display: flex; gap: 6px; }
-.bcol h5 b { color: #ffd76a; }
-.bcol.sel h5 { color: #fff; }
-.bit { display: grid; grid-template-columns: 18px 1fr auto; grid-template-rows: auto auto; align-items: center; gap: 0 6px; padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, .04); border: 1px solid transparent; margin-bottom: 5px; cursor: pointer; pointer-events: auto; }
-.bit:hover { border-color: #6b7380; background: rgba(255, 255, 255, .08); }
-.bit .k { color: #ffd76a; font-weight: 700; font-size: 14px; grid-row: span 2; }
-.bit .n { font-weight: 600; font-size: 16px; }
-.bit .p { font-weight: 700; color: #8fe08f; font-size: 15px; }
-.bit canvas { grid-column: 2 / 4; width: 100%; height: 34px; }
-.bit.no { opacity: .38; }
-.bit.no .p { color: #ff7a6e; }
-.bit.own { border-color: rgba(143, 224, 143, .5); }
-#buyInfo { margin-top: 10px; min-height: 22px; color: #c9d0db; font-size: 15px; }
+/* ---------- compra (como CS2) ---------- */
+#buy { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1120px, 96vw); max-height: 94vh; overflow: auto; background: rgba(22, 23, 26, .9); z-index: 20; font-family: 'Rajdhani', sans-serif; box-shadow: 0 10px 40px rgba(0, 0, 0, .5); }
+.buy-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 10px 16px; background: rgba(0, 0, 0, .35); }
+.buy-head .bm { font-size: 26px; font-weight: 600; color: #fff; }
+.buy-head .btime { font-size: 20px; color: #c9ccd2; } .buy-head .btime b { color: #fff; margin-left: 8px; font-size: 24px; letter-spacing: 1px; }
+#buyCols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; padding: 4px 6px 10px; }
+.bcol { padding: 0 6px; border-right: 1px solid rgba(255, 255, 255, .06); }
+.bcol:last-child { border-right: 0; }
+.bcol h5 { display: flex; align-items: baseline; gap: 14px; font: 600 26px 'Bebas Neue', 'Rajdhani', sans-serif; letter-spacing: 1px; color: #e6e8ec; margin: 8px 6px 10px; }
+.bcol h5 b { font: 500 18px 'Rajdhani', sans-serif; color: #9a9ea6; }
+.bcol.sel h5 { color: #fff; } .bcol.sel h5 b { color: #ffd76a; }
+.bit { position: relative; height: 106px; margin-bottom: 8px; background: linear-gradient(180deg, #45484e, #34363b); border: 1px solid rgba(255, 255, 255, .06); cursor: pointer; pointer-events: auto; transition: background .1s; }
+.bit:hover { background: linear-gradient(180deg, #5a5e65, #44474d); border-color: rgba(255, 255, 255, .35); }
+.bit .k { position: absolute; left: 10px; top: 8px; color: #9a9ea6; font-size: 18px; }
+.bit .n { position: absolute; right: 10px; top: 6px; font-size: 16px; font-weight: 700; color: #fff; text-align: right; max-width: 70%; line-height: 1.05; }
+.bit .p { position: absolute; right: 10px; bottom: 6px; font-weight: 700; color: #fff; font-size: 16px; }
+.bit img { position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%); width: 70%; max-height: 46px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .5)); }
+.bit.ok { background: linear-gradient(180deg, #4b5a4a, #374236); }
+.bit.ok:hover { background: linear-gradient(180deg, #5e745c, #45563f); }
+.bit.no { opacity: .45; } .bit.no .p { color: #ff7a6e; }
+.bit.own { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .65); }
+.bit.own::after { content: '✓'; position: absolute; left: 10px; bottom: 6px; color: #9fe39a; font-weight: 700; }
+.buy-foot { display: flex; justify-content: center; gap: 38px; padding: 8px; border-top: 1px solid rgba(255, 255, 255, .08); font: 400 20px 'Bebas Neue', 'Rajdhani', sans-serif; letter-spacing: 1px; color: #c9ccd2; }
+#buyInfo { position: fixed; right: 2vw; bottom: 8vh; width: 280px; background: rgba(10, 11, 13, .92); padding: 12px 14px; border-left: 3px solid #ffd76a; z-index: 21; }
+#buyInfo b { font-size: 20px; } #buyInfo ul { margin: 6px 0 6px 18px; color: #cfd3da; font-size: 15px; }
+#biStats { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; color: #aeb3bb; }
+#biStats i { display: block; height: 6px; margin-top: 5px; background: #ffd76a; }
 @media (max-width: 860px) { #buyCols { grid-template-columns: repeat(3, 1fr); } }
 
 /* ---------- tabla ---------- */

@@ -19,7 +19,8 @@ export function buildWorld(info, layers) {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { let v = 0; for (let k = -R; k <= R && !v; k++) { const xx = x + k; if (xx >= 0 && xx < n && walk[y * n + xx]) v = 1; } rowAcc[y * n + x] = v; }
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { let v = 0; for (let k = -R; k <= R && !v; k++) { const yy = y + k; if (yy >= 0 && yy < n && rowAcc[yy * n + x]) v = 1; } near[y * n + x] = v; }
   }
-  for (const ly of layers) cleanMask(n, ly.cls, ly.h, multi);
+  const clean = !!info.clean; // mapas ya rehechos en bloques: no hace falta limpiar ni suavizar
+  if (!clean) for (const ly of layers) cleanMask(n, ly.cls, ly.h, multi);
   // paredes con puerta que el radar no dibuja (rectángulo de pared + hueco)
   for (const [x0, y0, x1, y1, g0, g1] of DOORWALLS[info.id] || []) {
     const ly = layers[0];
@@ -29,8 +30,8 @@ export function buildWorld(info, layers) {
       if ((ly.cls[i] & 3) === 1 || (ly.cls[i] & 3) === 2) ly.cls[i] = (ly.cls[i] & ~3) | 3;
     }
   }
-  for (const ly of layers) relaxFloors(n, ly.cls, ly.h);
-  for (const ly of layers) plateaus(n, ly.cls, ly.h);
+  if (!clean) for (const ly of layers) relaxFloors(n, ly.cls, ly.h);
+  if (!clean) for (const ly of layers) plateaus(n, ly.cls, ly.h);
   for (let li = 0; li < L; li++) {
     const { cls, h } = layers[li];
     const top = new Float32Array(N).fill(NaN), bot = new Float32Array(N).fill(NaN), cc = new Uint8Array(N);

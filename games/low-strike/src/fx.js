@@ -13,9 +13,17 @@ export function makeFx(scene) {
   pm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PMAX * 3), 3);
   scene.add(pm);
   const parts = [];
-  fx.particle = (x, y, z, vx, vy, vz, size, life, color, grav = 9.8, grow = 0) => {
+  fx.particle = (x, y, z, vx, vy, vz, size, life, color, grav = 9.8, grow = 0, floorY = null) => {
     if (parts.length >= PMAX) parts.shift();
-    parts.push({ x, y, z, vx, vy, vz, s: size, life, max: life, c: new THREE.Color(color), g: grav, grow });
+    const p = { x, y, z, vx, vy, vz, s: size, life, max: life, c: new THREE.Color(color), g: grav, grow, fy: floorY };
+    parts.push(p); return p;
+  };
+  fx.floorAt = null;
+  // casquillo de bala: rebota en el piso
+  fx.shell = (p, rx, rz, big) => {
+    const f = fx.floorAt ? fx.floorAt(p[0], p[2], p[1]) : p[1] - 1.5;
+    const q = fx.particle(p[0], p[1], p[2], rx * (1.5 + Math.random()) , 1.6 + Math.random(), rz * (1.5 + Math.random()), big ? 0.03 : 0.022, 1.6, big ? '#2d6b2a' : '#c9a23a', 9.8, 0, f + 0.01);
+    q.shell = true;
   };
   // ---------- trazadoras ----------
   const TMAX = 64;
@@ -41,13 +49,25 @@ export function makeFx(scene) {
     tmpO.rotateZ(Math.random() * 3); tmpO.scale.setScalar(0.7 + Math.random() * 0.6); tmpO.updateMatrix();
     dm.setMatrixAt(dIdx, tmpO.matrix); dIdx = (dIdx + 1) % DMAX; dm.count = Math.max(dm.count, dIdx === 0 ? DMAX : dIdx); dm.instanceMatrix.needsUpdate = true;
   };
-  fx.clearDecals = () => { dm.count = 0; dIdx = 0; };
+  const colorDecals = {};
+  fx.decalC = (p, n, color, size) => {
+    let D = colorDecals[color];
+    if (!D) { const m = new THREE.InstancedMesh(new THREE.CircleGeometry(0.5, 7), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -3, depthWrite: false }), 80); m.count = 0; m.frustumCulled = false; scene.add(m); D = colorDecals[color] = { m, i: 0 }; }
+    tmpO.position.set(p[0] + n[0] * 0.012, p[1] + n[1] * 0.012, p[2] + n[2] * 0.012);
+    V.set(n[0], n[1], n[2]); tmpO.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), V); tmpO.rotateZ(Math.random() * 6);
+    tmpO.scale.set(size * (0.8 + Math.random() * 0.5), size * (0.6 + Math.random() * 0.5), 1); tmpO.updateMatrix();
+    D.m.setMatrixAt(D.i, tmpO.matrix); D.i = (D.i + 1) % 80; D.m.count = Math.max(D.m.count, D.i === 0 ? 80 : D.i); D.m.instanceMatrix.needsUpdate = true;
+  };
+  fx.clearDecals = () => { dm.count = 0; dIdx = 0; for (const k in colorDecals) { colorDecals[k].m.count = 0; colorDecals[k].i = 0; } };
   fx.impact = (p, n, col = '#cdb894') => {
     fx.decal(p, n);
     for (let i = 0; i < 5; i++) fx.particle(p[0], p[1], p[2], n[0] * 2 + (Math.random() - 0.5) * 2, n[1] * 2 + Math.random() * 1.5, n[2] * 2 + (Math.random() - 0.5) * 2, 0.03 + Math.random() * 0.03, 0.35 + Math.random() * 0.3, col, 6);
     fx.particle(p[0], p[1], p[2], n[0] * 0.5, 0.4, n[2] * 0.5, 0.08, 0.5, '#d9cdb5', -0.5, 0.25);
     fx.particle(p[0], p[1], p[2], 0, 0, 0, 0.05, 0.05, '#fff2a0', 0);
+    if (Math.random() < 0.45) for (let i = 0; i < 4; i++) fx.particle(p[0], p[1], p[2], n[0] * 3 + (Math.random() - 0.5) * 5, n[1] * 3 + Math.random() * 3, n[2] * 3 + (Math.random() - 0.5) * 5, 0.012, 0.18 + Math.random() * 0.15, '#ffd060', 12);
   };
+  fx.muzzleSmoke = (p) => { for (let i = 0; i < 2; i++) fx.particle(p[0], p[1], p[2], (Math.random() - 0.5) * 0.3, 0.25 + Math.random() * 0.2, (Math.random() - 0.5) * 0.3, 0.05, 0.6 + Math.random() * 0.4, '#bdbab4', -0.2, 0.22); };
+  fx.dust = (p) => { for (let i = 0; i < 2; i++) fx.particle(p[0] + (Math.random() - 0.5) * 0.3, p[1] + 0.03, p[2] + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.4, 0.2, (Math.random() - 0.5) * 0.4, 0.05, 0.5, '#d8c4a0', 0.2, 0.15); };
   fx.blood = (p, dir, head) => {
     const n = head ? 10 : 6;
     for (let i = 0; i < n; i++) fx.particle(p[0], p[1], p[2], dir[0] * 2.5 + (Math.random() - 0.5) * 2, dir[1] * 2 + Math.random() * 1.2, dir[2] * 2.5 + (Math.random() - 0.5) * 2, 0.035 + Math.random() * 0.04, 0.4 + Math.random() * 0.3, head ? '#b3121a' : '#8f1015', 8);
@@ -115,9 +135,10 @@ export function makeFx(scene) {
       const p = parts[i]; p.life -= dt;
       if (p.life <= 0) { parts.splice(i, 1); continue; }
       p.vy -= p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      if (p.fy !== null && p.fy !== undefined && p.y < p.fy) { p.y = p.fy; p.vy = Math.abs(p.vy) > 0.6 ? -p.vy * 0.3 : 0; p.vx *= 0.5; p.vz *= 0.5; p.g = p.vy ? 9.8 : 0; }
       p.vx *= 1 - dt * 1.5; p.vz *= 1 - dt * 1.5;
-      const k = p.life / p.max, s = p.s * (1 + p.grow * (1 - k) * 8) * (p.grow ? 1 : Math.min(1, k * 2));
-      tmpO.position.set(p.x, p.y, p.z); tmpO.rotation.set(p.x * 7, p.y * 5, 0); tmpO.scale.setScalar(s); tmpO.updateMatrix();
+      const k = p.life / p.max, s = p.shell ? p.s : p.s * (1 + p.grow * (1 - k) * 8) * (p.grow ? 1 : Math.min(1, k * 2));
+      tmpO.position.set(p.x, p.y, p.z); tmpO.rotation.set(p.x * 7, p.y * 5, 0); if (p.shell) tmpO.scale.set(s * 0.5, s * 0.5, s * 1.6); else tmpO.scale.setScalar(s); tmpO.updateMatrix();
       pm.setMatrixAt(n, tmpO.matrix); pm.setColorAt(n, p.c); n++;
     }
     pm.count = n; pm.instanceMatrix.needsUpdate = true; if (pm.instanceColor) pm.instanceColor.needsUpdate = true;

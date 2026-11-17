@@ -136,7 +136,7 @@ const uvSide = (nx, nz, s) => p => [(p[0] * nz - p[2] * nx) / s, p[1] / s];
 
 export function buildMeshes(W, mapId) {
   const T = themeOf(mapId), n = W.n, c = W.cell;
-  const B = { wall: bucket(), floor: bucket(), crate: bucket(), metal: bucket(), stone: bucket(), wood: bucket() };
+  const B = { wall: bucket(), floor: bucket(), crate: bucket(), metal: bucket(), stone: bucket(), wood: bucket(), plain: bucket() };
   const tint = (base, x, y, amt = 0.05) => { const k = 1 + (hash(x, y) - 0.5) * 2 * amt; return [base[0] * k, base[1] * k, base[2] * k]; };
 
   for (let l = 0; l < W.L; l++) {
@@ -257,6 +257,7 @@ export function buildMeshes(W, mapId) {
     // ---------- paredes con marching squares ----------
     msWalls(W, l, B, T);
   }
+  addDetails(W, mapId, B, T);
   // cajas orientadas
   for (const p of W.props || []) {
     const long = Math.max(p.hu, p.hv) * 2, short = Math.min(p.hu, p.hv) * 2;
@@ -294,11 +295,11 @@ export function buildMeshes(W, mapId) {
     g.setAttribute('color', new THREE.Float32BufferAttribute(b.col, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
     g.computeBoundingSphere();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map: typeof document !== 'undefined' ? texFor(texKind) : null }));
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map: texKind && typeof document !== 'undefined' ? texFor(texKind) : null }));
     m.matrixAutoUpdate = false; m.castShadow = true; m.receiveShadow = true;
     group.add(m); tris += b.pos.length / 9;
   };
-  mk(B.wall, T.wallTex); mk(B.floor, T.floorTex); mk(B.crate, 'crate'); mk(B.metal, 'metal'); mk(B.stone, 'stone'); mk(B.wood, 'wood');
+  mk(B.wall, T.wallTex); mk(B.floor, T.floorTex); mk(B.crate, 'crate'); mk(B.metal, 'metal'); mk(B.stone, 'stone'); mk(B.wood, 'wood'); mk(B.plain, null);
   group.matrixAutoUpdate = false;
   return { mesh: group, tris, theme: T };
 }
@@ -407,3 +408,105 @@ export function buildEnvironment(scene, W, mapId, quality = 1) {
   return sun;
 }
 function mulberry(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------------- detalles: ventanas, puertas falsas, marcos de puertas, toldos, barriles y palmeras ----------------
+function dbox(b, cx, cy, cz, sx, sy, sz, col, uvs = 1) { // caja alineada a los ejes
+  const x0 = cx - sx / 2, x1 = cx + sx / 2, y0 = cy - sy / 2, y1 = cy + sy / 2, z0 = cz - sz / 2, z1 = cz + sz / 2;
+  const f = [
+    [[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0], [1, 0, 0], 0.9], [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], 0.9],
+    [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], 0.82], [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [0, 0, -1], 0.82],
+    [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [0, 1, 0], 1.0],
+  ];
+  for (const [a, bb, c, d, n, k] of f) quadN(b, [a, bb, c, d], n, mul(col, k), n[1] ? uvTop(uvs) : uvSide(n[0], n[2], uvs));
+}
+function addDetails(W, mapId, B, T) {
+  const n = W.n, c = W.cell, top = W.top[0], cls = W.cls[0];
+  const isWall = i => cls[i] === 3, isFloor = i => cls[i] === 1;
+  const rnd = mulberry(mapId.length * 131);
+  const winCol = mapId === 'vertigo' ? [0.32, 0.45, 0.55] : [0.16, 0.13, 0.11];
+  const frame = mapId === 'mirage' ? [0.85, 0.78, 0.66] : mapId === 'vertigo' ? [0.45, 0.47, 0.5] : [0.62, 0.48, 0.32];
+  const shutter = mapId === 'mirage' ? [0.2, 0.52, 0.55] : [0.35, 0.5, 0.68];
+  const doorCols = mapId === 'dust2' ? [[0.22, 0.42, 0.62], [0.45, 0.3, 0.18]] : mapId === 'mirage' ? [[0.2, 0.48, 0.5], [0.5, 0.33, 0.2]] : [[0.55, 0.56, 0.58], [0.7, 0.55, 0.15]];
+  // tramos rectos de pared vistos desde el piso, en las 4 direcciones
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [dx, dz] of DIRS) {
+    const alongX = dx === 0; // la pared corre a lo largo de x
+    for (let a = 1; a < n - 1; a++) {
+      let start = -1, base = 0, wtop = 0;
+      const flush = (end) => {
+        if (start < 0) return;
+        const len = (end - start) * c, hgt = wtop - base;
+        if (len > 3 && hgt > 3.2) {
+          const nWin = Math.floor(len / 4.2);
+          for (let k = 0; k < nWin; k++) {
+            const t = (start + (k + 0.5) * (end - start) / nWin) * c;
+            const kind = rnd();
+            // posición sobre la cara de la pared
+            const lineCoord = (dx > 0 || dz > 0 ? a + 1 : a) * c;
+            const off = 0.03;
+            const px = alongX ? t : lineCoord - dx * off, pz = alongX ? lineCoord - dz * off : t;
+            const wx = alongX ? 1 : 0.1, wz = alongX ? 0.1 : 1;
+            if (kind < 0.16 && hgt > 3) { // puerta falsa (cerrada)
+              const dc = doorCols[Math.floor(rnd() * 2)];
+              dbox(B.plain, px, base + 1.15, pz, wx * 1.4 + (alongX ? 0 : 0.06), 2.3, wz * 1.4 + (alongX ? 0.06 : 0), frame);
+              dbox(B.plain, px - dx * 0.02, base + 1.1, pz - dz * 0.02, wx * 1.2 + (alongX ? 0 : 0.06), 2.2, wz * 1.2 + (alongX ? 0.06 : 0), dc);
+            } else if (hgt > 4.2) { // ventana con marco, alféizar y (a veces) postigos o toldo
+              const wy = base + 3.4;
+              dbox(B.plain, px, wy, pz, wx * 1.1 + (alongX ? 0 : 0.08), 1.35, wz * 1.1 + (alongX ? 0.08 : 0), frame);
+              dbox(B.plain, px - dx * 0.02, wy, pz - dz * 0.02, wx * 0.85 + (alongX ? 0 : 0.08), 1.1, wz * 0.85 + (alongX ? 0.08 : 0), winCol);
+              dbox(B.plain, px - dx * 0.08, wy - 0.7, pz - dz * 0.08, wx * 1.25 + (alongX ? 0 : 0.18), 0.08, wz * 1.25 + (alongX ? 0.18 : 0), frame);
+              if (kind > 0.72) for (const sgn of [-1, 1]) { const ox = alongX ? sgn * 0.75 : 0, oz = alongX ? 0 : sgn * 0.75; dbox(B.plain, px + ox - dx * 0.04, wy, pz + oz - dz * 0.04, wx * 0.38 + (alongX ? 0 : 0.05), 1.15, wz * 0.38 + (alongX ? 0.05 : 0), shutter); }
+              else if (mapId === 'mirage' && kind > 0.5) { // toldo de tela
+                const col = [[0.75, 0.25, 0.2], [0.85, 0.65, 0.25], [0.25, 0.45, 0.6]][Math.floor(rnd() * 3)];
+                dbox(B.plain, px - dx * 0.45, wy + 0.85, pz - dz * 0.45, alongX ? 1.5 : 0.9, 0.08, alongX ? 0.9 : 1.5, col);
+              }
+            }
+          }
+        }
+        start = -1;
+      };
+      for (let b2 = 1; b2 < n - 1; b2++) {
+        const x = alongX ? b2 : a, z = alongX ? a : b2;
+        const i = z * n + x, j = (z + dz) * n + (x + dx);
+        const ok = isFloor(i) && isWall(j) && !isNaN(top[j]);
+        if (ok && start >= 0 && Math.abs(top[i] - base) < 0.35 && Math.abs(top[j] - wtop) < 0.7) continue;
+        flush(b2);
+        if (ok) { start = b2; base = top[i]; wtop = top[j]; }
+      }
+      flush(n - 1);
+    }
+  }
+  // marcos de madera en las puertas (dinteles de la capa de losas)
+  if (W.slabs) {
+    const t1 = W.top[1], b1 = W.bot[1], c1 = W.cls[1];
+    for (let z = 1; z < n - 1; z++) for (let x = 1; x < n - 1; x++) {
+      const i = z * n + x; if (c1[i] !== 4 || b1[i] - top[i] > 2.8 || !isFloor(i) && cls[i] !== 2) continue;
+      for (const [dx, dz] of DIRS) {
+        const j = (z + dz) * n + x + dx; if (!isWall(j)) continue;
+        const ex = (x + 0.5 + dx * 0.5) * c - dx * 0.06, ez = (z + 0.5 + dz * 0.5) * c - dz * 0.06;
+        const h = b1[i] - top[i];
+        dbox(B.wood, ex, top[i] + h / 2, ez, dx ? 0.14 : c, h, dz ? 0.14 : c, mul(T.slab, 1.1), 2);
+      }
+    }
+  }
+  // barriles / palmeras en esquinas de piso abierto
+  const placed = [];
+  for (let k = 0; k < 900 && placed.length < (mapId === 'mirage' ? 26 : 18); k++) {
+    const x = 2 + Math.floor(rnd() * (n - 4)), z = 2 + Math.floor(rnd() * (n - 4)), i = z * n + x;
+    if (!isFloor(i)) continue;
+    let walls = 0; for (const [dx, dz] of DIRS) if (isWall((z + dz * 2) * n + x + dx * 2)) walls++;
+    if (walls !== 2) continue; // esquina
+    if (W.flags[i] & 60) continue; // no en sitios ni bases
+    const px = (x + 0.5) * c, pz = (z + 0.5) * c, y = top[i];
+    if (placed.some(p => Math.hypot(p[0] - px, p[1] - pz) < 8)) continue;
+    placed.push([px, pz]);
+    if (mapId === 'mirage' && rnd() < 0.35) { // maceta con planta
+      dbox(B.plain, px, y + 0.3, pz, 0.7, 0.6, 0.7, [0.7, 0.42, 0.28]);
+      for (let l = 0; l < 5; l++) { const a = l / 5 * Math.PI * 2; dbox(B.plain, px + Math.cos(a) * 0.35, y + 0.85, pz + Math.sin(a) * 0.35, 0.5, 0.08, 0.5, [0.28, 0.5, 0.22]); }
+    } else { // barril
+      const col = mapId === 'vertigo' ? [0.85, 0.55, 0.1] : rnd() < 0.5 ? [0.3, 0.42, 0.55] : [0.55, 0.3, 0.2];
+      dbox(B.plain, px, y + 0.45, pz, 0.6, 0.9, 0.6, col);
+      dbox(B.plain, px, y + 0.3, pz, 0.64, 0.06, 0.64, mul(col, 0.7)); dbox(B.plain, px, y + 0.65, pz, 0.64, 0.06, 0.64, mul(col, 0.7));
+    }
+  }
+}

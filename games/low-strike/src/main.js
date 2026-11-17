@@ -12,11 +12,11 @@ import { makeBots, DIFF } from './bots.js';
 import { inaccuracy, recoilStep, shotDir, traceShot, canSee } from './combat.js';
 import { makeNade, stepNade, NADE } from './nades.js';
 import { makeFx } from './fx.js';
-import { makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, MAT } from './models.js';
+import { makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT } from './models.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
-import { hud, radarImage, drawRadar, renderBoard, buildBuy, refreshBuy, weaponInfo, WNAME } from './ui.js';
+import { hud, radarImage, drawRadar, renderBoard, buildBuy, refreshBuy, weaponInfo, showWeaponInfo, WNAME } from './ui.js';
 
 const U = 0.0254, D2R = Math.PI / 180;
 const $ = id => document.getElementById(id);
@@ -56,7 +56,7 @@ const HOSTMSG = ['hit', 'buy', 'drop', 'take', 'nade', 'plant', 'defst', 'defx',
 
 // ---------------- jugador local ----------------
 const M = {
-  pl: null, slot: 's', drawT: 0, fireT: 0, reloadT: 0, shots: 0, pp: 0, py: 0, scope: 0, ammo: { p: [0, 0], s: [0, 0] }, ammoW: { p: null, s: null },
+  pl: null, slot: 's', throwT: 0, throwPow: 1, drawT: 0, fireT: 0, reloadT: 0, shots: 0, pp: 0, py: 0, scope: 0, ammo: { p: [0, 0], s: [0, 0] }, ammoW: { p: null, s: null },
   invV: -1, gsel: 0, plantT: 0, defT: 0, defusing: false, trig: false, trig2: false, nadeHold: 0, nadeCd: 0, stepT: 0, deadT: 0, spec: null,
   blind: 0, blindMax: 0, shake: 0, bob: 0, kick: 0, lastSlot: 'k', zeus: false, sway: [0, 0], swayT: [0, 0], pickCd: 0, voidSent: false, lastMoney: null, rescope: 0, knife2: false,
 };
@@ -209,7 +209,7 @@ function secondary() {
   const id = curId(), w = WEAPONS[id];
   if (w && w.scope && M.reloadT <= 0 && M.drawT <= 0) { M.scope = (M.scope + 1) % (w.scope.length + 1); A.sfxClick(null, 3000, 0.2); return; }
   if (id === 'knife' && M.fireT <= 0 && M.drawT <= 0) { knife(true); }
-  if (w && w.cat === 'grenade') { M.nadeHold = 0.3; }
+  if (w && w.cat === 'grenade' && !mouseL && M.throwT <= 0) { M.nadeHold = 0.3; }
 }
 function dropCurrent() {
   const P = me(); const s = M.slot; if (!P.alive) return;
@@ -295,9 +295,20 @@ function shotFx(sid, wid, eye, ends, imps, hits, w) {
     if (!w.silent && w.cat !== 'equip') fx.flashLight(from, w.cat === 'sniper' ? 1.5 : 1);
     if (P && P.model) { P.flashT = 0.05; }
     if (mine || spec) M.flashT = 0.05;
+    if (from && w.cat !== 'equip') {
+      fx.muzzleSmoke(from);
+      const yaw = P ? (P.id === myId && M.pl ? M.pl.yaw : P.yaw || 0) : 0;
+      if (!(wid === 'nova' || wid === 'sawedoff' || wid === 'mag7' || wid === 'awp' || wid === 'ssg08' || wid === 'r8')) fx.shell([from[0] + Math.sin(yaw) * 0.25, from[1] - 0.05, from[2] + Math.cos(yaw) * 0.25], Math.cos(yaw), -Math.sin(yaw), w.pellets > 1);
+    }
   }
   for (const im of imps) fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]], themeOf(G.cfg.map).floor ? '#b8a07a' : '#999');
-  for (const h of hits) { const d = [h[1][0] - eye[0], h[1][1] - eye[1], h[1][2] - eye[2]], L = Math.hypot(...d) || 1; fx.blood(h[1], d.map(v => v / L), h[2]); }
+  for (const h of hits) {
+    const d = [h[1][0] - eye[0], h[1][1] - eye[1], h[1][2] - eye[2]], L = Math.hypot(...d) || 1, dn = d.map(v => v / L);
+    fx.blood(h[1], dn, h[2]);
+    // salpicadura en la pared o el piso de atrás
+    const r = raycast(G.W, h[1][0], h[1][1], h[1][2], dn[0], dn[1] - 0.3, dn[2], 2.5);
+    if (r) fx.decalC([h[1][0] + dn[0] * r.t, h[1][1] + (dn[1] - 0.3) * r.t, h[1][2] + dn[2] * r.t], [r.nx, r.ny, r.nz], '#6e0b0e', 0.35 + (h[2] ? 0.2 : 0));
+  }
   if (w.cat === 'knife') return;
   A.sfxShot(w.cat, mine ? null : eye, !!w.silent, wid === 'deagle' || wid === 'r8');
 }
@@ -359,10 +370,10 @@ function throwNade(power) {
   const eye = [p.x, p.y + eyeH(p), p.z];
   const data = { i: myId, ty: id, tm: P.team, o: eye.map(v => +v.toFixed(3)), yaw: +p.yaw.toFixed(4), pitch: +p.pitch.toFixed(4), v: [+p.vx.toFixed(3), +p.vz.toFixed(3)], pw: power };
   addNade(data); send('nd', data); req('nade', { type: id });
-  M.nadeCd = 0.6; M.kick = 0.8; A.sfxThrow();
+  M.nadeCd = 0.6; A.sfxThrow();
   // sacar la granada de la lista local ya (el host confirma)
   const i = P.inv.g.indexOf(id); if (i >= 0) { P.inv.g = P.inv.g.slice(); P.inv.g.splice(i, 1); }
-  setTimeout(() => { if (!slotWeapon('g')) pick(bestSlot(), true); else pick('g', true); }, 350);
+  setTimeout(() => { M.throwT = 0; if (!slotWeapon('g')) pick(bestSlot(), true); else pick('g', true); }, 380);
 }
 
 // ---------------- granadas (simulación en todos los clientes) ----------------
@@ -379,6 +390,7 @@ function updateNades(dt) {
   for (const e of nadeEv) nadeEvent(e);
   for (let i = G.nades.length - 1; i >= 0; i--) {
     const g = G.nades[i], m = nadeMeshes.get(g);
+    if (g.state === 'fly' && !g.rest && Math.random() < 0.5) fx.particle(g.x, g.y, g.z, 0, 0.1, 0, 0.03, 0.4, '#cfcac0', -0.1, 0.1);
     if (m) { if (g.state === 'fly' || g.type === 'smoke' || g.type === 'decoy') { m.position.set(g.x, g.y, g.z); m.rotation.x += dt * (g.rest ? 0 : 9); m.visible = g.state !== 'done'; } else m.visible = false; }
     if (g.type === 'decoy' && g.state === 'active') { g.dc = (g.dc || 0) - dt; if (g.dc <= 0) { g.dc = 0.25 + Math.random() * 1.2; const n = 1 + Math.floor(Math.random() * 3); for (let k = 0; k < n; k++) setTimeout(() => A.sfxShot('rifle', [g.x, g.y, g.z]), k * 110); if (isHost() && BOTS) BOTS.heard(g.x, g.y, g.z, g.team, true); } }
     if ((g.type === 'molotov' || g.type === 'incendiary') && g.state === 'active' && !g.air) { g.ft = (g.ft || 0) - dt; if (g.ft <= 0) { g.ft = 0.6; A.sfxFireTick([g.x, g.y, g.z]); } }
@@ -391,6 +403,7 @@ function nadeEvent(e) {
   if (e.type !== 'det') return;
   if (g.type === 'he') {
     fx.explosion(pos, false); A.sfxExplosion(pos, false);
+    const fy = floorAt(G.W, g.x, g.z, g.y + 0.5); if (fy > -1e8 && g.y - fy < 1.5) fx.decalC([g.x, fy, g.z], [0, 1, 0], '#1d1a17', 2.6);
     shakeFrom(pos, 12, 0.5);
     if (isHost() && H) H.heBlast(g, (gg, p) => { const L = Math.hypot(p.x - gg.x, p.y + 1 - gg.y, p.z - gg.z); const h = raycast(G.W, gg.x, gg.y + 0.15, gg.z, (p.x - gg.x) / L, (p.y + 1 - gg.y - 0.15) / L, (p.z - gg.z) / L, L); return !h || h.t >= L - 0.2; });
   } else if (g.type === 'flash') {
@@ -482,6 +495,7 @@ function roundStart(d) {
   Object.assign(M, { deadT: 0, spec: null, blind: 0, plantT: 0, defusing: false, defT: 0, scope: 0, reloadT: 0, drawT: 0.4, shots: 0, pp: 0, py: 0, voidSent: false, nadeHold: 0 });
   M.invV = -1; M.ammoW = { p: null, s: null };
   syncInv();
+  M.throwT = 0;
   pick(bestSlot(), true);
   if (d.round === 1 || G.round === 1) hud.center('Ronda 1 — ¡suerte!');
   A.sfxRoundStart();
@@ -559,10 +573,10 @@ function toggleBuy(force) {
   if (open) {
     if (!P.alive) return;
     if (!canBuyNow()) { hud.center(G.phase === 'live' ? 'Se terminó el tiempo de compra' : 'No podés comprar ahora', 1400); return; }
-    if (builtFor !== P.team) { builtFor = P.team; buildBuy(P.team, iconOf, id => req('buy', { i: id }), id => { $('buyInfo').textContent = weaponInfo(id); }); }
+    if (builtFor !== P.team) { builtFor = P.team; buildBuy(P.team, iconOf, id => req('buy', { i: id }), id => showWeaponInfo(id)); }
     buySel = -1; refreshBuy(P, buySel);
     buyOpen = true; $('buy').hidden = false; document.exitPointerLock && document.exitPointerLock();
-  } else { buyOpen = false; $('buy').hidden = true; if (!isTouch) lockPointer(); }
+  } else { buyOpen = false; $('buy').hidden = true; showWeaponInfo(null); if (!isTouch) lockPointer(); }
   updateClickPlay();
 }
 function canBuyNow() {
@@ -620,7 +634,7 @@ async function loadGame(id) {
   const built = buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
   buildEnvironment(scene, W, id, QUALITY);
   renderer.shadowMap.needsUpdate = true;
-  fx = makeFx(scene);
+  fx = makeFx(scene); fx.floorAt = (x, z, y) => floorAt(G.W, x, z, y + 0.2);
   radarImg = radarImage(W);
   for (const p of G.players.values()) { if (p.model) { p.model = null; p.tag = null; } }
   for (const d of dropMeshes.values()) scene.remove(d); dropMeshes.clear();
@@ -665,7 +679,7 @@ function updateModels(dt) {
     m.position.set(p.x, p.y, p.z); m.rotation.y = p.yaw;
     if (!p.alive) p.deadT = Math.min(3, (p.deadT || 0) + dt * 2.5);
     const sp = Math.hypot(p.vx || 0, p.vz || 0);
-    setModelGun(m, p.alive ? (p.wpn || 'knife') : null, p.fin | 0);
+    setModelGun(m, p.alive ? (p.wpn || 'knife') : null, finOf(p.fin, p.wpn || 'knife'));
     if (p.mflash && p.wpn) { const gi = gunInfo(p.wpn); p.mflash.position.set(0, gi.muzzle[1] * 1.12, -gi.muzzle[0] * 1.12 - 0.05); if (p.mflash.parent !== m.userData.gun) m.userData.gun.add(p.mflash); }
     poseModel(m, { speed: p.alive ? sp : 0, duck: p.duck || 0, pitch: p.pitch || 0, onGround: p.onGround !== false, dead: p.alive ? 0 : p.deadT }, dt);
     if (p.mflash) { p.flashT = (p.flashT || 0) - dt; p.mflash.visible = p.flashT > 0; if (p.mflash.visible) p.mflash.rotation.z = Math.random() * 3; }
@@ -674,7 +688,7 @@ function updateModels(dt) {
     else if (p.tag) p.tag.visible = false;
     p.esp.visible = !!(admin('ls.wall') && P && p.team !== P.team && p.alive);
     // pasos
-    if (!local && p.alive && sp > 3.6 && p.onGround !== false) { p.stepT = (p.stepT || 0) - dt; if (p.stepT <= 0) { p.stepT = 0.34; A.sfxStep([p.x, p.y, p.z]); } }
+    if (!local && p.alive && sp > 3.6 && p.onGround !== false) { p.stepT = (p.stepT || 0) - dt; if (p.stepT <= 0) { p.stepT = 0.34; A.sfxStep([p.x, p.y, p.z]); if (G.cfg.map === 'dust2') fx.dust([p.x, p.y, p.z]); } }
   }
 }
 // armas en el piso y bomba
@@ -740,8 +754,14 @@ function updateLocal(dt) {
   // disparar / granadas / bomba
   const wcat = (WEAPONS[id] || {}).cat;
   if (wcat === 'grenade') {
-    if (mouseL && !M.nadeHold && M.drawT <= 0) M.nadeHold = 1;
-    if (M.nadeHold && !mouseL && !mouseR && G.phase !== 'freeze') { throwNade(mouseL ? 0.6 : M.nadeHold === 0.3 ? 0.3 : 1); M.nadeHold = 0; }
+    // como CS2: apretás para sacar el seguro y soltás para tirar (der. = suave, ambos = medio)
+    if (mouseL && !M.nadeHold && M.throwT <= 0) M.nadeHold = mouseR ? 0.6 : 1;
+    if (mouseL && mouseR && M.nadeHold) M.nadeHold = 0.6;
+    if (M.nadeHold && !mouseL && !mouseR && M.drawT <= 0 && M.throwT <= 0) {
+      if (G.phase === 'freeze') { hud.center('Esperá a que empiece la ronda', 1000); M.nadeHold = 0; }
+      else { M.throwT = 0.45; M.throwPow = M.nadeHold; M.nadeHold = 0; }
+    }
+    if (M.throwT > 0) { const prev = M.throwT; M.throwT -= dt; if (prev > 0.3 && M.throwT <= 0.3) throwNade(M.throwPow || 1); }
   } else if (id === 'c4') {
     const site = zoneAt(G.W, p.x, p.z) & 12;
     if (mouseL && site && p.onGround && G.phase === 'live' && M.drawT <= 0) {
@@ -809,7 +829,7 @@ function nextSpec(d) {
 }
 function updateCamera(dt) {
   const P = me(); if (!P || !M.pl) return;
-  let x, y, z, yaw, pitch, wid = curId(), team = P.team, scoped = M.scope, vsk = skinIdx(P), vfin = P.fin | 0;
+  let x, y, z, yaw, pitch, wid = curId(), team = P.team, scoped = M.scope, vsk = skinIdx(P), vfin = finOf(P.fin, curId());
   if (P.alive) {
     const p = M.pl; x = p.x; y = p.y + eyeH(p); z = p.z;
     yaw = p.yaw - M.py * 0.5 * D2R; pitch = p.pitch + M.pp * 0.5 * D2R + (M.punchHit || 0) * 0.02;
@@ -823,7 +843,7 @@ function updateCamera(dt) {
     const sp = M.spec && G.players.get(M.spec);
     if (!sp || !sp.alive) nextSpec(1);
     const s = M.spec && G.players.get(M.spec);
-    if (s) { x = s.x; y = s.y + eyeH({ duck: s.duck || 0 }); z = s.z; yaw = s.yaw; pitch = s.pitch; wid = s.wpn || 'knife'; team = s.team; scoped = s.scoped ? 1 : 0; vsk = skinIdx(s); vfin = s.fin | 0; }
+    if (s) { x = s.x; y = s.y + eyeH({ duck: s.duck || 0 }); z = s.z; yaw = s.yaw; pitch = s.pitch; wid = s.wpn || 'knife'; team = s.team; scoped = s.scoped ? 1 : 0; vsk = skinIdx(s); vfin = finOf(s.fin, wid); }
     else { const p = M.pl; x = p.x; y = p.y + 3; z = p.z; yaw = p.yaw; pitch = -0.5; wid = null; }
   }
   M.punchHit = Math.max(0, (M.punchHit || 0) - dt * 6);
@@ -853,6 +873,8 @@ function updateCamera(dt) {
     if (P.alive && M.inspect) { const e = Math.sin(Math.min(1, M.inspect / 1.6) * Math.PI); ry += e * 1.1; rz += e * 0.5; ox -= e * 0.08; }
     if (wid === 'knife' && P.alive && M.fireT > 0) { const k = M.fireT / (M.knife2 ? 1 : 0.45); ry -= Math.sin(k * Math.PI) * 0.9; oz -= Math.sin(k * Math.PI) * 0.08; }
     if (M.plantT > 0 || M.defusing) { oy -= 0.08; rx -= 0.7; }
+    if (P.alive && M.nadeHold) { oy -= 0.03; oz += 0.06; rx += 0.25; }
+    if (P.alive && M.throwT > 0) { const k = 1 - M.throwT / 0.45; const e = Math.sin(Math.min(1, k) * Math.PI); oz -= e * 0.25; oy += e * 0.12; rx -= e * 1.2; if (k > 0.4) vm.userData.gun.visible = false; } else vm.userData.gun.visible = true;
     const r0 = u.rot || [0, 0, 0];
     u.hold.position.set(ox, oy, oz); u.hold.rotation.set(rx + r0[0], ry + r0[1], rz + r0[2]);
     updateViewArms(vm);
@@ -876,7 +898,7 @@ let hudT = 0, radarT = 0;
 function updateHud(dt) {
   const P = me(); if (!P) return;
   hurtFlash = Math.max(0, hurtFlash - dt * 1.4);
-  hud.el.hurt.style.opacity = hurtFlash.toFixed(2);
+  hud.el.hurt.style.opacity = Math.max(hurtFlash, P.alive && P.hp <= 30 ? 0.22 + 0.14 * Math.sin(G.time * 4) : 0).toFixed(2);
   M.blind = Math.max(0, M.blind - dt);
   hud.el.flash.style.opacity = Math.min(1, M.blind / 1.6).toFixed(3);
   hudT -= dt; if (hudT > 0) return; hudT = 0.05;
@@ -896,15 +918,16 @@ function updateHud(dt) {
     if (P.inv.c4) list.push({ key: 5, slot: 'c4', id: 'c4', name: 'C4' });
     if (P.inv.kit) list.push({ key: '', slot: 'kit', id: 'kit', name: 'Kit de desactivación' });
   }
-  hud.slots(list, M.slot);
+  hud.slots(list.filter(x => x.slot !== 'g' && x.slot !== 'kit'), M.slot, P.alive ? P.inv.g : [], M.gsel);
   const planted = G.bomb.state === 'planted';
   hud.clock(G.timeLeft, planted || G.phase === 'live' && G.timeLeft < 10, planted);
   const sT = G.score[G.half], sCT = G.score[1 - G.half];
   let aT = 0, nT = 0, aC = 0, nC = 0;
   for (const p of G.players.values()) { if (p.team === 'T') { nT++; if (p.alive) aT++; } else { nC++; if (p.alive) aC++; } }
-  hud.score(sT, sCT, aT, nT, aC, nC);
+  const ls = t => [...G.players.values()].filter(p => p.team === t).map(p => ({ n: p.name, a: p.alive }));
+  hud.score(sT, sCT, ls('T'), ls('CT'));
   hud.el.buyHint.hidden = !(canBuyNow() && !buyOpen);
-  if (buyOpen) { if (!canBuyNow()) toggleBuy(false); else { const el = $('buyTime'); el.textContent = G.phase === 'freeze' ? 'Tiempo de compra: ' + Math.ceil(G.timeLeft + ROUND.buy) + ' s' : 'Tiempo de compra: ' + Math.max(0, Math.ceil(ROUND.buy - (ROUND.live - G.timeLeft))) + ' s'; } }
+  if (buyOpen) { if (!canBuyNow()) toggleBuy(false); else { const el = $('buyTime'); const bt = G.phase === 'freeze' ? Math.ceil(G.timeLeft + ROUND.buy) : Math.max(0, Math.ceil(ROUND.buy - (ROUND.live - G.timeLeft))); el.textContent = '0:' + String(bt).padStart(2, '0'); } }
   // espectador
   const specEl = hud.el.spec;
   if (!P.alive && M.deadT > 2.2 && S && S !== P) { specEl.hidden = false; specEl.innerHTML = 'Mirando a <b>' + S.name.replace(/</g, '') + '</b><small>Clic o Espacio: siguiente</small>'; }

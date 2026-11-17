@@ -46,7 +46,10 @@ export const FINISHES = [
   { name: 'Ártico', b: '#dfe4ea', w: '#b9c2cc', sw: '#dfe4ea' },
   { name: 'Neón', b: '#2b1f47', w: '#ff3fa4', sw: '#ff3fa4' },
   { name: 'Oro', b: '#c9a23a', w: '#6b4a24', sw: '#c9a23a' },
+  { name: 'Carmesí', b: '#7a1a1a', w: '#2a1a1a', sw: '#9a2020' },
+  { name: 'Cobalto', b: '#1f3f8a', w: '#9aa6b8', sw: '#2f5fc0' },
 ];
+export const finOf = (fin, id) => (fin && typeof fin === 'object' ? (fin[id] | 0) : (fin | 0));
 
 // ---------------- armas ----------------
 const DRK = '#34373c', WOOD = '#8b5a2e', WOOD2 = '#6e4423', MET = '#5a5f66';
@@ -223,6 +226,15 @@ function design(id) {
       add(box(0.008, 0.012, 0.008, L - 0.01, 0.082, '#111'));
     }
   }
+  // detalles comunes: guardamonte, gatillo, ventana de expulsión y miras
+  const wpn = WEAPONS[id];
+  if (wpn && wpn.dmg && wpn.cat !== 'knife' && wpn.cat !== 'equip') {
+    const pist = wpn.cat === 'pistol';
+    add(prof([[0.025, 0.0], [0.07, 0.0], [0.07, -0.006], [0.06, -0.035], [0.025, -0.035], [0.025, -0.029], [0.057, -0.029], [0.064, -0.006], [0.025, -0.006]], 0.008, '#18191b'), 'm');
+    add(box(0.004, 0.02, 0.008, 0.045, -0.012, '#0e0e0f'));
+    if (!pist) add(box(0.004, 0.022, 0.07, 0.1, 0.07, '#0b0b0c', 0.026));
+    else add(box(0.004, 0.012, 0.05, 0.06, 0.06, '#0b0b0c', 0.016));
+  }
   return { parts: P, fore, muzzle };
 }
 const gcache = new Map(), icache = new Map();
@@ -315,7 +327,7 @@ export function makePlayerModel(team, si = 0) {
 export function setModelGun(root, id, finish = 0) {
   const u = root.userData, key = id + ':' + finish; if (u.gunId === key) return; u.gunId = key;
   u.gun.clear(); u.info = id ? gunInfo(id) : null; u.wid = id;
-  if (id) { const m = gunMesh(id, finish); m.scale.setScalar(1.12); u.gun.add(m); }
+  if (id) { const m = gunMesh(id, finish); m.scale.setScalar(1.12); u.gun.add(m); if (id === 'dualies') { const m2 = gunMesh(id, finish); m2.scale.setScalar(1.12); m2.position.x = -0.24; u.gun.add(m2); } }
 }
 // IK de dos huesos: hombro S, objetivo T, largos a y b, polo → codo (out); devuelve el objetivo alcanzable
 const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3(), vE = new THREE.Vector3();
@@ -364,6 +376,7 @@ export function poseModel(root, o, dt) {
     if (info) {
       if (right) target = tg.set(0, 0, cat === 'knife' ? 0.06 : 0).applyMatrix4(u.gun.matrix);
       else if (info.fore && cat !== 'knife') target = tg.set(0, info.fore[1] * 1.12 - 0.02, -info.fore[0] * 1.12).applyMatrix4(u.gun.matrix);
+      else if (u.wid === 'dualies') target = tg.set(-0.24, 0, 0).applyMatrix4(u.gun.matrix);
       else if (pistol) target = tg.set(-0.04, -0.04, 0.02).applyMatrix4(u.gun.matrix);
     }
     if (!target) target = tg.set(right ? 0.3 : -0.3, 0.02, -0.05 + sw * 0.15 * (right ? -1 : 1));
@@ -390,10 +403,10 @@ const armCache = {};
 function vmParts(team, si) {
   const key = team + si; if (armCache[key]) return armCache[key];
   const S = skinOf(team, si);
-  const sleeve = box(0.085, 0.085, 1, 0, 0, S.shirt);
-  const forearm = mergeGeometries([box(0.072, 0.072, 1, 0, 0, S.shirt), box(0.082, 0.082, 0.14, 0.43, 0, S.vest)]);
+  const sleeve = box(0.07, 0.07, 1, 0, 0, S.shirt);
+  const forearm = mergeGeometries([box(0.058, 0.058, 1, 0, 0, S.shirt), box(0.066, 0.066, 0.14, 0.43, 0, S.vest)]);
   // mano cerrada sobre la empuñadura: palma, nudillos y pulgar
-  const hand = mergeGeometries([box(0.062, 0.08, 0.085, 0, -0.01, S.glove), box(0.07, 0.028, 0.05, 0.015, -0.045, S.glove), box(0.026, 0.026, 0.06, 0.02, 0.03, S.glove, 0.03)]);
+  const hand = mergeGeometries([box(0.05, 0.065, 0.07, 0, -0.01, S.glove), box(0.056, 0.024, 0.042, 0.012, -0.038, S.glove), box(0.022, 0.022, 0.05, 0.016, 0.026, S.glove, 0.026)]);
   return (armCache[key] = { sleeve, forearm, hand });
 }
 export function setViewGun(vm, id, team, si = 0, finish = 0) {
@@ -403,11 +416,13 @@ export function setViewGun(vm, id, team, si = 0, finish = 0) {
   if (!id) return;
   const cat = WEAPONS[id]?.cat || id;
   const m = new THREE.Mesh(gunGeo(id, finish), MAT_VM); u.gun.add(m);
+  u.dual = id === 'dualies';
+  if (u.dual) { const m2 = new THREE.Mesh(gunGeo(id, finish), MAT_VM); m2.position.set(-0.21, 0.0, 0.02); m2.rotation.y = -0.08; u.gun.add(m2); }
   u.info = gunInfo(id); u.cat = cat;
   const P = vmParts(team, si);
   for (const a of u.arms) { a.u.geometry = P.sleeve; a.f.geometry = P.forearm; a.h.add(new THREE.Mesh(P.hand, MAT_VM)); }
   // dónde se sostiene respecto de la cámara
-  u.base = cat === 'pistol' || id === 'zeus' ? [0.12, -0.1, -0.37] : cat === 'knife' ? [0.14, -0.13, -0.33] : cat === 'grenade' || cat === 'c4' || id === 'defuser' ? [0.12, -0.12, -0.28] : cat === 'sniper' ? [0.13, -0.17, -0.46] : [0.12, -0.125, -0.28];
+  u.base = id === 'dualies' ? [0.12, -0.15, -0.48] : cat === 'pistol' || id === 'zeus' ? [0.15, -0.125, -0.44] : cat === 'knife' ? [0.17, -0.18, -0.4] : cat === 'grenade' || cat === 'c4' || id === 'defuser' ? [0.16, -0.17, -0.38] : cat === 'sniper' ? [0.19, -0.22, -0.55] : [0.19, -0.2, -0.43];
   u.rot = cat === 'knife' ? [0.35, 0.55, -0.25] : cat === 'grenade' || cat === 'c4' ? [0.1, 0.2, 0] : [0.03, 0.07, 0];
   vm.traverse(o => { o.renderOrder = 10; o.frustumCulled = false; });
 }
@@ -424,6 +439,7 @@ export function updateViewArms(vm) {
     let T = null;
     if (right) T = vT.set(0.004, -0.012, cat === 'knife' ? 0.065 : 0).applyMatrix4(gm);
     else if (info.fore && cat !== 'knife') T = vT.set(-0.004, info.fore[1] - 0.03, -info.fore[0]).applyMatrix4(gm);
+    else if (u.dual) T = vT.set(-0.206, -0.012, 0.02).applyMatrix4(gm);
     else if (cat === 'pistol' || u.id === 'zeus') T = vT.set(-0.035, -0.065, 0.025).applyMatrix4(gm);
     const vis = !!T;
     A.u.visible = A.f.visible = A.h.visible = vis;
@@ -433,6 +449,6 @@ export function updateViewArms(vm) {
     placeSeg(A.u, vS, vEl); placeSeg(A.f, vEl, T2);
     A.h.position.copy(T2);
     A.h.quaternion.setFromRotationMatrix(gm);
-    if (!right) A.h.rotateZ(0.35);
+    if (!right && !u.dual) A.h.rotateZ(0.35);
   }
 }
