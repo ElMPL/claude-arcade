@@ -1,0 +1,12 @@
+{
+  "name": "Low Strike",
+  "description": "Shooter táctico 5v5 low-poly con bomba, armas y economía como CS2. Mapas Dust II, Mirage y Vertigo, completa con bots.",
+  "author": "ClaudeArcade",
+  "mode": "multi",
+  "minPlayers": 1,
+  "maxPlayers": 8,
+  "emoji": "💣",
+  "color": "#e8b33a",
+  "thumbnail": "thumb.jpg",
+  "controls": "WASD moverse · Clic disparar · Clic der. mira · R recargar · B comprar · 1-5 armas · E desactivar · G tirar · Tab tabla"
+}
