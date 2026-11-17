@@ -1,0 +1,12 @@
+{
+  "name": "Jungle Fight",
+  "description": "Peleas 2D estilo arcade en la selva: 8 luchadores con combos, especiales y remates, 8 escenarios. 1v1 online o contra la CPU.",
+  "author": "iamaster213-del",
+  "mode": "multi",
+  "minPlayers": 1,
+  "maxPlayers": 2,
+  "emoji": "🐆",
+  "color": "#e8913a",
+  "thumbnail": "thumb.jpg",
+  "controls": "A/D caminar · W saltar · S bloquear · F puño · G patada · H especial · Esc pausa · ? combos"
+}
