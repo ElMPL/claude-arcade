@@ -3,10 +3,10 @@
 import { blocked, STEP, zoneCells } from './world.js';
 import { PM } from './player.js';
 
-const JUMP = 1.15, NSTEP = 0.74; // nodos cada 2 celdas: una rampa empinada sube ~0.65 entre nodos
+const JUMP = 1.15, NSTEP = 0.74; // nodos cada ~0.55 m: una rampa empinada sube ~0.65 entre nodos
  // los bots saltan escalones/cajas de hasta esta altura
 export function buildNav(W) {
-  const k = 2, m = W.n / k, N = m * m, c = W.cell * k;
+  const k = Math.max(1, Math.round(0.55 / W.cell)), m = Math.floor(W.n / k), N = m * m, c = W.cell * k;
   // por cada nodo y capa: altura del piso (NaN si no se puede estar)
   const H = [];
   for (let l = 0; l < W.L; l++) H.push(new Float32Array(N).fill(NaN));
@@ -167,4 +167,71 @@ export function zoneNodes(nav, bit) {
     for (let l = W.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j]) { out.add(l * nav.N + j); break; }
   }
   return [...out];
+}
+
+// Trampas: lugares a los que un jugador puede caer (o saltar) desde la zona jugable pero de los que no
+// puede volver — afuera del mapa, pozos, techos bajos al borde. Se tapan con paredes invisibles hasta
+// arriba para que nadie quede atrapado ni se caiga del mapa. Devuelve cuántas celdas se taparon.
+export function sealTraps(W, nav, jump = 1.45) {
+  const { m, N, H } = nav, T = W.L * N;
+  if (!nav.main) return 0;
+  const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const nbr = (id, fn) => {
+    const l = Math.floor(id / N), i = id % N, x = i % m, z = (i - x) / m, h = H[l][i];
+    for (const [dx, dz] of D4) {
+      const xx = x + dx, zz = z + dz; if (xx < 0 || zz < 0 || xx >= m || zz >= m) continue;
+      const j = zz * m + xx;
+      for (let l2 = 0; l2 < W.L; l2++) { const h2 = H[l2][j]; if (!isNaN(h2) && h2 - h <= jump) fn(l2 * N + j); }
+    }
+  };
+  // hacia adelante desde la zona principal (el jugador puede bajar cualquier altura)
+  const fwd = new Uint8Array(T), st = [];
+  for (let n = 0; n < T; n++) if (nav.main[n]) { fwd[n] = 1; st.push(n); }
+  while (st.length) { const u = st.pop(); nbr(u, v => { if (!fwd[v]) { fwd[v] = 1; st.push(v); } }); }
+  // ¿desde dónde se puede volver? búsqueda inversa
+  const rev = new Map();
+  for (let n = 0; n < T; n++) if (fwd[n]) nbr(n, v => { if (!fwd[v]) return; let r = rev.get(v); if (!r) rev.set(v, r = []); r.push(n); });
+  const back = new Uint8Array(T);
+  for (let n = 0; n < T; n++) if (nav.main[n]) { back[n] = 1; st.push(n); }
+  while (st.length) { const u = st.pop(); const r = rev.get(u); if (r) for (const v of r) if (!back[v]) { back[v] = 1; st.push(v); } }
+  // trepadas: lugares fuera de la zona principal a los que se llega encadenando saltos (cajas → pared →
+  // techo). Se permite subirse a cajas (hasta 2 saltos y ~2.6 m sobre el piso de donde saliste); lo demás
+  // (techos, bordes de paredes) se tapa para que nadie camine por arriba del mapa.
+  const jumps = new Uint8Array(T).fill(255), base = new Float32Array(T), dq = [];
+  for (let n = 0; n < T; n++) if (nav.main[n]) { jumps[n] = 0; base[n] = H[Math.floor(n / N)][n % N]; dq.push(n); }
+  const hOf = n => H[Math.floor(n / N)][n % N];
+  for (let qi = 0; qi < dq.length; qi++) {
+    const u = dq[qi], hu = hOf(u);
+    nbr(u, v => {
+      if (nav.main[v]) return;
+      const up = hOf(v) - hu, j = jumps[u] + (up > 0.7 ? 1 : 0), b = nav.main[u] ? hu : base[u];
+      if (j < jumps[v]) { jumps[v] = j; base[v] = b; dq.push(v); }
+    });
+  }
+  const climb = n => !nav.main[n] && jumps[n] < 255 && (jumps[n] > 2 || hOf(n) - base[n] > 2.6);
+  let cells = 0;
+  for (let n = 0; n < T; n++) {
+    const trap = fwd[n] && !back[n];
+    if (!trap && !climb(n)) continue;
+    if (!trap) { // trepada: se levanta 2.2 m (no se puede volver a subir), no hasta el techo
+      const l = Math.floor(n / N), i = n % N, x = i % m, z = (i - x) / m, h = H[l][i];
+      for (let dz = 0; dz < nav.k; dz++) for (let dx = 0; dx < nav.k; dx++) {
+        const ci = (z * nav.k + dz) * W.n + x * nav.k + dx;
+        let li = -1, bd = 0.4; for (let q = 0; q < W.L; q++) { const t = W.top[q][ci]; if (!isNaN(t) && Math.abs(t - h) < bd) { bd = Math.abs(t - h); li = q; } }
+        if (li < 0) continue;
+        const above = li + 1 < W.L && !isNaN(W.bot[li + 1][ci]) ? W.bot[li + 1][ci] : 60;
+        W.top[li][ci] = Math.min(above, W.top[li][ci] + 2.2); W.cls[li][ci] = 3; cells++;
+      }
+      continue;
+    }
+    const l = Math.floor(n / N), i = n % N, x = i % m, z = (i - x) / m, h = H[l][i];
+    for (let dz = 0; dz < nav.k; dz++) for (let dx = 0; dx < nav.k; dx++) {
+      const ci = (z * nav.k + dz) * W.n + x * nav.k + dx;
+      let li = -1, bd = 0.4; for (let q = 0; q < W.L; q++) { const t = W.top[q][ci]; if (!isNaN(t) && Math.abs(t - h) < bd) { bd = Math.abs(t - h); li = q; } }
+      if (li < 0) continue;
+      const above = li + 1 < W.L && !isNaN(W.bot[li + 1][ci]) ? W.bot[li + 1][ci] : 40;
+      W.top[li][ci] = above; W.cls[li][ci] = 3; cells++;
+    }
+  }
+  return cells;
 }

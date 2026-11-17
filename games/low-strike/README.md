@@ -1,6 +1,8 @@
-# Low Strike
+# Counter Strika
 
-Shooter táctico en low-poly para ClaudeArcade, inspirado en Counter-Strike 2. Los equipos se completan con bots.
+(Antes se llamaba Low Strike; la carpeta y el id del juego siguen siendo `low-strike` para no romper enlaces ni configuraciones guardadas.)
+
+Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Counter-Strike 2. Los equipos se completan con bots.
 
 ## Qué tiene
 - **Mapas:** Dust II y Mirage, importados de modelos 3D de los mapas originales (ver *Mapas*).
@@ -34,12 +36,16 @@ Shooter táctico en low-poly para ClaudeArcade, inspirado en Counter-Strike 2. L
 Los mapas salen de modelos 3D de Dust II y Mirage que subió el usuario (no son obra nuestra: son recreaciones de mapas de Valve, así que conviene tenerlo en cuenta antes de publicar el juego en otro lado). `tools/import_map.py` los convierte:
 - **Colisión:** muestrea la malla y arma, por celda, hasta 3 tramos sólidos (piso, techos, pasarelas) en `maps/<id>.png`. Detecta paredes, abre las hojas de puerta que tapaban el paso (`open` en `tools/zones_<id>.json`) y descarta cables y vigas colgantes.
 - **Render:** guarda la malla en centímetros en `maps/<id>.bin`, separada por tipo (piso, pared, techo…). Mirage se reduce a ~200 mil triángulos.
-- **Zonas:** sitios A y B y spawns se marcan a mano en `tools/zones_<id>.json`.
+- **Zonas:** sitios A y B y spawns se marcan a mano en `tools/zones_<id>.json` (en una grilla de 512; el mapa se importa a 1024 celdas, ~14 cm por celda en Dust II).
+- Las grietas entre piezas de piso del modelo se rellenan para que no aparezcan paredes invisibles.
+
+Al cargar, el juego tapa con paredes invisibles los lugares de los que un jugador no podría volver (afuera del mapa, pozos) y los techos a los que se llega trepando, así nadie se cae del mapa ni camina por arriba. Si un jugador queda encajado en una esquina, se lo corre al lugar libre más cercano.
 
 En el juego la malla se pinta con texturas generadas por código al estilo de Dust II: arenisca en bloques, revoque, baldosas, madera; y los techos que no se pueden pisar van de terracota.
 
 ## Gráficos
-- Paredes y pisos usan texturas generadas por código y sombreado en las esquinas.
+- Texturas generadas por código en 512 px con relieve (normal maps): arenisca en bloques, revoque con partes descascaradas, arena con piedritas, baldosas irregulares, madera, tejas, chapa. Materiales PBR con luz de entorno.
+- Personajes y armas de poligonado medio: cuerpos redondeados, cascos y cabezas esféricas, piernas y brazos cilíndricos, armas con biseles y cilindros suaves.
 - El sol proyecta sombras (se pueden bajar o sacar en la configuración).
 - Las armas se modelan por perfil con detalles: rieles, ventilaciones, estrías de la corredera, lentes de la mira, nervios del cargador. Las manos las agarran con IK.
 

@@ -51,6 +51,8 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   if (!inp.jump) p.jumpHeld = false;
   if (p.landT > 0) p.landT -= dt;
 
+  // si quedó encajado en una esquina (no se puede mover para ningún lado), se lo corre al lugar libre más cercano
+  if (blocked(W, p.x, p.z, p.y, p.h, PM.r)) unstick(W, p);
   // mover en X y Z por separado (se desliza por las paredes)
   const nx = p.x + p.vx * dt;
   if (!blocked(W, nx, p.z, p.y, p.h, PM.r)) p.x = nx; else p.vx = 0;
@@ -65,16 +67,34 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   }
   if (!p.onGround) {
     p.vy -= PM.gravity * dt;
+    const y0 = p.y;
     p.y += p.vy * dt;
-    const c = ceiling(W, p.x, p.z, p.y - p.vy * dt);
-    if (p.y + p.h > c && p.vy > 0) { p.y = c - p.h; p.vy = 0; }
+    const c = ceiling(W, p.x, p.z, y0);
+    // golpe contra el techo: se frena, pero nunca se empuja hacia abajo (eso lo metía dentro del piso)
+    if (p.y + p.h > c && p.vy > 0) { p.y = Math.max(y0, c - p.h); p.vy = 0; }
     const g2 = ground(W, p.x, p.z, p.y - p.vy * dt, PM.r - 0.02);
     if (p.vy <= 0 && p.y <= g2) {
       const fall = -p.vy; p.y = g2; p.vy = 0; p.onGround = true; p.landT = 0.12;
       return fall; // velocidad de caída (para daño)
     }
   }
+  unsink(W, p);
   return 0;
+}
+function unstick(W, p) {
+  for (let r = 0.04; r <= 0.8; r += 0.04) for (let k = 0; k < 16; k++) {
+    const a = k * Math.PI / 8, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+    for (const dy of [0, STEP * 0.9]) if (!blocked(W, x, z, p.y + dy, p.h, PM.r)) { p.x = x; p.z = z; p.y += dy; return true; }
+  }
+  return false;
+}
+// si por algún motivo los pies quedaron dentro de un sólido, se sube al piso de ese sólido
+function unsink(W, p) {
+  const i = W.idx(p.x, p.z); if (i < 0) return;
+  for (let l = 0; l < W.L; l++) {
+    const t = W.top[l][i], b = W.bot[l][i]; if (isNaN(t)) continue;
+    if (b < p.y - 0.05 && t > p.y + 0.02 && t - p.y < 2.5) { p.y = t; p.vy = Math.max(0, p.vy); p.onGround = true; return; }
+  }
 }
 function accelerate(p, wx, wz, wishspeed, accel, dt, base) {
   const cur = p.vx * wx + p.vz * wz, add = wishspeed - cur;

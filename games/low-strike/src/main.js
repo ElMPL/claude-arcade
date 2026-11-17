@@ -1,10 +1,11 @@
-// Low Strike — shooter táctico 5v5 low-poly para ClaudeArcade.
+// Counter Strika — shooter táctico estilo CS para ClaudeArcade (la carpeta sigue llamándose low-strike).
 // Host autoritativo para vida, rondas, plata y bomba; cada jugador mueve su personaje; los bots los corre el host.
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadMap } from './mapdata.js';
 import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked } from './world.js';
 import { buildMeshes, buildFromModel, buildEnvironment, themeOf } from './mesher.js';
-import { buildNav } from './nav.js';
+import { buildNav, sealTraps } from './nav.js';
 import { applyWingman, wingmanMesh } from './wingman.js';
 import { makePlayer, movePlayer, eyeH, PM, fallDamage } from './player.js';
 import { WEAPONS, BUY, slotOf } from './weapons.js';
@@ -618,13 +619,16 @@ function initRender() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.autoClear = false;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = QUALITY > 0; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
   $('view').appendChild(renderer.domElement);
   scene = new THREE.Scene();
+  // luz ambiente de entorno para los materiales con relieve y las armas
+  { const pm = new THREE.PMREMGenerator(renderer); const env = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environment = env; scene.environmentIntensity = 0.18; }
   camera = new THREE.PerspectiveCamera(74, innerWidth / innerHeight, 0.05, 1500);
   vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.01, 10);
   vmScene.add(new THREE.HemisphereLight('#ffffff', '#555', 1.3)); const dl = new THREE.DirectionalLight('#fff', 1.1); dl.position.set(1, 2, 1); vmScene.add(dl);
+  vmScene.environment = scene.environment; vmScene.environmentIntensity = 0.7;
   vm = makeViewModel(); vmScene.add(vm);
   const mz = makeFxMuzzle(); vm.userData.flash = mz;
   addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = vmCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix(); });
@@ -646,12 +650,14 @@ async function loadGame(id) {
     if (!data.wing) {
       const L2 = data.layers.map(l => ({ ...l, cls: l.cls.slice(), top: l.top ? l.top.slice() : l.top, bot: l.bot ? l.bot.slice() : l.bot, h: l.h ? l.h.slice() : l.h }));
       if (data.layers.flags) L2.flags = data.layers.flags.slice();
-      const W2 = buildWorld(data.info, L2); const r = applyWingman(W2, buildNav(W2));
+      const W2 = buildWorld(data.info, L2); if (data.mesh) sealTraps(W2, buildNav(W2));
+      const r = applyWingman(W2, buildNav(W2));
       data.wing = { W: W2, nav: buildNav(W2), r };
     }
     W = data.wing.W; G.nav = data.wing.nav; wing = data.wing.r;
   } else {
-    W = data.W || (data.W = buildWorld(data.info, data.layers));
+    if (!data.W) { data.W = buildWorld(data.info, data.layers); if (data.mesh) sealTraps(data.W, buildNav(data.W)); }
+    W = data.W;
     G.nav = data.nav || (data.nav = buildNav(W));
   }
   G.W = W; G.info = data.info; G.wingSite = wing ? wing.site : null;

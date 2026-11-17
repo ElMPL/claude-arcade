@@ -1,17 +1,18 @@
-// Modelos low-poly: armas (perfiles extruidos, con acabados de skin), personajes con skins,
+// Modelos de poligonado medio: armas (perfiles extruidos con biseles), personajes redondeados,
 // y brazos que agarran el arma con IK de dos huesos (en primera y en tercera persona).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { WEAPONS } from './weapons.js';
 
-export const MAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-const MAT_VM = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+export const MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.04 });
+const MAT_VM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.15 });
 const TMP = new THREE.Color();
 
 // ---------------- utilidades de geometría ----------------
 function paint(g, col) {
+  if (!g.attributes.normal) g.computeVertexNormals();
   g = g.index ? g.toNonIndexed() : g;
-  g.computeVertexNormals();
   const n = g.attributes.position.count, arr = new Float32Array(n * 3), nor = g.attributes.normal.array;
   TMP.set(col);
   for (let i = 0; i < n; i++) {
@@ -25,16 +26,33 @@ function paint(g, col) {
 // perfil lateral [[adelante, alto], ...] extruido con ancho w (el arma mira hacia -z, la mano en el origen)
 function prof(pts, w, col, x = 0) {
   const sh = new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1])));
-  const g = new THREE.ExtrudeGeometry(sh, { depth: w, bevelEnabled: false, steps: 1, curveSegments: 3 });
-  g.translate(0, 0, -w / 2); g.rotateY(Math.PI / 2); g.translate(x, 0, 0);
+  // bisel chico en los bordes: el arma deja de verse como recortada en cartón
+  const bv = Math.min(0.006, w * 0.18);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: Math.max(0.001, w - bv * 2), bevelEnabled: true, bevelThickness: bv, bevelSize: bv * 0.8, bevelSegments: 2, steps: 1, curveSegments: 8 });
+  g.translate(0, 0, -w / 2 + bv); g.rotateY(Math.PI / 2); g.translate(x, 0, 0);
   return paint(g, col);
 }
 function cyl(r, u0, u1, y, col, sides = 7, x = 0, r2 = r) {
-  const g = new THREE.CylinderGeometry(r2, r, u1 - u0, sides); g.rotateX(-Math.PI / 2); g.translate(x, y, -(u0 + u1) / 2);
+  const g = new THREE.CylinderGeometry(r2, r, u1 - u0, Math.max(14, sides * 2)); g.rotateX(-Math.PI / 2); g.translate(x, y, -(u0 + u1) / 2);
   return paint(g, col);
 }
 function box(w, h, len, u, y, col, x = 0) {
   const g = new THREE.BoxGeometry(w, h, len); g.translate(x, y, -u);
+  return paint(g, col);
+}
+// caja con esquinas redondeadas (cuerpos, chalecos, botas)
+function rbox(w, h, len, u, y, col, x = 0, r = Math.min(w, h, len) * 0.3) {
+  const g = new RoundedBoxGeometry(w, h, len, 2, Math.min(r, Math.min(w, h, len) * 0.49)); g.translate(x, y, -u);
+  return paint(g, col);
+}
+// elipsoide (cabezas, cascos, hombros)
+function ell(rx, ry, rz, u, y, col, x = 0, half = false) {
+  const g = new THREE.SphereGeometry(1, 18, 12, 0, Math.PI * 2, 0, half ? Math.PI / 2 : Math.PI); g.scale(rx, ry, rz); g.translate(x, y, -u);
+  return paint(g, col);
+}
+// cilindro vertical (piernas)
+function vcyl(rTop, rBot, h, y, col, u = 0, x = 0) {
+  const g = new THREE.CylinderGeometry(rTop, rBot, h, 14); g.translate(x, y, -u);
   return paint(g, col);
 }
 
@@ -306,51 +324,52 @@ function bodyGeos(team) {
   const key = team; if (pcache[key]) return pcache[key];
   const S = skinOf(team), T = team === 'T';
   const tb = [
-    box(0.4, 0.5, 0.24, 0, 0.27, S.shirt), // torso
-    box(0.5, 0.12, 0.26, 0, 0.47, S.shirt), // hombros
-    box(0.42, 0.07, 0.26, 0, 0.03, '#26221c'), box(0.06, 0.06, 0.04, 0.13, 0.03, '#8a7a50'), // cinturón y hebilla
+    rbox(0.4, 0.5, 0.24, 0, 0.27, S.shirt, 0, 0.07), // torso
+    ell(0.25, 0.08, 0.13, 0, 0.47, S.shirt), // hombros
+    vcyl(0.06, 0.07, 0.08, 0.55, S.shirt), // cuello
+    rbox(0.42, 0.07, 0.26, 0, 0.03, '#26221c', 0, 0.02), box(0.06, 0.06, 0.04, 0.13, 0.03, '#8a7a50'), // cinturón y hebilla
   ];
   if (T) {
     // campera abierta + chaleco de cargadores con 3 bolsillos y radio
     tb.push(box(0.08, 0.46, 0.02, 0.125, 0.27, '#2e241a', -0.12), box(0.08, 0.46, 0.02, 0.125, 0.27, '#2e241a', 0.12)); // solapas
-    tb.push(box(0.36, 0.2, 0.27, 0, 0.27, S.vest), box(0.06, 0.32, 0.27, 0, 0.38, S.vest, 0.13), box(0.06, 0.32, 0.27, 0, 0.38, S.vest, -0.13));
-    for (const zx of [-0.1, 0, 0.1]) tb.push(box(0.085, 0.13, 0.05, 0.155, 0.27, '#4a4130', zx), box(0.075, 0.03, 0.055, 0.157, 0.33, '#2a251c', zx));
+    tb.push(rbox(0.36, 0.2, 0.27, 0, 0.27, S.vest, 0, 0.04), rbox(0.06, 0.32, 0.27, 0, 0.38, S.vest, 0.13, 0.02), rbox(0.06, 0.32, 0.27, 0, 0.38, S.vest, -0.13, 0.02));
+    for (const zx of [-0.1, 0, 0.1]) tb.push(rbox(0.085, 0.13, 0.05, 0.155, 0.27, '#4a4130', zx, 0.015), rbox(0.075, 0.03, 0.055, 0.157, 0.33, '#2a251c', zx, 0.01));
     tb.push(box(0.05, 0.1, 0.04, 0.13, 0.42, '#1b1b1b', 0.12), box(0.01, 0.06, 0.01, 0.13, 0.5, '#111', 0.13)); // radio y antena
-    tb.push(box(0.3, 0.3, 0.1, -0.17, 0.3, '#3a3326')); // mochila chica
+    tb.push(rbox(0.3, 0.3, 0.1, -0.17, 0.3, '#3a3326', 0, 0.04)); // mochila chica
   } else {
     // chaleco portaplacas con bolsillos, parches y cuello alto
-    tb.push(box(0.44, 0.38, 0.29, 0, 0.32, S.vest), box(0.3, 0.1, 0.3, 0, 0.5, S.vest));
-    for (const zx of [-0.11, 0, 0.11]) tb.push(box(0.09, 0.12, 0.05, 0.165, 0.22, '#353a31', zx));
+    tb.push(rbox(0.44, 0.38, 0.29, 0, 0.32, S.vest, 0, 0.05), rbox(0.3, 0.1, 0.3, 0, 0.5, S.vest, 0, 0.04));
+    for (const zx of [-0.11, 0, 0.11]) tb.push(rbox(0.09, 0.12, 0.05, 0.165, 0.22, '#353a31', zx, 0.015));
     tb.push(box(0.12, 0.08, 0.04, 0.165, 0.38, '#2a2e27', -0.08), box(0.06, 0.04, 0.01, 0.17, 0.4, '#8a8f84', 0.09)); // bolsillo y parche
     tb.push(box(0.14, 0.12, 0.07, 0.12, 0.42, '#20231f', 0.15)); // radio al hombro
-    tb.push(box(0.44, 0.36, 0.05, -0.15, 0.32, S.vest)); // placa trasera
+    tb.push(rbox(0.44, 0.36, 0.05, -0.15, 0.32, S.vest, 0, 0.02)); // placa trasera
     // manchas de camuflaje
     tb.push(box(0.12, 0.1, 0.245, 0, 0.1, '#3b4038', 0.1), box(0.1, 0.08, 0.245, 0, 0.16, '#24271f', -0.12));
   }
   const torso = mergeGeometries(tb);
-  const hb = [box(0.22, 0.25, 0.23, 0, 0.12, S.skin)];
+  const hb = [ell(0.115, 0.135, 0.12, 0, 0.12, S.skin)];
   const hc = S.hc;
   // los detalles de la cara van hacia adelante (-z = u positivo)
   if (T) {
-    hb.push(box(0.235, 0.265, 0.245, 0, 0.125, hc)); // pasamontañas
-    hb.push(box(0.17, 0.05, 0.02, 0.122, 0.15, S.skin)); // ranura de los ojos
+    hb.push(ell(0.122, 0.142, 0.127, 0, 0.125, hc)); // pasamontañas
+    hb.push(rbox(0.15, 0.045, 0.03, 0.112, 0.15, S.skin, 0, 0.012)); // ranura de los ojos
     hb.push(box(0.035, 0.022, 0.01, 0.133, 0.152, '#111', -0.05), box(0.035, 0.022, 0.01, 0.133, 0.152, '#111', 0.05));
-    hb.push(box(0.25, 0.05, 0.26, 0, 0.255, '#141414')); // costura de arriba
-    hb.push(box(0.2, 0.045, 0.03, 0.105, 0.225, '#23303a'), box(0.25, 0.02, 0.25, 0, 0.225, '#111')); // antiparras levantadas en la frente
+    hb.push(rbox(0.19, 0.045, 0.04, 0.1, 0.225, '#23303a', 0, 0.015), ell(0.127, 0.012, 0.128, 0, 0.225, '#111')); // antiparras levantadas en la frente
   } else {
-    hb.push(box(0.27, 0.13, 0.28, 0, 0.235, hc), box(0.29, 0.03, 0.3, 0, 0.18, hc)); // casco con ala
+    hb.push(ell(0.142, 0.135, 0.148, 0, 0.17, hc, 0, true), ell(0.148, 0.02, 0.155, 0, 0.17, hc)); // casco
     hb.push(box(0.03, 0.05, 0.08, 0, 0.21, '#1c1f1b', 0.145), box(0.03, 0.05, 0.08, 0, 0.21, '#1c1f1b', -0.145)); // rieles
     hb.push(box(0.05, 0.04, 0.04, 0.1, 0.3, '#111')); // soporte NVG
-    hb.push(box(0.21, 0.065, 0.04, 0.125, 0.155, '#0e0e0e'), box(0.17, 0.04, 0.01, 0.146, 0.156, '#33424a')); // antiparras
-    hb.push(box(0.22, 0.12, 0.06, 0.12, 0.07, '#1d1f1d')); // máscara de gas
-    hb.push(box(0.06, 0.07, 0.07, 0.15, 0.04, '#3c3f3a', -0.075), box(0.06, 0.07, 0.07, 0.15, 0.04, '#3c3f3a', 0.075)); // filtros
+    hb.push(rbox(0.2, 0.065, 0.05, 0.11, 0.155, '#0e0e0e', 0, 0.02), rbox(0.16, 0.04, 0.012, 0.137, 0.156, '#33424a', 0, 0.005)); // antiparras
+    hb.push(ell(0.1, 0.07, 0.06, 0.09, 0.07, '#1d1f1d')); // máscara de gas
+    hb.push(cyl(0.032, 0.12, 0.18, 0.04, '#3c3f3a', 8, -0.07), cyl(0.032, 0.12, 0.18, 0.04, '#3c3f3a', 8, 0.07)); // filtros
     hb.push(box(0.04, 0.05, 0.03, 0.16, 0.06, '#555'));
   }
   const head = mergeGeometries(hb);
-  const thigh = mergeGeometries([box(0.15, 0.46, 0.16, 0, -0.23, S.pants), box(0.04, 0.12, 0.1, 0, -0.2, T ? '#2b2f35' : S.vest, 0.09), ...(T ? [] : [box(0.1, 0.16, 0.06, 0.02, -0.15, '#20231f', 0.085)])]);
-  const shin = mergeGeometries([box(0.14, 0.42, 0.15, 0, -0.21, S.pants), box(0.16, 0.1, 0.06, 0.06, -0.04, T ? '#1f1f1f' : '#191b19'), box(0.16, 0.12, 0.24, 0.04, -0.4, S.boots), box(0.17, 0.03, 0.25, 0.04, -0.46, '#0f0f0f')]);
-  const upper = box(0.12, 0.12, 1, 0, 0, S.shirt), fore = box(0.105, 0.105, 1, 0, 0, S.shirt);
-  const hand = mergeGeometries([box(0.09, 0.09, 0.1, 0, 0, S.glove)]);
+  const thigh = mergeGeometries([vcyl(0.088, 0.07, 0.48, -0.23, S.pants), box(0.04, 0.12, 0.1, 0, -0.2, T ? '#2b2f35' : S.vest, 0.09), ...(T ? [] : [box(0.1, 0.16, 0.06, 0.02, -0.15, '#20231f', 0.085)])]);
+  const shin = mergeGeometries([vcyl(0.068, 0.056, 0.42, -0.2, S.pants), rbox(0.15, 0.11, 0.07, 0.055, -0.04, T ? '#1f1f1f' : '#191b19', 0, 0.03), rbox(0.14, 0.13, 0.26, 0.045, -0.4, S.boots, 0, 0.04), rbox(0.15, 0.03, 0.27, 0.045, -0.465, '#0f0f0f', 0, 0.012)]);
+  const limb = (r0, r1, col) => { const g = new THREE.CylinderGeometry(r0, r1, 1, 14); g.rotateX(Math.PI / 2); return paint(g, col); };
+  const upper = limb(0.066, 0.058, S.shirt), fore = limb(0.055, 0.047, S.shirt);
+  const hand = mergeGeometries([rbox(0.085, 0.09, 0.11, 0, 0, S.glove, 0, 0.03)]);
   return (pcache[key] = { torso, head, thigh, shin, upper, fore, hand, S });
 }
 // modelo del jugador: mira hacia -z, pies en y=0. Los brazos se resuelven con IK hacia el arma.
@@ -455,10 +474,12 @@ const armCache = {};
 function vmParts(team, si) {
   const key = team + si; if (armCache[key]) return armCache[key];
   const S = skinOf(team, si);
-  const sleeve = box(0.07, 0.07, 1, 0, 0, S.shirt);
-  const forearm = mergeGeometries([box(0.058, 0.058, 1, 0, 0, S.shirt), box(0.066, 0.066, 0.14, 0.43, 0, S.vest)]);
-  // mano cerrada sobre la empuñadura: palma, nudillos y pulgar
-  const hand = mergeGeometries([box(0.05, 0.065, 0.07, 0, -0.01, S.glove), box(0.056, 0.024, 0.042, 0.012, -0.038, S.glove), box(0.022, 0.022, 0.05, 0.016, 0.026, S.glove, 0.026)]);
+  const tube = (r0, r1, len, u, col) => { const g = new THREE.CylinderGeometry(r0, r1, len, 16); g.rotateX(Math.PI / 2); g.translate(0, 0, -u); return paint(g, col); };
+  const sleeve = mergeGeometries([tube(0.04, 0.036, 1, 0, S.shirt), tube(0.042, 0.042, 0.06, -0.45, '#1c1c1c')]);
+  const forearm = mergeGeometries([tube(0.033, 0.029, 1, 0, S.shirt), tube(0.038, 0.037, 0.16, 0.42, S.vest), tube(0.031, 0.031, 0.05, 0.49, S.glove)]);
+  // mano cerrada sobre la empuñadura: palma, nudillos, dedos y pulgar
+  const hand = mergeGeometries([rbox(0.05, 0.065, 0.075, 0, -0.01, S.glove, 0, 0.018), rbox(0.056, 0.026, 0.045, 0.012, -0.038, S.glove, 0, 0.011),
+    cyl(0.011, -0.012, 0.04, 0.026, S.glove, 8, 0.026), ...[0, 1, 2, 3].map(i => cyl(0.0085, 0.0, 0.03, -0.045, S.glove, 6, -0.02 + i * 0.013))]);
   return (armCache[key] = { sleeve, forearm, hand });
 }
 export function setViewGun(vm, id, team, si = 0, finish = 0) {

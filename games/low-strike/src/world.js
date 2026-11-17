@@ -298,43 +298,51 @@ function plateaus(n, cls, h) {
 }
 function anyWalk(layers, i) { for (const ly of layers) { const c = ly.cls[i] & 3; if (c === 1 || c === 2) return true; } return false; }
 
+// celdas que toca un cuadrado de lado 2r centrado en x,z (todas, así no se escapa ningún poste fino)
+function cellsIn(W, x, z, r, fn) {
+  const c = W.cell, n = W.n;
+  const x0 = Math.floor((x - r) / c), x1 = Math.floor((x + r) / c), z0 = Math.floor((z - r) / c), z1 = Math.floor((z + r) / c);
+  for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
+    if (cx < 0 || cz < 0 || cx >= n || cz >= n) { if (fn(-1)) return true; continue; }
+    if (fn(cz * n + cx)) return true;
+  }
+  return false;
+}
 // ¿Está bloqueada la caja del jugador (centro x,z; pies y; alto hgt; radio r)?
 export function blocked(W, x, z, y, hgt, r = 0.4) {
-  for (const [ox, oz] of FOOT) {
-    const i = W.idx(x + ox * r, z + oz * r);
+  return cellsIn(W, x, z, r, i => {
     if (i < 0) return true;
     for (let l = 0; l < W.L; l++) {
       const t = W.top[l][i]; if (isNaN(t)) continue;
       if (t > y + STEP && W.bot[l][i] < y + hgt) return true;
     }
-  }
-  return false;
+    return false;
+  });
 }
-const FOOT = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // piso bajo los pies (máximo top ≤ y+STEP) y techo sobre la cabeza
 export function ground(W, x, z, y, r = 0.38) {
   let g = -Infinity;
-  for (const [ox, oz] of FOOT) {
-    const i = W.idx(x + ox * r, z + oz * r);
-    if (i < 0) continue;
+  cellsIn(W, x, z, r, i => {
+    if (i < 0) return false;
     for (let l = 0; l < W.L; l++) {
       const t = W.top[l][i]; if (isNaN(t)) continue;
       if (t <= y + STEP && t > g && W.bot[l][i] < y + 0.1 + STEP) g = t;
     }
-  }
+    return false;
+  });
   return g;
 }
 export function ceiling(W, x, z, y, r = 0.38) {
   let c = Infinity;
-  for (const [ox, oz] of FOOT) {
-    const i = W.idx(x + ox * r, z + oz * r);
-    if (i < 0) continue;
+  cellsIn(W, x, z, r, i => {
+    if (i < 0) return false;
     for (let l = 0; l < W.L; l++) {
       const b = W.bot[l][i]; if (isNaN(b)) continue;
       if (b > y + 0.2 && b < c) c = b;
     }
-  }
+    return false;
+  });
   return c;
 }
 // altura del piso en un punto (para colocar cosas): el piso más alto debajo de y

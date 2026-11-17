@@ -2,7 +2,7 @@
 // mapa que no forman parte de los caminos entre los spawns y ese sitio, como en el juego real.
 import * as THREE from 'three';
 import { zoneNodes, findPath } from './nav.js';
-import { texFor } from './mesher.js';
+import { texMat } from './textures.js';
 
 // Dijkstra sobre la grilla de navegación desde un conjunto de nodos
 // rev: lista de aristas invertidas (distancia HASTA las semillas, respetando caídas de un solo sentido)
@@ -103,7 +103,7 @@ export function wingmanMesh(W, cells) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: texFor('crate'), vertexColors: true }));
+  const m = new THREE.Mesh(geo, texMat('crate'));
   m.castShadow = true; m.receiveShadow = true;
   return m;
 }

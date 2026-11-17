@@ -1,6 +1,6 @@
 {
-  "name": "Low Strike",
-  "description": "Shooter táctico 5v5 low-poly con bomba, armas y economía como CS2. Mapas Dust II, Mirage y Vertigo, completa con bots.",
+  "name": "Counter Strika",
+  "description": "Shooter táctico con bomba, armas y economía como CS2. Mapas Dust II y Mirage, de 2v2 a 5v5, completa con bots.",
   "author": "ClaudeArcade",
   "mode": "multi",
   "minPlayers": 1,

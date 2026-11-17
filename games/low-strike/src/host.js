@@ -1,8 +1,8 @@
 // Reglas del juego (las corre el host): rondas, economía de CS2, daño, muertes, bomba, compras y armas tiradas.
 import { WEAPONS, ECON, applyDamage, slotOf } from './weapons.js';
-import { zoneNodes } from './nav.js';
+import { zoneNodes, findPath } from './nav.js';
 import { NADE, inFire } from './nades.js';
-import { zoneAt } from './world.js';
+import { zoneAt, lineOfSight } from './world.js';
 
 export const ROUND = { freeze: 12, live: 115, buy: 20, post: 6, bomb: 40, plant: 3.2, defuse: 10, kit: 5, over: 10 };
 export const LENGTHS = { rapida: { win: 5, max: 8, name: 'Rápida' }, corta: { win: 9, max: 16, name: 'Corta' }, comp: { win: 13, max: 24, name: 'Competitiva' } };
@@ -42,18 +42,44 @@ export function makeHost(G) {
     return { id, name, bot, grp, team: 'T', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, duck: 0, hp: 100, ar: 0, helm: false, money: ECON.start, alive: false, k: 0, d: 0, a: 0, mvp: 0, dmgR: 0,
       inv: { p: null, s: null, g: [], c4: false, kit: false, zeus: false, v: 1, pa: null, sa: null }, god: false };
   }
+  // Puntos de aparición: lugares despejados (sin paredes ni escalones al lado), separados ~2 m, agrupados
+  // cerca del centro del spawn y mirando hacia la salida (el camino hacia los sitios), no contra una pared.
   function spawnPoints(side) {
     const nav = G.nav, nodes = zoneNodes(nav, side === 'T' ? 16 : 32);
-    let cx = 0, cz = 0; const P = nodes.map(n => nav.pos(n));
+    const clear = n => {
+      const l = Math.floor(n / nav.N), i = n % nav.N, x = i % nav.m, z = Math.floor(i / nav.m), h = nav.H[l][i];
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+        const xx = x + dx, zz = z + dz; if (xx < 0 || zz < 0 || xx >= nav.m || zz >= nav.m) return false;
+        const hh = nav.H[l][zz * nav.m + xx]; if (isNaN(hh) || Math.abs(hh - h) > 0.35) return false;
+      }
+      return true;
+    };
+    let good = nodes.filter(clear); if (good.length < 10) good = nodes;
+    let cx = 0, cz = 0; const P = good.map(n => nav.pos(n));
     for (const p of P) { cx += p[0]; cz += p[2]; } cx /= P.length; cz /= P.length;
     P.sort((a, b) => Math.hypot(a[0] - cx, a[2] - cz) - Math.hypot(b[0] - cx, b[2] - cz));
     const out = [];
-    for (const p of P) { if (out.every(q => Math.hypot(q[0] - p[0], q[2] - p[2]) > 1.5)) out.push(p); if (out.length >= 12) break; }
-    // mirar hacia el centro de los sitios
+    for (const gap of [2.0, 1.5, 1.1]) {
+      for (const p of P) { if (out.length >= 12) break; if (out.every(q => Math.hypot(q[0] - p[0], q[2] - p[2]) > gap)) out.push(p); }
+      if (out.length >= 10) break;
+    }
+    // hacia dónde mirar: unos metros por el camino al sitio más cercano (o al centro de los sitios)
     const z = G.info.zones, c = G.W.cell;
-    const tx = ((z.A[0] + z.A[2]) / 2 + (z.B[0] + z.B[2]) / 2) / 2 * c, tz = ((z.A[1] + z.A[3]) / 2 + (z.B[1] + z.B[3]) / 2) / 2 * c;
-    const ox = side === 'T' ? tx : (z.T[0] + z.T[2]) / 2 * c, oz = side === 'T' ? tz : (z.T[1] + z.T[3]) / 2 * c;
-    return { pts: out.map(p => [p[0], p[1], p[2], Math.atan2(-(ox - p[0]), -(oz - p[2]))]), cx, cz };
+    const site = k => { const b = z[k]; const n = nav.nearest((b[0] + b[2]) / 2 * c, 99, (b[1] + b[3]) / 2 * c); return n; };
+    const targets = [site('A'), site('B')].filter(n => n >= 0);
+    const yawFor = p => {
+      const from = nav.nearest(p[0], p[1], p[2]); let best = null;
+      for (const t of targets) { const path = findPath(nav, from, t); if (path && (!best || path.length < best.length)) best = path; }
+      if (!best || best.length < 2) return Math.atan2(-(cx - p[0]), -(cz - p[2]));
+      // el punto más lejano del camino (hasta 25 m) que se ve desde ahí: mira hacia la salida, no a la pared
+      let acc = 0, q = best[Math.min(best.length - 1, 3)];
+      for (let i = 1; i < best.length; i++) {
+        acc += Math.hypot(best[i][0] - best[i - 1][0], best[i][2] - best[i - 1][2]); if (acc > 25) break;
+        if (lineOfSight(G.W, p[0], p[1] + 1.6, p[2], best[i][0], best[i][1] + 1.2, best[i][2])) q = best[i];
+      }
+      return Math.atan2(-(q[0] - p[0]), -(q[2] - p[2]));
+    };
+    return { pts: out.map(p => [p[0], p[1], p[2], yawFor(p)]), cx, cz };
   }
   H.adopt = () => { G.spawns = { T: spawnPoints('T'), CT: spawnPoints('CT') }; };
   H.buyZone = (p) => { const s = G.spawns[p.team]; return Math.hypot(p.x - s.cx, p.z - s.cz) < 22 || (zoneAt(G.W, p.x, p.z) & (p.team === 'T' ? 16 : 32)); };

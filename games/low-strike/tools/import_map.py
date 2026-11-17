@@ -9,7 +9,9 @@ from PIL import Image
 
 OUT = '../maps'
 mid = sys.argv[1]
-N = 512
+import os
+N = int(os.environ.get('N', 1024))
+ZS = N / 512  # las zonas y puertas de tools/zones_*.json están en una grilla de 512
 
 def load_dust2(path):
   sc = trimesh.load(path, force='scene')
@@ -90,7 +92,7 @@ def open_doors(T, extra=None):
   gx = T[:, :, 0] / cell; gz = T[:, :, 2] / cell
   nr = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]); nr /= (np.linalg.norm(nr, axis=1, keepdims=True) + 1e-9)
   kill = np.zeros(len(T), bool)
-  for x0, x1, z0, z1 in _Z['open']:
+  for x0, x1, z0, z1 in ([v * ZS for v in b] for b in _Z['open']):
     cx = gx.mean(1); cz = gz.mean(1)
     ins = (cx > x0 + 0.3) & (cx < x1 - 0.3) & (cz > z0 + 0.3) & (cz < z1 - 0.3)
     if not ins.any(): continue
@@ -107,7 +109,7 @@ T_col, _ = open_doors(T_col)
 T_all, cats = open_doors(T_all, cats)
 
 # ---------- muestreo de superficies ----------
-step = cell * 0.45
+step = cell * float(os.environ.get('STEPK', 0.45))
 xs, ys, zs, kinds = [], [], [], []
 nrc = np.cross(T_col[:, 1] - T_col[:, 0], T_col[:, 2] - T_col[:, 0]); area = np.linalg.norm(nrc, axis=1); nrc /= (area[:, None] + 1e-9)
 kind = np.where(nrc[:, 1] > 0.5, 0, np.where(nrc[:, 1] < -0.5, 1, 2))  # 0 arriba, 1 abajo, 2 empinado
@@ -192,8 +194,37 @@ for _ in range(3):
       TOP[:, c] = TOP[:, best]; BOT[:, c] = BOT[:, best]; CLS[:, c] = CLS[:, best]; NOUP[c] = np.nan; fix += 1
 print('cables/vigas convertidos en piso:', fix)
 
+# grietas entre piezas de piso: celdas sin nada a la altura del cuerpo entre dos pisos iguales se rellenan
+def floor_h(j):
+  for l in range(LMAX):
+    if CLS[l, j] == 1 and not np.isnan(TOP[l, j]): return l, TOP[l, j]
+  return None, None
+crack = 0
+for _ in range(2):
+  for c in range(N * N):
+    x, z = c % N, c // N
+    if x < 6 or z < 6 or x >= N - 6 or z >= N - 6: continue
+    _, h0 = floor_h(c)
+    for dx, dz in ((1, 0), (0, 1)):
+      done = False
+      for d in (1, 2, 3, 4):
+        a = c - dx * 1 - dz * N * 1; b = c + dx * d + dz * N * d
+        la, ha = floor_h(a); lb, hb = floor_h(b)
+        if ha is None or hb is None or abs(ha - hb) > 0.35: continue
+        if h0 is not None and abs(h0 - ha) < 0.25: continue
+        if h0 is not None and h0 < ha - 0.3: continue  # pozo real, no grieta
+        y = ys[bounds[c]:bounds[c + 1]]
+        if np.any((y > ha + 0.15) & (y < ha + 2.0)): continue  # hay algo a la altura del cuerpo: pared de verdad
+        for k in range(d):
+          cc = c + (dx + dz * N) * k
+          TOP[:, cc] = TOP[:, a]; BOT[:, cc] = BOT[:, a]; CLS[:, cc] = CLS[:, a]
+        crack += 1; done = True; break
+      if done: break
+print('grietas rellenadas:', crack)
+
 # ---------- zonas (en coordenadas de esta grilla) ----------
 ZONES = json.load(open(f'zones_{mid}.json')) if __import__('os').path.exists(f'zones_{mid}.json') else {}
+ZONES = {k: [int(round(v * ZS)) for v in r] for k, r in ZONES.items() if k in ('A', 'B', 'T', 'CT')}
 flags = np.zeros(N * N, np.uint8)
 for key, bit in (('A', 4), ('B', 8), ('T', 16), ('CT', 32)):
   if key in ZONES:
