@@ -12,8 +12,10 @@ import { makeBots, DIFF } from './bots.js';
 import { inaccuracy, recoilStep, shotDir, traceShot, canSee } from './combat.js';
 import { makeNade, stepNade, NADE } from './nades.js';
 import { makeFx } from './fx.js';
-import { makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, gunMesh, gunGeo, MAT } from './models.js';
+import { makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, MAT } from './models.js';
+const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
+import { makeMenu } from './menu.js';
 import { hud, radarImage, drawRadar, renderBoard, buildBuy, refreshBuy, weaponInfo, WNAME } from './ui.js';
 
 const U = 0.0254, D2R = Math.PI / 180;
@@ -29,7 +31,7 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? 
 const G = {
   players: new Map(), drops: new Map(), nades: [], bomb: { state: 'none', x: 0, y: 0, z: 0, t: 0 },
   phase: 'lobby', timeLeft: 0, round: 0, score: [0, 0], half: 0, time: 0,
-  cfg: { map: store.get('ls:map', 'dust2'), len: 'corta', fill: 5, diff: 'normal' }, prefs: {},
+  cfg: { map: store.get('ls:map', 'dust2'), len: 'corta', size: 5, bots: true, diff: 'normal' }, prefs: {},
 };
 let ctx = null, myId = 'local', H = null, BOTS = null, mapCache = {}, loaded = false;
 let renderer, scene, camera, vmScene, vmCam, vm, fx, mapMesh = null, radarImg = null;
@@ -64,6 +66,7 @@ const me = () => G.players.get(myId);
 const keys = new Set(); let mouseL = false, mouseR = false, locked = false, sens = store.get('ls:sens', 0.0021);
 const touchState = { mx: 0, mz: 0, fire: false, look: null };
 const isTouch = matchMedia('(pointer: coarse)').matches;
+const QUALITY = store.get('ls:q', isTouch ? 0 : 2);
 addEventListener('keydown', e => {
   if (e.repeat && !['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) { if (e.code === 'Tab') e.preventDefault(); return; }
   if (G.phase === 'lobby') return;
@@ -72,12 +75,24 @@ addEventListener('keydown', e => {
   if (buyOpen) { buyKey(e); return; }
   onKey(e.code);
 });
+// Ctrl+W (agacharse + adelante) cerraría la pestaña: en pantalla completa se bloquea el teclado,
+// y si igual se intenta cerrar durante la partida, el navegador pide confirmación.
+addEventListener('beforeunload', e => { if (G.phase !== 'lobby') { e.preventDefault(); e.returnValue = ''; return ''; } });
+function goFullscreen() {
+  const el = document.documentElement;
+  try {
+    const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
+    const lockKeys = () => { try { if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock().catch(() => { }); } catch (e) { } };
+    if (p && p.then) p.then(lockKeys).catch(() => { }); else lockKeys();
+  } catch (e) { }
+}
+addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && ['KeyW', 'KeyS', 'KeyD', 'KeyA', 'KeyR', 'KeyQ', 'KeyE', 'KeyG', 'KeyB', 'KeyF'].includes(e.code) && G.phase !== 'lobby') e.preventDefault(); }, true);
 addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'KeyE' && M.defusing) stopDefuse(); });
 addEventListener('blur', () => { keys.clear(); mouseL = mouseR = false; });
 addEventListener('mousedown', e => {
   A.initAudio();
   if (G.phase === 'lobby' || buyOpen) return;
-  if (!locked && !isTouch) { lockPointer(); return; }
+  if (!locked && !isTouch) { if (!document.fullscreenElement) goFullscreen(); lockPointer(); return; }
   if (e.button === 0) mouseL = true; if (e.button === 2) { mouseR = true; secondary(); }
 });
 addEventListener('mouseup', e => { if (e.button === 0) mouseL = false; if (e.button === 2) mouseR = false; });
@@ -439,11 +454,11 @@ function applySt(s) {
   }
   const ids = new Set();
   for (const r of s.p) {
-    const [id, name, bot, grp, team, hp, ar, helm, money, alive, k, d, a, mvp, inv, god] = r;
+    const [id, name, bot, grp, team, hp, ar, helm, money, alive, k, d, a, mvp, inv, god, skT, skCT, fin] = r;
     ids.add(id);
     let p = G.players.get(id);
     if (!p) { p = { id, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, duck: 0, h: PM.hStand }; G.players.set(id, p); }
-    if (!isHost()) Object.assign(p, { name, bot: !!bot, grp, team, hp, ar, helm: !!helm, money, alive: !!alive, k, d, a, mvp, inv, god: !!god });
+    if (!isHost()) Object.assign(p, { name, bot: !!bot, grp, team, hp, ar, helm: !!helm, money, alive: !!alive, k, d, a, mvp, inv, god: !!god, skT, skCT, fin });
   }
   if (!isHost()) for (const id of [...G.players.keys()]) if (!ids.has(id)) G.players.delete(id);
   const P = me();
@@ -574,10 +589,12 @@ function initRender() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5));
   renderer.setSize(innerWidth, innerHeight);
   renderer.autoClear = false;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = QUALITY > 0; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false;
   $('view').appendChild(renderer.domElement);
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(74, innerWidth / innerHeight, 0.05, 1500);
-  vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.01, 10);
+  vmScene = new THREE.Scene(); vmCam = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.01, 10);
   vmScene.add(new THREE.HemisphereLight('#ffffff', '#555', 1.3)); const dl = new THREE.DirectionalLight('#fff', 1.1); dl.position.set(1, 2, 1); vmScene.add(dl);
   vm = makeViewModel(); vmScene.add(vm);
   const mz = makeFxMuzzle(); vm.userData.flash = mz;
@@ -599,9 +616,10 @@ async function loadGame(id) {
   G.mapName = MAPS.find(m => m.id === id)?.name || id;
   // escena nueva
   while (scene.children.length) scene.remove(scene.children[0]);
-  if (mapMesh) { mapMesh.geometry.dispose(); }
+  if (mapMesh) mapMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   const built = buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
-  buildEnvironment(scene, W, id);
+  buildEnvironment(scene, W, id, QUALITY);
+  renderer.shadowMap.needsUpdate = true;
   fx = makeFx(scene);
   radarImg = radarImage(W);
   for (const p of G.players.values()) { if (p.model) { p.model = null; p.tag = null; } }
@@ -616,8 +634,8 @@ function tagSprite(name, team) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 48; const x = c.getContext('2d');
   x.font = 'bold 30px Rajdhani, sans-serif'; x.textAlign = 'center'; x.fillStyle = 'rgba(0,0,0,.5)'; const w = Math.min(250, x.measureText(name).width + 20); x.fillRect(128 - w / 2, 4, w, 40);
   x.fillStyle = team === 'T' ? '#f0c060' : '#8ab8ff'; x.fillText(name, 128, 35);
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
-  s.scale.set(0.75, 0.14, 1); s.renderOrder = 20; return s;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true, sizeAttenuation: false }));
+  s.scale.set(0.1, 0.019, 1); s.renderOrder = 20; return s;
 }
 const espMat = new THREE.MeshBasicMaterial({ color: '#ff3030', wireframe: true, depthTest: false, transparent: true, opacity: 0.8 });
 const espGeo = new THREE.BoxGeometry(0.7, 1.8, 0.7); espGeo.translate(0, 0.9, 0);
@@ -625,12 +643,13 @@ function updateModels(dt) {
   const P = me();
   for (const p of G.players.values()) {
     const local = p.id === myId;
-    if (!p.model || p.modelTeam !== p.team) {
+    const mk = p.team + skinIdx(p);
+    if (!p.model || p.modelTeam !== mk) {
       if (p.model) scene.remove(p.model);
-      p.model = makePlayerModel(p.team); p.modelTeam = p.team; scene.add(p.model);
+      p.model = makePlayerModel(p.team, skinIdx(p)); p.modelTeam = mk; scene.add(p.model);
       p.tag = null;
       const esp = new THREE.Mesh(espGeo, espMat); esp.renderOrder = 19; esp.visible = false; p.model.add(esp); p.esp = esp;
-      const fl = fx.muzzleMesh(); p.model.userData.gun.add(fl); fl.position.set(0, 0.02, -0.75); p.mflash = fl;
+      const fl = fx.muzzleMesh(); p.model.userData.gun.add(fl); p.mflash = fl;
     }
     const m = p.model;
     // posición (los remotos se interpolan; los bots en el host ya están al día)
@@ -646,7 +665,8 @@ function updateModels(dt) {
     m.position.set(p.x, p.y, p.z); m.rotation.y = p.yaw;
     if (!p.alive) p.deadT = Math.min(3, (p.deadT || 0) + dt * 2.5);
     const sp = Math.hypot(p.vx || 0, p.vz || 0);
-    setModelGun(m, p.alive ? (p.wpn || 'knife') : null);
+    setModelGun(m, p.alive ? (p.wpn || 'knife') : null, p.fin | 0);
+    if (p.mflash && p.wpn) { const gi = gunInfo(p.wpn); p.mflash.position.set(0, gi.muzzle[1] * 1.12, -gi.muzzle[0] * 1.12 - 0.05); if (p.mflash.parent !== m.userData.gun) m.userData.gun.add(p.mflash); }
     poseModel(m, { speed: p.alive ? sp : 0, duck: p.duck || 0, pitch: p.pitch || 0, onGround: p.onGround !== false, dead: p.alive ? 0 : p.deadT }, dt);
     if (p.mflash) { p.flashT = (p.flashT || 0) - dt; p.mflash.visible = p.flashT > 0; if (p.mflash.visible) p.mflash.rotation.z = Math.random() * 3; }
     // nombres de compañeros
@@ -789,7 +809,7 @@ function nextSpec(d) {
 }
 function updateCamera(dt) {
   const P = me(); if (!P || !M.pl) return;
-  let x, y, z, yaw, pitch, wid = curId(), team = P.team, scoped = M.scope;
+  let x, y, z, yaw, pitch, wid = curId(), team = P.team, scoped = M.scope, vsk = skinIdx(P), vfin = P.fin | 0;
   if (P.alive) {
     const p = M.pl; x = p.x; y = p.y + eyeH(p); z = p.z;
     yaw = p.yaw - M.py * 0.5 * D2R; pitch = p.pitch + M.pp * 0.5 * D2R + (M.punchHit || 0) * 0.02;
@@ -803,7 +823,7 @@ function updateCamera(dt) {
     const sp = M.spec && G.players.get(M.spec);
     if (!sp || !sp.alive) nextSpec(1);
     const s = M.spec && G.players.get(M.spec);
-    if (s) { x = s.x; y = s.y + eyeH({ duck: s.duck || 0 }); z = s.z; yaw = s.yaw; pitch = s.pitch; wid = s.wpn || 'knife'; team = s.team; scoped = s.scoped ? 1 : 0; }
+    if (s) { x = s.x; y = s.y + eyeH({ duck: s.duck || 0 }); z = s.z; yaw = s.yaw; pitch = s.pitch; wid = s.wpn || 'knife'; team = s.team; scoped = s.scoped ? 1 : 0; vsk = skinIdx(s); vfin = s.fin | 0; }
     else { const p = M.pl; x = p.x; y = p.y + 3; z = p.z; yaw = p.yaw; pitch = -0.5; wid = null; }
   }
   M.punchHit = Math.max(0, (M.punchHit || 0) - dt * 6);
@@ -820,7 +840,7 @@ function updateCamera(dt) {
   const sniperScope = scoped && w && w.cat === 'sniper';
   vm.visible = !!wid && !sniperScope && (P.alive || M.spec);
   if (vm.visible) {
-    setViewGun(vm, wid, team);
+    setViewGun(vm, wid, team, vsk, vfin);
     const u = vm.userData, b = u.base || [0.13, -0.14, -0.36];
     M.sway[0] += (M.swayT[0] - M.sway[0]) * Math.min(1, dt * 10); M.sway[1] += (M.swayT[1] - M.sway[1]) * Math.min(1, dt * 10);
     M.swayT[0] *= Math.exp(-dt * 10); M.swayT[1] *= Math.exp(-dt * 10);
@@ -833,15 +853,17 @@ function updateCamera(dt) {
     if (P.alive && M.inspect) { const e = Math.sin(Math.min(1, M.inspect / 1.6) * Math.PI); ry += e * 1.1; rz += e * 0.5; ox -= e * 0.08; }
     if (wid === 'knife' && P.alive && M.fireT > 0) { const k = M.fireT / (M.knife2 ? 1 : 0.45); ry -= Math.sin(k * Math.PI) * 0.9; oz -= Math.sin(k * Math.PI) * 0.08; }
     if (M.plantT > 0 || M.defusing) { oy -= 0.08; rx -= 0.7; }
-    u.hold.position.set(ox, oy, oz); u.hold.rotation.set(rx, ry, rz);
+    const r0 = u.rot || [0, 0, 0];
+    u.hold.position.set(ox, oy, oz); u.hold.rotation.set(rx + r0[0], ry + r0[1], rz + r0[2]);
+    updateViewArms(vm);
     vm.position.copy(camera.position); vm.quaternion.copy(camera.quaternion);
     vmCam.position.copy(camera.position); vmCam.quaternion.copy(camera.quaternion);
     const fl = u.flash; M.flashT = (M.flashT || 0) - dt;
-    if (fl) { fl.visible = M.flashT > 0 && w && !w.silent && w.cat !== 'knife'; if (fl.visible) { u.gun.getWorldPosition(muzzleV); const zl = { pistol: 0.2, smg: 0.38, rifle: 0.58, sniper: 0.95, heavy: 0.6 }[w.cat] || 0.4; fl.position.set(ox, oy + 0.02, oz - zl); fl.rotation.z = Math.random() * 3; } }
+    const gi = gunInfo(wid);
+    if (fl) { fl.visible = M.flashT > 0 && w && !w.silent && w.cat !== 'knife'; if (fl.visible) { fl.position.set(0, gi.muzzle[1], -gi.muzzle[0] - 0.05).applyMatrix4(u.hold.matrix); fl.quaternion.setFromEuler(u.hold.rotation); fl.rotateZ(Math.random() * 3); } }
     // posición de la boca del arma (para trazadoras)
     u.gun.updateWorldMatrix(true, false);
-    const zl = w ? ({ pistol: 0.2, smg: 0.38, rifle: 0.58, sniper: 0.95, heavy: 0.6 }[w.cat] || 0.3) : 0.3;
-    muzzleV.set(0, 0.02, -zl).applyMatrix4(u.gun.matrixWorld);
+    muzzleV.set(0, gi.muzzle[1], -gi.muzzle[0]).applyMatrix4(u.gun.matrixWorld);
   }
   // HUD de mira
   $('scope').hidden = !sniperScope;
@@ -918,6 +940,7 @@ let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (G.phase === 'lobby' && menu && renderer) { menu.render(renderer, dt); return; }
   if (G.phase !== 'lobby' && loaded) {
     const ff = (window.__ls && window.__ls.ff) || 0;
     for (let k = 0; k < ff; k++) simulate(0.05);
@@ -969,67 +992,22 @@ function setupAdmin() {
   Arcade.admin.on('ls.win', () => req('adm', { a: 'win' }));
 }
 
-// ---------------- sala ----------------
-const lob = { el: {} };
-function lobbyInit() {
-  $('lobby').hidden = false;
-  const hostOK = isHost();
-  $('hostNote').hidden = hostOK;
-  const segs = (el, opts, key) => {
-    el.innerHTML = '';
-    for (const [k, label] of opts) {
-      const b = document.createElement('button'); b.textContent = label; b.dataset.k = k;
-      b.onclick = () => { if (!isHost()) return; G.cfg[key] = k; pushCfg(); };
-      el.appendChild(b);
-    }
-  };
-  segs($('len'), Object.entries(LENGTHS).map(([k, v]) => [k, v.name + ' (a ' + v.win + ')']), 'len');
-  segs($('diff'), Object.entries(DIFF).map(([k, v]) => [k, v.name]), 'diff');
-  $('fillMinus').onclick = () => { if (!isHost()) return; G.cfg.fill = Math.max(1, G.cfg.fill - 1); pushCfg(); };
-  $('fillPlus').onclick = () => { if (!isHost()) return; G.cfg.fill = Math.min(5, G.cfg.fill + 1); pushCfg(); };
-  for (const b of document.querySelectorAll('[data-pref]')) b.onclick = () => { const v = +b.dataset.pref; G.prefs[myId] = v; if (isHost()) pushCfg(); else send('pref', { v }, { to: ctx.hostId }); renderLobby(); };
-  $('goBtn').onclick = () => { if (!isHost()) return; A.initAudio(); G.emit('start', { cfg: G.cfg, prefs: G.prefs }); };
-  // mapas con miniatura generada del propio mapa
-  const box = $('maps'); box.innerHTML = '';
-  for (const m of MAPS) {
-    const c = document.createElement('div'); c.className = 'mcard'; c.dataset.id = m.id;
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256; c.appendChild(cv);
-    const n = document.createElement('div'); n.className = 'mn'; n.innerHTML = m.name + '<small>' + m.sub + '</small>'; c.appendChild(n);
-    c.onclick = () => { if (!isHost()) return; G.cfg.map = m.id; store.set('ls:map', m.id); pushCfg(); };
-    box.appendChild(c);
-    (async () => {
-      try {
-        const data = mapCache[m.id] || (mapCache[m.id] = await loadMap(m.id));
-        data.W = data.W || buildWorld(data.info, data.layers);
-        const img = radarImage(data.W), x = cv.getContext('2d');
-        x.fillStyle = '#0d0f12'; x.fillRect(0, 0, 256, 256); x.drawImage(img, 0, 0, 256, 256);
-      } catch (e) { console.warn(e); }
-    })();
-  }
-  renderLobby();
+// ---------------- menú / sala ----------------
+const thumbCache = {};
+function mapThumb(id) {
+  if (!thumbCache[id]) thumbCache[id] = (async () => {
+    try { const data = mapCache[id] || (mapCache[id] = await loadMap(id)); data.W = data.W || buildWorld(data.info, data.layers); return radarImage(data.W); } catch (e) { console.warn(e); return null; }
+  })();
+  return thumbCache[id];
 }
+let menu = null;
+function lobbyInit() { menu.show(); }
+function renderLobby() { menu.refresh(); }
 function pushCfg() { if (!isHost()) return; send('cfg', { cfg: G.cfg, prefs: G.prefs }); renderLobby(); }
-function renderLobby() {
-  for (const el of document.querySelectorAll('#len button')) el.classList.toggle('on', el.dataset.k === G.cfg.len);
-  for (const el of document.querySelectorAll('#diff button')) el.classList.toggle('on', el.dataset.k === G.cfg.diff);
-  for (const el of document.querySelectorAll('.mcard')) el.classList.toggle('on', el.dataset.id === G.cfg.map);
-  $('fillN').textContent = G.cfg.fill;
-  const people = (ctx.players || []).map(p => ({ ...p, pref: G.prefs[p.id] ?? -1 }));
-  // vista previa de equipos (igual que el reparto del host)
-  const cnt = [0, 0], team = {};
-  for (const p of people) if (p.pref === 0 || p.pref === 1) { team[p.id] = p.pref; cnt[p.pref]++; }
-  for (const p of people.sort((a, b) => a.slot - b.slot)) if (team[p.id] === undefined) { const g = cnt[0] <= cnt[1] ? 0 : 1; team[p.id] = g; cnt[g]++; }
-  const per = Math.max(cnt[0], cnt[1], G.cfg.fill);
-  const esc = s => String(s).replace(/</g, '&lt;');
-  const list = g => people.filter(p => team[p.id] === g).map(p => `<div class="${p.id === myId ? 'me' : ''}">${esc(p.name)}${p.pref === -1 ? ' <small style="color:#889">(auto)</small>' : ''}</div>`).join('') + Array.from({ length: per - cnt[g] }, () => '<div class="bot">bot</div>').join('');
-  $('listT').innerHTML = list(0); $('listCT').innerHTML = list(1);
-  const go = $('goBtn'); go.disabled = !isHost(); go.textContent = isHost() ? 'EMPEZAR' : 'ESPERANDO AL HOST…';
-  $('lbSub').textContent = `${per} contra ${per} · ${MAPS.find(m => m.id === G.cfg.map)?.name} · ${LENGTHS[G.cfg.len].name} · bots ${DIFF[G.cfg.diff].name.toLowerCase()}`;
-}
 const readySet = new Set(); let startTimer = 0;
 async function startGame(d) {
   G.cfg = d.cfg; G.prefs = d.prefs || {};
-  $('lobby').hidden = true;
+  menu.hide();
   await loadGame(G.cfg.map);
   G.phase = 'loading';
   $('hud').hidden = false;
@@ -1046,7 +1024,7 @@ let begun = false;
 function beginMatch() {
   if (begun) return; begun = true;
   H = makeHost(G);
-  const humans = (ctx.players || [{ id: myId, name: 'Jugador', slot: 0 }]).map(p => ({ id: p.id, name: p.name, slot: p.slot, pref: G.prefs[p.id] ?? -1 }));
+  const humans = (ctx.players || [{ id: myId, name: 'Jugador', slot: 0 }]).map(p => { const pr = G.prefs[p.id] || {}; return { id: p.id, name: p.name, slot: p.slot, pref: pr.t ?? -1, sk: pr.sk || [0, 0], fin: pr.f || 0 }; });
   H.setup(humans);
   BOTS = makeBots(G, H);
   H.startMatch();
@@ -1086,7 +1064,7 @@ async function boot() {
   for (const t of HOSTMSG) Arcade.on(t, (d, from, meta) => { if (isHost() && H) H.handle(t, d, from, meta || {}); });
   for (const t of ['st', 'rs', 'ev', 'p', 'pb', 'sh', 'nd']) Arcade.on(t, (d, from) => { if (t === 'ev' || t === 'st' || t === 'rs') { if (isHost()) return; } onMsg(t, d, from); });
   Arcade.on('cfg', d => { if (isHost()) return; G.cfg = d.cfg; G.prefs = d.prefs || {}; if (G.phase === 'lobby') renderLobby(); });
-  Arcade.on('pref', (d, from) => { if (!isHost()) return; G.prefs[from] = d.v; pushCfg(); });
+  Arcade.on('pref', (d, from) => { if (!isHost()) return; G.prefs[from] = d; pushCfg(); });
   Arcade.on('start', d => { if (G.phase === 'lobby') startGame(d); });
   Arcade.on('ready', (d, from) => { if (!isHost()) return; readySet.add(from); if (G.tryBegin) G.tryBegin(); });
   Arcade.on('hello', (d, from) => { if (isHost() && G.phase === 'lobby') pushCfg(); });
@@ -1101,8 +1079,14 @@ async function boot() {
   // el host local inicia 'start' con G.emit → también llega a onMsg; lo resolvemos acá
   const origEmit = G.emit;
   G.emit = (type, data) => { if (type === 'start') { send('start', data); startGame(data); return; } origEmit(type, data); };
+  menu = makeMenu({
+    G, store, MAPS, LENGTHS, DIFF, mapThumb, ctx: () => ctx, myId: () => myId, isHost, pushCfg,
+    sendPref: (pr) => { G.prefs[myId] = pr; if (isHost()) pushCfg(); else send('pref', pr, { to: ctx.hostId }); },
+    onStart: () => { A.initAudio(); if (!isTouch) goFullscreen(); G.emit('start', { cfg: G.cfg, prefs: G.prefs }); },
+  });
+  G.prefs[myId] = menu.myPref();
   lobbyInit();
-  if (!isHost()) send('hello', {}, { to: ctx.hostId }); else pushCfg();
+  if (!isHost()) { send('hello', {}, { to: ctx.hostId }); send('pref', G.prefs[myId], { to: ctx.hostId }); } else pushCfg();
 }
 boot();
 // para pruebas automáticas

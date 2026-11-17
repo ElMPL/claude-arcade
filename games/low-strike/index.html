@@ -6,7 +6,7 @@
 <title>Low Strike</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -52,30 +52,52 @@
 <!-- TABLA (Tab) -->
 <div id="board" hidden></div>
 
-<!-- SALA -->
+<!-- MENÚ DE INICIO -->
 <div id="lobby" hidden>
-  <div class="lb-head"><div class="logo">LOW<span>STRIKE</span></div><div class="lb-sub" id="lbSub">5 contra 5 · bomba · economía de CS2</div></div>
-  <div class="lb-body">
-    <section class="col maps"><h3>Mapa</h3><div id="maps" class="mapgrid"></div></section>
-    <section class="col">
-      <h3>Partida</h3>
-      <div class="field"><h4>Duración</h4><div id="len" class="seg"></div></div>
-      <div class="field"><h4>Jugadores por equipo (se completa con bots)</h4><div class="stepper"><button id="fillMinus">−</button><span id="fillN">5</span><button id="fillPlus">+</button></div></div>
-      <div class="field"><h4>Nivel de los bots</h4><div id="diff" class="seg"></div></div>
-      <p class="note" id="hostNote" hidden>Solo el host cambia el mapa y la partida.</p>
-      <h3 class="mt">Equipos</h3>
-      <div class="teams">
-        <div class="team t"><div class="tn">TERRORISTAS</div><div id="listT" class="tl"></div><button data-pref="0">Unirme</button></div>
-        <div class="team ct"><div class="tn">CONTRATERRORISTAS</div><div id="listCT" class="tl"></div><button data-pref="1">Unirme</button></div>
-      </div>
-      <button class="auto" data-pref="-1">Equipo automático</button>
-      <button id="goBtn" class="go">EMPEZAR</button>
-    </section>
+  <div class="fn-top">
+    <div class="logo">LOW<span>STRIKE</span></div>
+    <nav><button data-tab="play" class="on">JUGAR</button><button data-tab="locker">CASILLERO</button></nav>
+    <div class="fn-me"><b id="meName"></b><small id="roomInfo"></small></div>
   </div>
+  <section id="tabPlay" class="fn-tab">
+    <div id="party" class="party"></div>
+    <div class="teamPick">
+      <button data-pref="0" class="tp t">TERRORISTAS</button>
+      <button data-pref="-1" class="tp auto">AUTO</button>
+      <button data-pref="1" class="tp ct">CONTRATERRORISTAS</button>
+    </div>
+    <div class="right">
+      <div class="modeCard">
+        <canvas id="modeMap" width="320" height="180"></canvas>
+        <div class="mc-txt"><div id="modeTitle">5 VS 5</div><div id="modeSub"></div></div>
+        <button id="modeBtn">CAMBIAR MODO</button>
+      </div>
+      <button id="goBtn" class="fn-play">JUGAR</button>
+      <div id="goNote" class="note"></div>
+    </div>
+  </section>
+  <section id="tabLocker" class="fn-tab" hidden>
+    <div id="lockerGrid" class="locker"></div>
+  </section>
   <div class="lb-keys">
-    <span><kbd>WASD</kbd> moverse</span><span><kbd>Shift</kbd> caminar</span><span><kbd>C</kbd>/<kbd>Ctrl</kbd> agacharse</span><span><kbd>Espacio</kbd> saltar</span>
+    <span><kbd>WASD</kbd> moverse</span><span><kbd>Shift</kbd> caminar</span><span><kbd>C</kbd> agacharse</span><span><kbd>Espacio</kbd> saltar</span>
     <span><kbd>Clic</kbd> disparar</span><span><kbd>Clic der.</kbd> mira</span><span><kbd>R</kbd> recargar</span><span><kbd>1-5</kbd> <kbd>Q</kbd> armas</span>
     <span><kbd>B</kbd> comprar</span><span><kbd>E</kbd> desactivar / agarrar</span><span><kbd>G</kbd> tirar arma</span><span><kbd>Tab</kbd> tabla</span>
+  </div>
+  <div id="modeSel" class="fn-overlay" hidden>
+    <div class="ms-box">
+      <h2>ELEGÍ EL MODO</h2>
+      <div id="modes" class="modes"></div>
+      <div id="botsSeg" class="seg big"></div>
+      <h3>MAPA</h3>
+      <div id="maps" class="mapgrid"></div>
+      <div class="row2">
+        <div><h3>DURACIÓN</h3><div id="len" class="seg"></div></div>
+        <div><h3>NIVEL DE LOS BOTS</h3><div id="diff" class="seg"></div></div>
+      </div>
+      <p class="note ro-note">Solo el host puede cambiar el modo.</p>
+      <button id="modeClose" class="fn-play small">LISTO</button>
+    </div>
   </div>
 </div>
 

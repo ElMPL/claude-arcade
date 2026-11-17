@@ -26,13 +26,13 @@ export function makeHost(G) {
     for (const h of list) {
       let g = h.pref;
       if (g !== 0 && g !== 1) { g = cnt[0] <= cnt[1] ? 0 : 1; cnt[g]++; }
-      G.players.set(h.id, mkP(h.id, h.name, false, g));
+      const P = mkP(h.id, h.name, false, g); P.skT = (h.sk && h.sk[0]) | 0; P.skCT = (h.sk && h.sk[1]) | 0; P.fin = h.fin | 0; G.players.set(h.id, P);
     }
-    const per = Math.max(cnt[0], cnt[1], cfg.fill);
+    const per = cfg.bots ? Math.max(cnt[0], cnt[1], cfg.size || 5) : 0;
     let bi = 0;
     for (let g = 0; g < 2; g++) for (let k = cnt[g]; k < per; k++) {
       const id = 'bot' + (bi++);
-      G.players.set(id, mkP(id, BOTN[bi % BOTN.length] + ' (bot)', true, g));
+      const P = mkP(id, BOTN[bi % BOTN.length] + ' (bot)', true, g); P.skT = Math.floor(Math.random() * 4); P.skCT = Math.floor(Math.random() * 4); P.fin = Math.random() < 0.7 ? 0 : Math.floor(Math.random() * 6); G.players.set(id, P);
     }
     G.round = 0; G.score = [0, 0]; G.half = 0; lossStreak = [1, 1]; ended = false;
     for (const p of G.players.values()) p.team = sideOf(p.grp, 0);
@@ -186,7 +186,7 @@ export function makeHost(G) {
     ph: G.phase, tl: +G.timeLeft.toFixed(2), r: G.round, sc: G.score, hf: G.half,
     b: { s: G.bomb.state, c: G.bomb.carrier, x: +G.bomb.x.toFixed(2), y: +G.bomb.y.toFixed(2), z: +G.bomb.z.toFixed(2), t: +G.bomb.t.toFixed(2), site: G.bomb.site },
     dr: [...G.drops.values()].map(d => [d.id, d.w, +d.x.toFixed(2), +d.y.toFixed(2), +d.z.toFixed(2), d.ammo]),
-    p: [...G.players.values()].map(p => [p.id, p.name, p.bot ? 1 : 0, p.grp, p.team, p.hp, p.ar, p.helm ? 1 : 0, p.money, p.alive ? 1 : 0, p.k, p.d, p.a, p.mvp, p.inv, p.god ? 1 : 0]),
+    p: [...G.players.values()].map(p => [p.id, p.name, p.bot ? 1 : 0, p.grp, p.team, p.hp, p.ar, p.helm ? 1 : 0, p.money, p.alive ? 1 : 0, p.k, p.d, p.a, p.mvp, p.inv, p.god ? 1 : 0, p.skT | 0, p.skCT | 0, p.fin | 0]),
   });
 
   // ---------- daño ----------

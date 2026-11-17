@@ -21,12 +21,26 @@ Shooter táctico 5 contra 5 en low-poly para ClaudeArcade, inspirado en Counter-
 - **Granadas:** HE, flash, humo (tapa la vista de los bots y apaga el fuego), molotov/incendiaria y señuelo.
 - **Bots:** se mueven con navegación A*, compran, plantan y desactivan. Tienen 4 niveles.
 
+## Menú de inicio
+- **Pestaña JUGAR:** tu personaje en 3D, el grupo de la sala, la elección de equipo (T, CT o automático) y la tarjeta de modo.
+- **Modos:** 2v2, 3v3 o 5v5, con bots o sin bots, en cualquiera de los 3 mapas. Se elige también la duración y el nivel de los bots.
+- **Pestaña CASILLERO:** 4 skins por equipo y 6 acabados para las armas. La elección se guarda y la ven los demás jugadores.
+
+## Gráficos
+- Las paredes se arman con *marching squares*, así que los bordes quedan rectos o en diagonal, sin serrucho.
+- Los pisos son planos y las rampas lisas.
+- Los túneles e interiores tienen techo y las puertas tienen dintel.
+- Las cajas son de madera, y también hay contenedores y bloques de piedra.
+- Paredes y pisos usan texturas generadas por código.
+- El sol proyecta sombras.
+- Las armas se modelan por perfil y las manos las agarran con IK.
+
 ## Controles
 | Tecla | Acción |
 |---|---|
 | WASD | moverse |
 | Shift | caminar |
-| C o Ctrl | agacharse |
+| C o Ctrl | agacharse (en pantalla completa Ctrl+W no cierra la pestaña) |
 | Espacio | saltar |
 | Clic | disparar |
 | Clic derecho | mira o puñalada |

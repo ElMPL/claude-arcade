@@ -11,7 +11,7 @@ export function radarImage(W) {
   const x = cv.getContext('2d'), img = x.createImageData(n, n), d = img.data;
   for (let i = 0; i < n * n; i++) {
     let top = -1e9, cl = 0;
-    for (let l = W.L - 1; l >= 0; l--) { const t = W.top[l][i]; if (!isNaN(t) && W.cls[l][i] !== 3) { if (l === W.L - 1 || top < -1e8) { top = t; cl = W.cls[l][i]; } break; } }
+    for (let l = W.L - 1; l >= 0; l--) { const t = W.top[l][i]; if (!isNaN(t) && W.cls[l][i] !== 3 && W.cls[l][i] !== 4) { if (l === W.L - 1 || top < -1e8) { top = t; cl = W.cls[l][i]; } break; } }
     let r = 0, g = 0, b = 0, a = 0;
     if (top > -1e8) { const k = Math.max(0, Math.min(1, top / 6.5)); r = 70 + k * 120; g = 78 + k * 110; b = 88 + k * 70; a = 235; if (cl === 2) { r *= 0.62; g *= 0.62; b *= 0.62; } }
     else { let wall = false; for (let l = 0; l < W.L; l++) if (W.cls[l][i] === 3) wall = true; if (wall) { r = g = b = 22; a = 230; } }

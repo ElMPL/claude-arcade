@@ -1,171 +1,379 @@
-// Modelos low-poly hechos con cajas: jugadores (T y CT), armas (en mano, en el piso y en primera persona).
+// Modelos low-poly: armas (perfiles extruidos, con acabados de skin), personajes con skins,
+// y brazos que agarran el arma con IK de dos huesos (en primera y en tercera persona).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WEAPONS } from './weapons.js';
 
-const C = (h) => new THREE.Color(h);
-// caja con color por vértice. b = [w,h,d, x,y,z, color, rx?]
-function boxes(list) {
-  const geos = [];
-  for (const b of list) {
-    const [w, h, d, x, y, z, col, rx = 0, ry = 0] = b;
-    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
-    if (rx) g.rotateX(rx); if (ry) g.rotateY(ry);
-    g.translate(x, y, z);
-    const c = C(col), n = g.attributes.position.count, arr = new Float32Array(n * 3);
-    const nor = g.attributes.normal.array;
-    for (let i = 0; i < n; i++) {
-      // sombreado barato por cara (arriba más claro)
-      const k = 0.82 + nor[i * 3 + 1] * 0.18 + nor[i * 3] * 0.05;
-      arr[i * 3] = c.r * k; arr[i * 3 + 1] = c.g * k; arr[i * 3 + 2] = c.b * k;
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
-    geos.push(g);
-  }
-  return mergeGeometries(geos);
-}
-export const MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
-const MAT_VM = new THREE.MeshLambertMaterial({ vertexColors: true, depthTest: true });
+export const MAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const MAT_VM = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const TMP = new THREE.Color();
 
-// ---------------- armas ----------------
-const BLK = '#2a2c30', GRY = '#4a4e55', WOOD = '#8a5a32', TAN = '#b59b6e', GRN = '#556b45', SIL = '#9aa0a8';
-const SPEC = {
-  glock: { k: 'p', body: '#3a3c40' }, usp: { k: 'p', body: '#30343a', sil: 0.13 }, p2000: { k: 'p', body: '#30343a' },
-  dualies: { k: 'p', body: SIL }, p250: { k: 'p', body: '#3d3f44' }, tec9: { k: 'p', body: '#2d2f33', long: 1.25, mag: 1.6 },
-  fiveseven: { k: 'p', body: '#4b4f55' }, cz75: { k: 'p', body: '#3a3a3a', mag: 1.3 }, deagle: { k: 'p', body: SIL, big: 1.35 }, r8: { k: 'r', body: '#55585e' },
-  mac10: { k: 's', body: BLK, len: 0.26, mag: 0.16 }, mp9: { k: 's', body: BLK, len: 0.32, stock: 1 }, mp7: { k: 's', body: '#3a3d3f', len: 0.34, stock: 1 },
-  mp5: { k: 's', body: BLK, len: 0.42, stock: 1, sil: 0.14, curve: 1 }, ump: { k: 's', body: '#2f3134', len: 0.42, stock: 1, mag: 0.18 },
-  p90: { k: 'p90', body: '#3a3c3e' }, bizon: { k: 's', body: BLK, len: 0.44, stock: 1, helical: 1 },
-  nova: { k: 'sg', body: BLK, wood: '#3d3f42' }, xm1014: { k: 'sg', body: BLK, wood: BLK, auto: 1 }, sawedoff: { k: 'sg', body: '#3d3d3d', wood: WOOD, short: 1 }, mag7: { k: 'sg', body: '#3a3d40', wood: BLK, short: 1, box: 1 },
-  m249: { k: 'mg', body: '#3a3d36' }, negev: { k: 'mg', body: '#45453c' },
-  galil: { k: 'ar', body: '#3c3a33', wood: '#4a4535', mag: 'curve' }, famas: { k: 'bp', body: '#3a3f44', handle: 1 },
-  ak47: { k: 'ar', body: '#2e2e2e', wood: WOOD, mag: 'curve' }, m4a4: { k: 'ar', body: '#2f3236', wood: '#2f3236', rail: 1 }, m4a1s: { k: 'ar', body: '#33363a', wood: '#33363a', rail: 1, sil: 0.2 },
-  sg553: { k: 'ar', body: '#4b4a40', wood: '#4b4a40', scope: 1, mag: 'curve' }, aug: { k: 'bp', body: '#5b6650', scope: 1 },
-  ssg08: { k: 'sn', body: '#3d4a5a', len: 0.95 }, awp: { k: 'sn', body: '#3e5a3a', len: 1.12, big: 1 }, g3sg1: { k: 'sn', body: '#2f3230', len: 1.0, auto: 1 }, scar20: { k: 'sn', body: '#2c2f33', len: 1.0, auto: 1 },
-  zeus: { k: 'z', body: '#2a3a6a' }, knife: { k: 'kn' },
-  he: { k: 'gr', body: '#3d4a2c' }, flash: { k: 'gr', body: '#9aa3ad' }, smoke: { k: 'gr', body: '#5a6670', tall: 1 }, molotov: { k: 'mo' }, incendiary: { k: 'gr', body: '#a2552c', tall: 1 }, decoy: { k: 'gr', body: '#6b6b5b' },
-  c4: { k: 'c4' }, defuser: { k: 'kit' },
-};
-const gcache = new Map();
-export function gunGeo(id) {
-  if (gcache.has(id)) return gcache.get(id);
-  const s = SPEC[id] || { k: 'p', body: BLK };
-  const b = s.body || BLK, L = [];
-  switch (s.k) {
-    case 'p': { const k = s.big || 1, lg = s.long || 1;
-      L.push([0.034 * k, 0.04 * k, 0.19 * k * lg, 0, 0.02 * k, -0.06 * k, b], [0.03 * k, 0.11 * k, 0.05 * k, 0, -0.05 * k, 0.015 * k, '#222', 0.25], [0.02, 0.025, 0.04, 0, -0.012 * k, -0.035, '#222']);
-      if (s.mag) L.push([0.026, 0.09 * s.mag, 0.035, 0, -0.1, -0.04, '#222']);
-      if (s.sil) L.push([0.03, 0.03, s.sil, 0, 0.02, -0.15 * k - s.sil / 2, '#1d1d1d']);
-      break; }
-    case 'r': L.push([0.03, 0.035, 0.17, 0, 0.03, -0.1, b], [0.045, 0.05, 0.05, 0, 0.02, -0.02, b], [0.03, 0.11, 0.045, 0, -0.04, 0.03, WOOD, 0.3]); break;
-    case 's': { const l = s.len;
-      L.push([0.05, 0.075, l, 0, 0, -l / 2 + 0.06, b], [0.032, 0.11, 0.045, 0, -0.08, 0.02, '#222', 0.2], [0.03, s.mag || 0.15, 0.04, 0, -0.1, -l * 0.35, '#1e1e1e', s.curve ? 0.25 : 0], [0.02, 0.02, 0.08, 0, 0.01, -l + 0.02, '#1b1b1b']);
-      if (s.stock) L.push([0.03, 0.05, 0.16, 0, -0.01, 0.13, '#222']);
-      if (s.sil) L.push([0.04, 0.04, s.sil, 0, 0.01, -l + 0.02 - s.sil / 2, '#1a1a1a']);
-      if (s.helical) L.push([0.05, 0.05, 0.22, 0, -0.06, -0.2, '#2e2e2e']);
-      break; }
-    case 'p90': L.push([0.06, 0.1, 0.48, 0, 0, -0.14, b], [0.04, 0.03, 0.3, 0, 0.065, -0.18, '#222'], [0.025, 0.025, 0.06, 0, 0, -0.41, '#151515']); break;
-    case 'sg': { const l = s.short ? 0.5 : 0.78;
-      L.push([0.05, 0.07, 0.24, 0, 0, -0.06, b], [0.022, 0.022, l, 0, 0.02, -l / 2 - 0.12, '#1e1e1e'], [0.035, 0.035, 0.24, 0, -0.025, -0.3, s.wood, 0, 0]);
-      if (!s.short) L.push([0.045, 0.08, 0.26, 0, -0.04, 0.17, s.wood]); else L.push([0.032, 0.11, 0.045, 0, -0.07, 0.04, '#222', 0.3]);
-      if (s.box) L.push([0.035, 0.12, 0.05, 0, -0.08, -0.14, '#222']);
-      break; }
-    case 'mg': L.push([0.08, 0.1, 0.42, 0, 0, -0.08, b], [0.03, 0.03, 0.55, 0, 0.02, -0.55, '#1e1e1e'], [0.1, 0.11, 0.12, 0.06, -0.08, -0.08, '#3b3b2e'], [0.05, 0.08, 0.24, 0, -0.02, 0.24, '#2a2a2a'], [0.05, 0.03, 0.04, 0, -0.04, -0.75, '#222']); break;
-    case 'ar': {
-      L.push([0.05, 0.075, 0.32, 0, 0, -0.08, b], [0.022, 0.022, 0.32, 0, 0.015, -0.4, '#1d1d1d'], [0.048, 0.055, 0.22, 0, 0.0, -0.3, s.wood],
-        [0.045, 0.085, 0.26, 0, -0.025, 0.18, s.wood], [0.03, 0.1, 0.04, 0, -0.07, 0.05, '#222', 0.3]);
-      if (s.mag === 'curve') L.push([0.032, 0.15, 0.05, 0, -0.1, -0.11, '#2a2a2a', -0.35]); else L.push([0.032, 0.14, 0.045, 0, -0.1, -0.1, '#222', -0.1]);
-      if (s.rail) L.push([0.03, 0.035, 0.18, 0, 0.055, -0.08, '#25282b']);
-      if (s.sil) L.push([0.035, 0.035, s.sil, 0, 0.015, -0.56 - s.sil / 2 + 0.02, '#1a1a1a']);
-      if (s.scope) L.push([0.04, 0.04, 0.16, 0, 0.07, -0.05, '#1e1e1e']);
-      if (!s.rail && !s.scope) L.push([0.01, 0.03, 0.01, 0, 0.045, -0.5, '#1d1d1d']);
-      break; }
-    case 'bp': L.push([0.06, 0.1, 0.5, 0, 0, -0.08, b], [0.022, 0.022, 0.18, 0, 0.02, -0.42, '#1e1e1e'], [0.03, 0.12, 0.05, 0, -0.1, 0.06, '#222'], [0.03, 0.09, 0.04, 0, -0.08, -0.16, '#222', 0.2]);
-      if (s.handle) L.push([0.02, 0.04, 0.34, 0, 0.08, -0.12, b]); if (s.scope) L.push([0.045, 0.045, 0.16, 0, 0.08, -0.08, '#1e1e1e']); break;
-    case 'sn': { const l = s.len, k = s.big ? 1.15 : 1;
-      L.push([0.055 * k, 0.08 * k, 0.36, 0, 0, -0.05, b], [0.024 * k, 0.024 * k, l * 0.55, 0, 0.015, -0.23 - l * 0.275, '#1d1d1d'],
-        [0.05, 0.1 * k, 0.28, 0, -0.035, 0.24, b], [0.045, 0.045, 0.28, 0, 0.085, -0.06, '#181818'], [0.06, 0.06, 0.04, 0, 0.085, -0.2, '#181818'], [0.06, 0.06, 0.04, 0, 0.085, 0.08, '#181818'], [0.03, 0.08, 0.06, 0, -0.08, -0.02, '#222']);
-      if (s.auto) L.push([0.035, 0.12, 0.05, 0, -0.1, -0.12, '#222']);
-      break; }
-    case 'z': L.push([0.04, 0.06, 0.16, 0, 0, -0.04, b], [0.03, 0.1, 0.045, 0, -0.06, 0.03, '#222', 0.25], [0.05, 0.04, 0.03, 0, 0.0, -0.13, '#e6c84a']); break;
-    case 'kn': L.push([0.008, 0.035, 0.2, 0, 0.0, -0.14, '#c9cdd2'], [0.026, 0.03, 0.11, 0, -0.005, 0.02, '#222'], [0.04, 0.012, 0.012, 0, 0.0, -0.04, '#444']); break;
-    case 'gr': { const h = s.tall ? 0.12 : 0.085; L.push([0.065, h, 0.065, 0, 0, 0, b], [0.03, 0.03, 0.03, 0, h / 2 + 0.015, 0, '#888'], [0.012, 0.06, 0.02, 0.03, h / 2, 0, '#999']); break; }
-    case 'mo': L.push([0.06, 0.12, 0.06, 0, 0, 0, '#5d7a3a'], [0.03, 0.06, 0.03, 0, 0.09, 0, '#4d6a2a'], [0.035, 0.04, 0.035, 0, 0.13, 0, '#e8d6b0']); break;
-    case 'c4': L.push([0.2, 0.06, 0.13, 0, 0, 0, '#b8a27a'], [0.07, 0.03, 0.05, 0.03, 0.04, 0, '#1d1d1d'], [0.05, 0.012, 0.03, 0.03, 0.056, 0, '#5bdc6d'], [0.18, 0.02, 0.02, 0, 0.035, -0.04, '#a33']); break;
-    case 'kit': L.push([0.16, 0.05, 0.1, 0, 0, 0, '#2d3a55'], [0.04, 0.04, 0.12, 0.05, 0.03, 0, '#d4b13a']); break;
+// ---------------- utilidades de geometría ----------------
+function paint(g, col) {
+  g = g.index ? g.toNonIndexed() : g;
+  g.computeVertexNormals();
+  const n = g.attributes.position.count, arr = new Float32Array(n * 3), nor = g.attributes.normal.array;
+  TMP.set(col);
+  for (let i = 0; i < n; i++) {
+    const k = 0.8 + nor[i * 3 + 1] * 0.2 + nor[i * 3] * 0.06;
+    arr[i * 3] = TMP.r * k; arr[i * 3 + 1] = TMP.g * k; arr[i * 3 + 2] = TMP.b * k;
   }
-  const g = boxes(L);
-  gcache.set(id, g);
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'color') g.deleteAttribute(k);
   return g;
 }
-export function gunMesh(id) { const m = new THREE.Mesh(gunGeo(id), MAT); return m; }
-
-// ---------------- jugador ----------------
-const LOOK = {
-  T: { shirt: '#8a7350', pants: '#5d5446', skin: '#c79a74', head: '#2b2b2b', vest: '#6b5c40', boots: '#2b2620', glove: '#2b2b2b' },
-  CT: { shirt: '#36495f', pants: '#2f3b4a', skin: '#c79a74', head: '#26303b', vest: '#232d38', boots: '#1d1f22', glove: '#1d1f22' },
-};
-const pcache = {};
-function partGeos(team) {
-  if (pcache[team]) return pcache[team];
-  const c = LOOK[team];
-  const ct = team === 'CT';
-  const torso = boxes([
-    [0.44, 0.52, 0.26, 0, 0.26, 0, c.shirt], [0.46, 0.4, 0.29, 0, 0.3, 0, c.vest],
-    [0.2, 0.12, 0.08, 0.1, 0.38, -0.15, ct ? '#1b232c' : '#4d4230'], [0.3, 0.1, 0.2, 0, -0.01, 0, '#2a2620'],
-  ]);
-  const head = ct
-    ? boxes([[0.22, 0.24, 0.23, 0, 0.12, 0, c.skin], [0.25, 0.12, 0.26, 0, 0.23, 0.005, '#3a4a3a'], [0.2, 0.06, 0.03, 0, 0.13, -0.12, '#111'], [0.06, 0.08, 0.05, 0, 0.12, 0.12, '#333']])
-    : boxes([[0.22, 0.25, 0.23, 0, 0.12, 0, c.head], [0.2, 0.07, 0.02, 0, 0.14, -0.115, c.skin], [0.06, 0.03, 0.015, -0.05, 0.145, -0.125, '#111'], [0.06, 0.03, 0.015, 0.05, 0.145, -0.125, '#111']]);
-  const leg = boxes([[0.15, 0.48, 0.16, 0, -0.24, 0, c.pants], [0.16, 0.44, 0.17, 0, -0.66, 0, c.pants], [0.16, 0.08, 0.24, 0, -0.86, -0.03, c.boots], [0.165, 0.12, 0.08, 0, -0.45, -0.07, ct ? '#222' : '#4d4537']]);
-  const arm = boxes([[0.12, 0.3, 0.12, 0, -0.15, 0, c.shirt], [0.1, 0.28, 0.1, 0, -0.42, 0, c.shirt], [0.1, 0.09, 0.1, 0, -0.6, 0, c.glove]]);
-  return (pcache[team] = { torso, head, leg, arm });
+// perfil lateral [[adelante, alto], ...] extruido con ancho w (el arma mira hacia -z, la mano en el origen)
+function prof(pts, w, col, x = 0) {
+  const sh = new THREE.Shape(pts.map(p => new THREE.Vector2(p[0], p[1])));
+  const g = new THREE.ExtrudeGeometry(sh, { depth: w, bevelEnabled: false, steps: 1, curveSegments: 3 });
+  g.translate(0, 0, -w / 2); g.rotateY(Math.PI / 2); g.translate(x, 0, 0);
+  return paint(g, col);
 }
-// el modelo mira hacia -z; pies en y=0
-export function makePlayerModel(team) {
-  const G = partGeos(team);
-  const root = new THREE.Group();
-  const body = new THREE.Group(); root.add(body);
+function cyl(r, u0, u1, y, col, sides = 7, x = 0, r2 = r) {
+  const g = new THREE.CylinderGeometry(r2, r, u1 - u0, sides); g.rotateX(-Math.PI / 2); g.translate(x, y, -(u0 + u1) / 2);
+  return paint(g, col);
+}
+function box(w, h, len, u, y, col, x = 0) {
+  const g = new THREE.BoxGeometry(w, h, len); g.translate(x, y, -u);
+  return paint(g, col);
+}
+
+// ---------------- acabados (skins de armas) ----------------
+export const FINISHES = [
+  { name: 'Original', b: null, w: null, sw: '#3a3c40' },
+  { name: 'Desierto', b: '#b59a6c', w: '#8a6c44', sw: '#b59a6c' },
+  { name: 'Bosque', b: '#4f6040', w: '#3d4a30', sw: '#4f6040' },
+  { name: 'Ártico', b: '#dfe4ea', w: '#b9c2cc', sw: '#dfe4ea' },
+  { name: 'Neón', b: '#2b1f47', w: '#ff3fa4', sw: '#ff3fa4' },
+  { name: 'Oro', b: '#c9a23a', w: '#6b4a24', sw: '#c9a23a' },
+];
+
+// ---------------- armas ----------------
+const DRK = '#34373c', WOOD = '#8b5a2e', WOOD2 = '#6e4423', MET = '#5a5f66';
+// devuelve { parts: [[geo, rol]], fore, muzzle }; rol: b cuerpo, w culata/cargador, m metal
+function design(id) {
+  const P = [], add = (g, r = 'm') => P.push([g, r]);
+  let fore = null, muzzle = [0.3, 0.05];
+  const pistolGrip = (col, ang = 0.28, len = 0.11, wdt = 0.032) => add(prof([[0.03, 0.02], [-0.02, 0.02], [-0.02 - Math.sin(ang) * len, 0.02 - len], [0.03 - Math.sin(ang) * len, 0.02 - len]], wdt, col), 'w');
+  switch (id) {
+    // ---------- rifles ----------
+    case 'ak47': case 'galil': case 'sg553': {
+      const wood = id === 'ak47' ? WOOD : id === 'galil' ? '#4b4635' : '#55543f', body = id === 'ak47' ? '#2c2d2f' : id === 'galil' ? '#3a3830' : '#4a4a3e';
+      add(prof([[-0.07, 0.02], [0.27, 0.02], [0.27, 0.095], [-0.07, 0.095]], 0.046, body), 'b');
+      add(prof([[-0.07, 0.09], [-0.44, 0.07], [-0.46, -0.06], [-0.41, -0.07], [-0.2, 0.0], [-0.07, 0.02]], 0.038, wood), 'w');
+      add(prof([[0.27, 0.025], [0.5, 0.035], [0.5, 0.09], [0.27, 0.095]], 0.05, wood), 'w');
+      add(prof([[0.27, 0.098], [0.53, 0.105], [0.53, 0.125], [0.27, 0.12]], 0.026, DRK), 'm');
+      add(cyl(0.011, 0.5, 0.72, 0.065, '#1c1d1f'));
+      add(box(0.006, 0.05, 0.012, 0.66, 0.1, '#1c1d1f'));
+      add(cyl(0.016, 0.69, 0.75, 0.065, '#1c1d1f', 6));
+      add(box(0.02, 0.025, 0.04, 0.2, 0.105, '#1c1d1f'));
+      if (id === 'sg553') add(cyl(0.02, -0.02, 0.14, 0.14, '#1d1d1d', 8));
+      pistolGrip(id === 'ak47' ? WOOD2 : '#2a2a2a');
+      add(prof([[0.09, 0.02], [0.17, 0.02], [0.27, -0.17], [0.19, -0.19]], 0.032, id === 'ak47' ? '#7a4f2a' : '#2b2b2b'), 'w');
+      add(prof([[0.04, 0.02], [0.08, 0.02], [0.08, -0.025], [0.04, -0.03]], 0.008, '#1c1d1f'), 'm');
+      fore = [0.38, 0.03]; muzzle = [0.75, 0.065];
+      break;
+    }
+    case 'm4a4': case 'm4a1s': case 'famas': case 'aug': {
+      if (id === 'famas' || id === 'aug') { // bullpup
+        const body = id === 'aug' ? '#5d6a52' : '#3c4248';
+        add(prof([[-0.36, 0.0], [0.28, 0.0], [0.32, 0.08], [0.28, 0.11], [-0.36, 0.11], [-0.38, 0.05]], 0.055, body), 'b');
+        if (id === 'famas') add(prof([[-0.2, 0.11], [0.2, 0.11], [0.22, 0.16], [-0.18, 0.16]], 0.016, body), 'b');
+        else add(cyl(0.022, -0.06, 0.12, 0.15, '#1d1d1d', 8));
+        add(cyl(0.011, 0.3, 0.52, 0.05, '#1c1d1f'));
+        pistolGrip('#2a2a2a', 0.2);
+        add(prof([[-0.18, 0.0], [-0.1, 0.0], [-0.08, -0.15], [-0.16, -0.16]], 0.03, '#262626'), 'w');
+        add(prof([[0.12, 0.0], [0.17, 0.0], [0.15, -0.09], [0.11, -0.09]], 0.03, body), 'b');
+        fore = [0.14, -0.03]; muzzle = [0.52, 0.05];
+      } else {
+        const body = '#2f3236';
+        add(prof([[-0.06, 0.02], [0.24, 0.02], [0.24, 0.1], [-0.06, 0.1]], 0.046, body), 'b');
+        add(prof([[-0.06, 0.1], [0.24, 0.1], [0.24, 0.12], [-0.06, 0.12]], 0.028, '#1f2124'), 'm');
+        add(cyl(0.012, -0.32, -0.06, 0.075, '#25272a', 6));
+        add(prof([[-0.2, 0.1], [-0.38, 0.1], [-0.38, -0.02], [-0.3, -0.02], [-0.2, 0.05]], 0.036, '#222428'), 'w');
+        add(prof([[0.24, 0.025], [0.5, 0.03], [0.5, 0.105], [0.24, 0.105]], 0.05, '#2a2c30'), 'b');
+        add(box(0.012, 0.045, 0.012, 0.5, 0.13, '#1c1d1f'));
+        add(box(0.03, 0.02, 0.03, 0.0, 0.135, '#1c1d1f'));
+        if (id === 'm4a1s') { add(cyl(0.011, 0.5, 0.55, 0.065, '#1c1d1f')); add(cyl(0.022, 0.55, 0.82, 0.065, '#1a1b1d', 10)); muzzle = [0.82, 0.065]; }
+        else { add(cyl(0.011, 0.5, 0.7, 0.065, '#1c1d1f')); add(cyl(0.015, 0.66, 0.72, 0.065, '#1c1d1f', 6)); muzzle = [0.72, 0.065]; }
+        pistolGrip('#232427', 0.3);
+        add(prof([[0.09, 0.02], [0.155, 0.02], [0.18, -0.15], [0.115, -0.155]], 0.03, '#26272a'), 'w');
+        fore = [0.38, 0.03];
+      }
+      break;
+    }
+    // ---------- francotiradores ----------
+    case 'awp': case 'ssg08': case 'g3sg1': case 'scar20': {
+      const body = id === 'awp' ? '#3f5b3a' : id === 'ssg08' ? '#3e4c5e' : id === 'g3sg1' ? '#2d302d' : '#2b2e33';
+      const big = id === 'awp' ? 1.15 : 1;
+      add(prof([[-0.52, 0.04], [-0.3, 0.06], [-0.1, 0.03], [0.4, 0.03], [0.42, 0.09], [-0.06, 0.1 * big], [-0.22, 0.1 * big], [-0.52, 0.09 * big], [-0.54, -0.07], [-0.44, -0.08], [-0.2, -0.05], [-0.08, -0.06], [-0.06, 0.0]], 0.05 * big, body), 'b');
+      add(prof([[-0.14, 0.04], [-0.24, 0.04], [-0.24, -0.02], [-0.14, -0.02]], 0.052 * big, '#0d0d0d'), 'm');
+      add(cyl(0.013 * big, 0.4, id === 'awp' ? 1.05 : 0.92, 0.065, '#1c1d1f', 7, 0, 0.011 * big));
+      add(cyl(0.028 * big, -0.08, 0.26, 0.15 * big, '#191a1c', 10));
+      add(cyl(0.036 * big, 0.2, 0.3, 0.15 * big, '#191a1c', 10, 0, 0.028 * big));
+      add(cyl(0.033 * big, -0.14, -0.07, 0.15 * big, '#191a1c', 10, 0, 0.026 * big));
+      add(box(0.016, 0.05, 0.02, 0.02, 0.12 * big, '#1c1d1f')); add(box(0.016, 0.05, 0.02, 0.18, 0.12 * big, '#1c1d1f'));
+      if (id === 'awp' || id === 'ssg08') add(box(0.06, 0.012, 0.012, -0.04, 0.09, '#2a2a2a', 0.04));
+      if (id === 'g3sg1' || id === 'scar20') add(prof([[0.06, 0.03], [0.12, 0.03], [0.13, -0.12], [0.07, -0.12]], 0.03, '#222'), 'w');
+      else add(prof([[0.06, 0.03], [0.12, 0.03], [0.12, -0.04], [0.06, -0.04]], 0.03, '#222'), 'w');
+      fore = [0.3, 0.02]; muzzle = [id === 'awp' ? 1.05 : 0.92, 0.065];
+      break;
+    }
+    // ---------- subfusiles ----------
+    case 'p90': {
+      add(prof([[-0.22, 0.02], [0.28, 0.02], [0.32, 0.07], [0.3, 0.11], [-0.22, 0.12], [-0.25, -0.04], [-0.12, -0.08], [-0.05, -0.02], [0.02, -0.08], [0.1, -0.08], [0.12, 0.02]], 0.06, '#3a3c3e'), 'b');
+      add(prof([[-0.18, 0.12], [0.2, 0.12], [0.2, 0.15], [-0.18, 0.15]], 0.04, '#2a2a2a'), 'm');
+      add(cyl(0.011, 0.3, 0.38, 0.06, '#1c1d1f'));
+      fore = [0.12, -0.04]; muzzle = [0.38, 0.06];
+      break;
+    }
+    case 'mac10': {
+      add(prof([[-0.05, 0.02], [0.2, 0.02], [0.2, 0.11], [-0.05, 0.11]], 0.06, '#2a2b2e'), 'b');
+      add(cyl(0.012, 0.2, 0.27, 0.07, '#1c1d1f'));
+      add(prof([[-0.01, 0.02], [0.04, 0.02], [0.04, -0.2], [-0.01, -0.2]], 0.03, '#222'), 'w');
+      add(box(0.004, 0.06, 0.14, -0.12, 0.08, '#1c1d1f', 0.02));
+      fore = [0.17, 0.0]; muzzle = [0.27, 0.07];
+      break;
+    }
+    case 'mp9': case 'mp7': case 'ump': case 'mp5': case 'bizon': {
+      const len = id === 'ump' || id === 'mp5' || id === 'bizon' ? 0.36 : 0.28, body = id === 'mp7' ? '#3a3d3f' : '#2a2c30';
+      add(prof([[-0.06, 0.02], [len, 0.02], [len, 0.1], [-0.06, 0.1]], 0.05, body), 'b');
+      add(prof([[-0.06, 0.09], [-0.28, 0.08], [-0.28, 0.0], [-0.24, 0.0], [-0.06, 0.04]], 0.03, '#1f2124'), 'w');
+      pistolGrip('#232427', 0.25);
+      if (id === 'bizon') add(cyl(0.03, 0.06, 0.32, -0.01, '#2b2b2b', 8));
+      else add(prof([[0.07, 0.02], [0.12, 0.02], [id === 'mp5' ? 0.16 : 0.12, -0.15], [id === 'mp5' ? 0.11 : 0.07, -0.15]], 0.028, '#222'), 'w');
+      if (id === 'mp5') { add(cyl(0.022, len, len + 0.18, 0.06, '#1a1b1d', 10)); muzzle = [len + 0.18, 0.06]; }
+      else { add(cyl(0.011, len, len + 0.06, 0.06, '#1c1d1f')); muzzle = [len + 0.06, 0.06]; }
+      fore = [len * 0.75, 0.01];
+      break;
+    }
+    // ---------- escopetas y ametralladoras ----------
+    case 'nova': case 'xm1014': case 'sawedoff': case 'mag7': {
+      const short = id === 'sawedoff' || id === 'mag7', len = short ? 0.42 : 0.68;
+      add(prof([[-0.05, 0.02], [0.18, 0.02], [0.18, 0.1], [-0.05, 0.1]], 0.05, '#2b2d30'), 'b');
+      add(cyl(0.016, 0.18, len, 0.075, '#1c1d1f', 8));
+      add(cyl(0.014, 0.18, len - 0.06, 0.04, '#1f2022', 8));
+      add(prof([[0.24, 0.01], [0.46, 0.01], [0.46, 0.06], [0.24, 0.06]], 0.045, id === 'sawedoff' ? WOOD : '#2a2a2a'), 'w');
+      if (id === 'mag7') add(prof([[0.04, 0.02], [0.12, 0.02], [0.12, -0.14], [0.04, -0.14]], 0.04, '#2a2a2a'), 'w');
+      if (id === 'sawedoff') add(prof([[-0.05, 0.08], [-0.12, 0.06], [-0.18, -0.08], [-0.1, -0.09], [-0.05, 0.02]], 0.035, WOOD), 'w');
+      else if (id !== 'mag7') add(prof([[-0.05, 0.09], [-0.42, 0.06], [-0.44, -0.07], [-0.38, -0.08], [-0.05, 0.02]], 0.04, id === 'nova' ? '#2a2a2a' : '#26272a'), 'w');
+      else pistolGrip('#232427');
+      fore = [0.35, 0.0]; muzzle = [len, 0.075];
+      break;
+    }
+    case 'm249': case 'negev': {
+      add(prof([[-0.1, 0.02], [0.32, 0.02], [0.32, 0.13], [-0.1, 0.13]], 0.07, '#3a3d36'), 'b');
+      add(prof([[-0.1, 0.1], [-0.44, 0.08], [-0.44, -0.06], [-0.1, 0.02]], 0.04, '#26272a'), 'w');
+      add(cyl(0.016, 0.32, 0.82, 0.07, '#1c1d1f', 8));
+      add(prof([[0.32, 0.03], [0.55, 0.03], [0.55, 0.1], [0.32, 0.1]], 0.06, '#2b2b2b'), 'b');
+      add(box(0.1, 0.12, 0.13, 0.12, -0.04, '#3b3b2e', 0.05));
+      pistolGrip('#232427');
+      fore = [0.45, 0.02]; muzzle = [0.82, 0.07];
+      break;
+    }
+    // ---------- pistolas ----------
+    case 'deagle': case 'r8': {
+      if (id === 'r8') {
+        add(cyl(0.012, 0.03, 0.24, 0.07, MET, 8));
+        add(cyl(0.03, -0.01, 0.05, 0.05, MET, 6));
+        add(prof([[-0.04, 0.02], [0.04, 0.02], [0.04, 0.08], [-0.04, 0.08]], 0.03, MET), 'b');
+        pistolGrip(WOOD, 0.35, 0.1, 0.03);
+        muzzle = [0.24, 0.07];
+      } else {
+        add(prof([[-0.05, 0.035], [0.2, 0.035], [0.21, 0.06], [0.2, 0.092], [-0.05, 0.092]], 0.032, '#9aa0a8'), 'b');
+        add(prof([[-0.04, 0.0], [0.17, 0.0], [0.17, 0.035], [-0.04, 0.035]], 0.03, '#8a9098'), 'b');
+        add(box(0.012, 0.012, 0.01, 0.195, 0.1, '#1c1d1f'));
+        pistolGrip('#26272a', 0.25, 0.11, 0.036);
+        muzzle = [0.21, 0.065];
+      }
+      break;
+    }
+    case 'zeus': {
+      add(prof([[-0.04, 0.02], [0.13, 0.02], [0.14, 0.07], [-0.04, 0.07]], 0.04, '#2a3a6a'), 'b');
+      add(box(0.045, 0.035, 0.02, 0.14, 0.045, '#e6c84a'));
+      pistolGrip('#222', 0.25, 0.09);
+      muzzle = [0.15, 0.045];
+      break;
+    }
+    case 'knife': { // cuchillo táctico: mango engomado, guarda y hoja con punta
+      add(prof([[-0.12, -0.012], [-0.005, -0.014], [-0.005, 0.014], [-0.12, 0.012], [-0.13, 0.0]], 0.024, '#1f2023'), 'w');
+      add(prof([[-0.005, -0.03], [0.012, -0.03], [0.012, 0.024], [-0.005, 0.024]], 0.03, '#3a3c40'), 'm');
+      add(prof([[0.012, -0.016], [0.17, -0.012], [0.215, 0.006], [0.17, 0.016], [0.06, 0.016], [0.012, 0.016]], 0.005, '#c9cfd6'), 'b');
+      add(prof([[0.03, 0.016], [0.16, 0.016], [0.16, 0.019], [0.03, 0.019]], 0.007, '#8d949c'), 'm');
+      muzzle = [0.21, 0];
+      break;
+    }
+    case 'he': add(paint(new THREE.IcosahedronGeometry(0.037, 0), '#3d4a2c')); add(box(0.016, 0.02, 0.016, 0, 0.04, '#999')); add(box(0.008, 0.05, 0.016, -0.02, 0.025, '#aaa', 0.03)); break;
+    case 'flash': add(cyl(0.028, -0.055, 0.055, 0, '#a0a8b2', 8)); add(box(0.016, 0.02, 0.016, 0, 0.032, '#777')); break;
+    case 'smoke': add(cyl(0.03, -0.065, 0.065, 0, '#5a6670', 8)); add(box(0.02, 0.012, 0.02, 0, 0.034, '#888')); break;
+    case 'decoy': add(cyl(0.026, -0.05, 0.05, 0, '#6b6b5b', 6)); break;
+    case 'incendiary': add(cyl(0.028, -0.06, 0.06, 0, '#a2552c', 8)); break;
+    case 'molotov': add(cyl(0.03, -0.06, 0.04, 0, '#5d7a3a', 8)); add(cyl(0.012, 0.04, 0.1, 0, '#4d6a2a', 6)); add(cyl(0.016, 0.1, 0.13, 0, '#e8d6b0', 5)); break;
+    case 'c4': add(box(0.2, 0.06, 0.13, 0, 0, '#b8a27a')); add(box(0.07, 0.03, 0.05, 0.01, 0.04, '#1d1d1d', 0.03)); add(box(0.05, 0.012, 0.03, 0.01, 0.058, '#5bdc6d', 0.03)); add(box(0.18, 0.02, 0.02, -0.04, 0.035, '#a33')); break;
+    case 'defuser': add(box(0.16, 0.05, 0.1, 0, 0, '#2d3a55')); add(box(0.04, 0.04, 0.12, 0, 0.03, '#d4b13a', 0.05)); break;
+    default: { // pistolas comunes
+      const col = id === 'dualies' ? '#9aa0a8' : id === 'fiveseven' ? '#4b4f55' : id === 'tec9' ? '#2d2f33' : '#34373c';
+      const L = id === 'tec9' ? 0.22 : 0.18;
+      add(prof([[-0.04, 0.032], [L, 0.032], [L, 0.075], [-0.03, 0.075], [-0.045, 0.06]], 0.028, col), 'b');
+      add(prof([[-0.035, 0.0], [L - 0.02, 0.0], [L - 0.02, 0.032], [-0.035, 0.032]], 0.026, '#222428'), 'm');
+      pistolGrip(id === 'cz75' ? '#3a2a1a' : '#202124', 0.22, 0.1, 0.03);
+      if (id === 'tec9') add(prof([[0.06, 0.0], [0.1, 0.0], [0.1, -0.16], [0.06, -0.16]], 0.024, '#202124'), 'w');
+      if (id === 'usp') { add(cyl(0.017, L, L + 0.15, 0.055, '#1a1b1d', 10)); muzzle = [L + 0.15, 0.055]; }
+      else muzzle = [L, 0.055];
+      add(box(0.008, 0.012, 0.008, L - 0.01, 0.082, '#111'));
+    }
+  }
+  return { parts: P, fore, muzzle };
+}
+const gcache = new Map(), icache = new Map();
+export function gunInfo(id) { if (!icache.has(id)) { const d = design(id); icache.set(id, { fore: d.fore, muzzle: d.muzzle }); } return icache.get(id); }
+export function gunGeo(id, finish = 0) {
+  const key = id + ':' + finish;
+  if (gcache.has(key)) return gcache.get(key);
+  const d = design(id), F = FINISHES[finish] || FINISHES[0];
+  const isGun = WEAPONS[id] && WEAPONS[id].dmg;
+  const geos = d.parts.map(([g, role]) => {
+    if (!F.b || !isGun || (role !== 'b' && role !== 'w') || (id === 'knife' && role === 'w')) return g;
+    const g2 = g.clone(); const c = new THREE.Color(role === 'b' ? F.b : F.w);
+    const col = g2.attributes.color.array, nor = g2.attributes.normal.array;
+    for (let i = 0; i < col.length / 3; i++) { const k = 0.8 + nor[i * 3 + 1] * 0.2 + nor[i * 3] * 0.06; col[i * 3] = c.r * k; col[i * 3 + 1] = c.g * k; col[i * 3 + 2] = c.b * k; }
+    return g2;
+  });
+  const g = mergeGeometries(geos);
+  gcache.set(key, g); if (!icache.has(id)) icache.set(id, { fore: d.fore, muzzle: d.muzzle });
+  return g;
+}
+export function gunMesh(id, finish = 0) { return new THREE.Mesh(gunGeo(id, finish), MAT); }
+
+// ---------------- skins de personajes ----------------
+export const SKINS = {
+  T: [
+    { name: 'Fénix', shirt: '#8a7350', pants: '#5d5446', vest: '#6b5c40', glove: '#2b2b2b', boots: '#2b2620', skin: '#c79a74', head: 'balaclava', hc: '#2b2b2b' },
+    { name: 'Élite', shirt: '#5a3b2a', pants: '#3b4658', vest: '#3a2a20', glove: '#3a2a20', boots: '#1d1a17', skin: '#b98a66', head: 'glasses', hc: '#1d1a17' },
+    { name: 'Guerrilla', shirt: '#5f6a3c', pants: '#7a6b4a', vest: '#4d5530', glove: '#3b3626', boots: '#3a2e20', skin: '#a7764f', head: 'bandana', hc: '#a52a24' },
+    { name: 'Sombra', shirt: '#4a4d52', pants: '#33363b', vest: '#2a2c30', glove: '#1b1c1e', boots: '#151617', skin: '#c79a74', head: 'goggles', hc: '#1d1e20' },
+  ],
+  CT: [
+    { name: 'SWAT', shirt: '#36495f', pants: '#2f3b4a', vest: '#232d38', glove: '#1d1f22', boots: '#1d1f22', skin: '#c79a74', head: 'helmet', hc: '#26303b' },
+    { name: 'GIGN', shirt: '#2b3a6b', pants: '#25305a', vest: '#1c2440', glove: '#15181f', boots: '#15181f', skin: '#c79a74', head: 'visor', hc: '#1c2440' },
+    { name: 'SAS', shirt: '#2d2f33', pants: '#2a2c30', vest: '#4a4d45', glove: '#1b1c1e', boots: '#151617', skin: '#c79a74', head: 'gasmask', hc: '#1b1c1e' },
+    { name: 'Comando', shirt: '#6b6a4a', pants: '#5d5a3e', vest: '#4a4a32', glove: '#3b3a2a', boots: '#2e2a20', skin: '#a7764f', head: 'headset', hc: '#4a4a32' },
+  ],
+};
+export const skinOf = (team, i) => (SKINS[team] || SKINS.T)[((i | 0) % 4 + 4) % 4];
+const pcache = {};
+function bodyGeos(team, si) {
+  const key = team + si; if (pcache[key]) return pcache[key];
+  const S = skinOf(team, si);
+  const torso = mergeGeometries([
+    box(0.4, 0.5, 0.24, 0, 0.27, S.shirt), box(0.44, 0.36, 0.28, 0, 0.32, S.vest),
+    box(0.1, 0.1, 0.05, 0.15, 0.26, S.vest, -0.11), box(0.1, 0.1, 0.05, 0.15, 0.26, S.vest, 0.11), box(0.1, 0.1, 0.05, 0.15, 0.38, S.vest, 0.11),
+    box(0.42, 0.07, 0.26, 0, 0.03, '#2a2620'), box(0.06, 0.06, 0.04, 0.13, 0.03, '#8a7a50'),
+    box(0.5, 0.12, 0.26, 0, 0.47, S.shirt),
+  ]);
+  const hb = [box(0.22, 0.25, 0.23, 0, 0.12, S.skin)];
+  const hc = S.hc;
+  // los detalles de la cara van hacia adelante (-z = u positivo)
+  if (S.head === 'balaclava') hb.push(box(0.235, 0.26, 0.24, 0, 0.125, hc), box(0.18, 0.05, 0.02, 0.12, 0.15, S.skin), box(0.04, 0.025, 0.01, 0.13, 0.155, '#111', -0.05), box(0.04, 0.025, 0.01, 0.13, 0.155, '#111', 0.05));
+  else if (S.head === 'glasses') hb.push(box(0.235, 0.08, 0.24, 0, 0.23, hc), box(0.2, 0.04, 0.02, 0.12, 0.15, '#111'), box(0.24, 0.05, 0.08, -0.08, 0.2, hc));
+  else if (S.head === 'bandana') hb.push(box(0.24, 0.07, 0.245, 0, 0.21, hc), box(0.06, 0.1, 0.03, -0.12, 0.17, hc), box(0.05, 0.02, 0.01, 0.12, 0.15, '#111', -0.05), box(0.05, 0.02, 0.01, 0.12, 0.15, '#111', 0.05));
+  else if (S.head === 'goggles') hb.push(box(0.235, 0.26, 0.24, 0, 0.125, hc), box(0.2, 0.06, 0.04, 0.12, 0.16, '#3a6070'), box(0.24, 0.02, 0.25, 0, 0.16, '#111'));
+  else if (S.head === 'helmet') hb.push(box(0.26, 0.12, 0.27, 0, 0.23, hc), box(0.2, 0.05, 0.03, 0.13, 0.17, '#111'), box(0.05, 0.08, 0.05, 0, 0.14, '#333', 0.13));
+  else if (S.head === 'visor') hb.push(box(0.27, 0.28, 0.27, 0, 0.14, hc), box(0.2, 0.12, 0.02, 0.135, 0.13, '#5a7a9a'));
+  else if (S.head === 'gasmask') hb.push(box(0.24, 0.26, 0.24, 0, 0.125, hc), box(0.18, 0.06, 0.02, 0.12, 0.16, '#6a7a7a'), box(0.07, 0.07, 0.06, 0.14, 0.06, '#333'), box(0.05, 0.05, 0.06, 0.12, 0.05, '#555', -0.07), box(0.05, 0.05, 0.06, 0.12, 0.05, '#555', 0.07));
+  else if (S.head === 'headset') hb.push(box(0.26, 0.11, 0.27, 0, 0.23, hc), box(0.04, 0.08, 0.06, 0, 0.12, '#222', -0.125), box(0.04, 0.08, 0.06, 0, 0.12, '#222', 0.125), box(0.2, 0.05, 0.03, 0.13, 0.17, '#111'));
+  const head = mergeGeometries(hb);
+  const thigh = mergeGeometries([box(0.15, 0.46, 0.16, 0, -0.23, S.pants), box(0.04, 0.12, 0.1, 0, -0.2, S.vest, 0.09)]);
+  const shin = mergeGeometries([box(0.14, 0.42, 0.15, 0, -0.21, S.pants), box(0.16, 0.1, 0.06, 0.06, -0.04, '#222'), box(0.16, 0.12, 0.24, 0.04, -0.4, S.boots)]);
+  const upper = box(0.12, 0.12, 1, 0, 0, S.shirt), fore = box(0.105, 0.105, 1, 0, 0, S.shirt);
+  const hand = mergeGeometries([box(0.09, 0.09, 0.1, 0, 0, S.glove)]);
+  return (pcache[key] = { torso, head, thigh, shin, upper, fore, hand, S });
+}
+// modelo del jugador: mira hacia -z, pies en y=0. Los brazos se resuelven con IK hacia el arma.
+export function makePlayerModel(team, si = 0) {
+  const G = bodyGeos(team, si);
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const hips = new THREE.Group(); hips.position.y = 0.92; body.add(hips);
-  const legL = new THREE.Mesh(G.leg, MAT), legR = new THREE.Mesh(G.leg, MAT);
-  legL.position.set(-0.11, 0, 0); legR.position.set(0.11, 0, 0); hips.add(legL, legR);
-  const chest = new THREE.Group(); chest.position.y = 0.0; hips.add(chest);
-  const torso = new THREE.Mesh(G.torso, MAT); chest.add(torso);
+  const legs = [];
+  for (const sx of [-0.11, 0.11]) {
+    const hip = new THREE.Group(); hip.position.set(sx, 0, 0); hips.add(hip);
+    hip.add(new THREE.Mesh(G.thigh, MAT));
+    const knee = new THREE.Group(); knee.position.y = -0.46; hip.add(knee);
+    knee.add(new THREE.Mesh(G.shin, MAT));
+    legs.push({ hip, knee });
+  }
+  const chest = new THREE.Group(); hips.add(chest);
+  chest.add(new THREE.Mesh(G.torso, MAT));
   const neck = new THREE.Group(); neck.position.y = 0.53; chest.add(neck);
-  const head = new THREE.Mesh(G.head, MAT); neck.add(head);
-  const armL = new THREE.Mesh(G.arm, MAT), armR = new THREE.Mesh(G.arm, MAT);
-  armR.position.set(0.27, 0.47, 0); armL.position.set(-0.27, 0.47, 0);
-  chest.add(armL, armR);
-  const gun = new THREE.Group(); gun.position.set(0.12, 0.3, -0.38); chest.add(gun);
-  root.userData = { body, hips, legL, legR, chest, neck, armL, armR, gun, gunId: null, phase: 0 };
+  neck.add(new THREE.Mesh(G.head, MAT));
+  const gun = new THREE.Group(); gun.matrixAutoUpdate = true; chest.add(gun);
+  const arms = [];
+  for (let k = 0; k < 2; k++) { const u = new THREE.Mesh(G.upper, MAT), f = new THREE.Mesh(G.fore, MAT), h = new THREE.Mesh(G.hand, MAT); chest.add(u, f, h); arms.push({ u, f, h }); }
+  root.userData = { body, hips, legs, chest, neck, gun, arms, gunId: null, phase: 0, team, si };
   return root;
 }
-export function setModelGun(root, id) {
-  const u = root.userData; if (u.gunId === id) return; u.gunId = id;
-  u.gun.clear();
-  if (id) { const m = gunMesh(id); m.scale.setScalar(1.15); u.gun.add(m); }
+export function setModelGun(root, id, finish = 0) {
+  const u = root.userData, key = id + ':' + finish; if (u.gunId === key) return; u.gunId = key;
+  u.gun.clear(); u.info = id ? gunInfo(id) : null; u.wid = id;
+  if (id) { const m = gunMesh(id, finish); m.scale.setScalar(1.12); u.gun.add(m); }
 }
+// IK de dos huesos: hombro S, objetivo T, largos a y b, polo → codo (out); devuelve el objetivo alcanzable
+const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3(), vE = new THREE.Vector3();
+function ik(S, T, a, b, pole, out) {
+  vA.subVectors(T, S); let d = vA.length(); const maxd = (a + b) * 0.995;
+  if (d > maxd) { vA.multiplyScalar(maxd / d); d = maxd; }
+  const T2 = vB.copy(S).add(vA);
+  const x = (a * a - b * b + d * d) / (2 * d), h = Math.sqrt(Math.max(0, a * a - x * x));
+  const dir = vC.copy(vA).normalize();
+  const pv = vD.copy(pole).sub(S); pv.sub(vE.copy(dir).multiplyScalar(pv.dot(dir))).normalize();
+  out.copy(S).addScaledVector(dir, x).addScaledVector(pv, h);
+  return T2;
+}
+const UPV = new THREE.Vector3(0, 1, 0), mtx = new THREE.Matrix4();
+function placeSeg(mesh, A, B) {
+  const L = A.distanceTo(B);
+  mesh.position.copy(A).add(B).multiplyScalar(0.5);
+  mtx.lookAt(A, B, UPV); mesh.quaternion.setFromRotationMatrix(mtx);
+  mesh.scale.set(1, 1, Math.max(0.01, L));
+}
+const sh = new THREE.Vector3(), tg = new THREE.Vector3(), el = new THREE.Vector3(), pl = new THREE.Vector3();
 // pose: speed (m/s), duck (0..1), pitch, onGround, dead (0..1)
 export function poseModel(root, o, dt) {
   const u = root.userData;
   u.phase += dt * Math.min(o.speed, 6) * 2.4;
-  const sw = Math.sin(u.phase) * Math.min(1, o.speed / 3) * 0.7;
+  const amp = Math.min(1, o.speed / 3) * 0.6, sw = Math.sin(u.phase) * amp;
   const d = o.duck;
-  u.hips.position.y = 0.92 - d * 0.4;
-  u.legL.rotation.x = sw - d * 1.1; u.legR.rotation.x = -sw - d * 1.1;
-  if (!o.onGround) { u.legL.rotation.x = -0.5; u.legR.rotation.x = 0.3; }
-  u.chest.rotation.x = d * 0.25;
+  u.hips.position.y = 0.92 - d * 0.36;
+  const [L, R] = u.legs;
+  L.hip.rotation.x = sw - d * 1.2; R.hip.rotation.x = -sw - d * 1.2;
+  L.knee.rotation.x = Math.max(0, -Math.sin(u.phase) * amp) * 1.2 + d * 2.0; R.knee.rotation.x = Math.max(0, Math.sin(u.phase) * amp) * 1.2 + d * 2.0;
+  if (!o.onGround) { L.hip.rotation.x = -0.6; R.hip.rotation.x = 0.2; L.knee.rotation.x = 0.9; R.knee.rotation.x = 0.4; }
+  u.chest.rotation.x = d * 0.2;
   const p = Math.max(-1.2, Math.min(1.2, o.pitch));
-  // brazos apuntando el arma según el pitch
-  u.armR.rotation.x = -1.35 + p * 0.9 - d * 0.25; u.armL.rotation.x = -1.25 + p * 0.9 - d * 0.25;
-  u.armR.rotation.z = 0.15; u.armL.rotation.z = -0.55; u.armL.position.z = -0.05;
-  u.gun.position.set(0.04, 0.47 - Math.cos(p) * 0.08 + Math.sin(p) * 0.45 - 0.12, -0.42 * Math.cos(p));
-  u.gun.rotation.x = p;
-  u.neck.rotation.x = p * 0.5;
-  u.body.rotation.x = 0; u.body.position.y = 0;
-  if (o.dead > 0) { // caída hacia atrás
-    u.body.rotation.x = Math.min(1, o.dead) * 1.45; u.body.position.y = Math.min(1, o.dead) * 0.15;
+  u.neck.rotation.x = p * 0.55;
+  const info = u.info, cat = u.wid ? (WEAPONS[u.wid]?.cat || u.wid) : null;
+  const pistol = cat === 'pistol' || u.wid === 'zeus';
+  // el arma va delante del pecho, a la altura del hombro derecho, y sigue el pitch
+  if (cat === 'knife' || cat === 'grenade' || cat === 'c4' || u.wid === 'defuser') { u.gun.position.set(0.27, 0.16, -0.22); u.gun.rotation.set(p * 0.5 + 0.3, 0, 0); }
+  else { const r = pistol ? 0.42 : 0.28; u.gun.position.set(0.11, 0.4 + Math.sin(p) * r, -Math.cos(p) * r); u.gun.rotation.set(p, 0, 0); }
+  u.gun.updateMatrix();
+  for (let k = 0; k < 2; k++) {
+    const A = u.arms[k], right = k === 0;
+    sh.set(right ? 0.24 : -0.24, 0.46, 0);
+    let target = null;
+    if (info) {
+      if (right) target = tg.set(0, 0, cat === 'knife' ? 0.06 : 0).applyMatrix4(u.gun.matrix);
+      else if (info.fore && cat !== 'knife') target = tg.set(0, info.fore[1] * 1.12 - 0.02, -info.fore[0] * 1.12).applyMatrix4(u.gun.matrix);
+      else if (pistol) target = tg.set(-0.04, -0.04, 0.02).applyMatrix4(u.gun.matrix);
+    }
+    if (!target) target = tg.set(right ? 0.3 : -0.3, 0.02, -0.05 + sw * 0.15 * (right ? -1 : 1));
+    pl.set(right ? 0.7 : -0.7, -0.5, 0.4);
+    const T2 = ik(sh, target, 0.29, 0.27, pl, el);
+    placeSeg(A.u, sh, el); placeSeg(A.f, el, T2);
+    A.h.position.copy(T2); A.h.quaternion.copy(A.f.quaternion);
   }
+  u.body.rotation.x = 0; u.body.position.y = 0;
+  if (o.dead > 0) { const k = Math.min(1, o.dead); u.body.rotation.x = k * 1.45; u.body.position.y = k * 0.15; }
 }
 
 // ---------------- primera persona ----------------
@@ -173,30 +381,58 @@ export function makeViewModel() {
   const g = new THREE.Group();
   const hold = new THREE.Group(); g.add(hold);
   const gun = new THREE.Group(); hold.add(gun);
-  const arms = new THREE.Group(); hold.add(arms);
+  const arms = [];
+  for (let k = 0; k < 2; k++) { const u = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1), MAT_VM), f = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 1), MAT_VM), h = new THREE.Group(); g.add(u, f, h); arms.push({ u, f, h }); }
   g.userData = { hold, gun, arms, id: null, team: null };
   return g;
 }
-const armGeoCache = {};
-function vmArms(team, kind) {
-  const key = team + kind; if (armGeoCache[key]) return armGeoCache[key];
-  const c = LOOK[team];
-  const R = [[0.075, 0.075, 0.42, 0.06, -0.08, 0.25, c.shirt], [0.07, 0.07, 0.08, 0.04, -0.06, 0.02, c.glove]];
-  const Lh = kind === 'two'
-    ? [[0.07, 0.07, 0.42, -0.12, -0.12, 0.05, c.shirt, 0, 0.5], [0.068, 0.068, 0.08, -0.03, -0.05, -0.17, c.glove]]
-    : kind === 'pistol' ? [[0.07, 0.07, 0.4, -0.07, -0.12, 0.22, c.shirt, 0, 0.25], [0.068, 0.068, 0.08, -0.02, -0.07, 0.03, c.glove]] : [];
-  return (armGeoCache[key] = boxes([...R, ...Lh]));
+const armCache = {};
+function vmParts(team, si) {
+  const key = team + si; if (armCache[key]) return armCache[key];
+  const S = skinOf(team, si);
+  const sleeve = box(0.085, 0.085, 1, 0, 0, S.shirt);
+  const forearm = mergeGeometries([box(0.072, 0.072, 1, 0, 0, S.shirt), box(0.082, 0.082, 0.14, 0.43, 0, S.vest)]);
+  // mano cerrada sobre la empuñadura: palma, nudillos y pulgar
+  const hand = mergeGeometries([box(0.062, 0.08, 0.085, 0, -0.01, S.glove), box(0.07, 0.028, 0.05, 0.015, -0.045, S.glove), box(0.026, 0.026, 0.06, 0.02, 0.03, S.glove, 0.03)]);
+  return (armCache[key] = { sleeve, forearm, hand });
 }
-export function setViewGun(vm, id, team) {
-  const u = vm.userData; if (u.id === id && u.team === team) return; u.id = id; u.team = team;
-  u.gun.clear(); u.arms.clear();
+export function setViewGun(vm, id, team, si = 0, finish = 0) {
+  const u = vm.userData, key = id + team + si + ':' + finish; if (u.key === key) return; u.key = key; u.id = id; u.team = team;
+  u.gun.clear();
+  for (const a of u.arms) a.h.clear();
   if (!id) return;
   const cat = WEAPONS[id]?.cat || id;
-  const m = new THREE.Mesh(gunGeo(id), MAT_VM); u.gun.add(m);
-  if (cat === 'grenade' || id === 'c4') { m.scale.setScalar(0.7); m.position.set(0.02, 0.02, 0.0); }
-  const kind = cat === 'pistol' ? 'pistol' : (cat === 'knife' || cat === 'grenade' || cat === 'c4' || cat === 'equip' || id === 'defuser') ? 'one' : 'two';
-  u.arms.add(new THREE.Mesh(vmArms(team, kind), MAT_VM));
-  // dónde se sostiene
-  u.base = cat === 'pistol' ? [0.14, -0.15, -0.34] : cat === 'knife' ? [0.16, -0.16, -0.3] : cat === 'grenade' || cat === 'c4' ? [0.17, -0.19, -0.38] : cat === 'sniper' ? [0.13, -0.15, -0.36] : [0.13, -0.14, -0.36];
+  const m = new THREE.Mesh(gunGeo(id, finish), MAT_VM); u.gun.add(m);
+  u.info = gunInfo(id); u.cat = cat;
+  const P = vmParts(team, si);
+  for (const a of u.arms) { a.u.geometry = P.sleeve; a.f.geometry = P.forearm; a.h.add(new THREE.Mesh(P.hand, MAT_VM)); }
+  // dónde se sostiene respecto de la cámara
+  u.base = cat === 'pistol' || id === 'zeus' ? [0.12, -0.1, -0.37] : cat === 'knife' ? [0.14, -0.13, -0.33] : cat === 'grenade' || cat === 'c4' || id === 'defuser' ? [0.12, -0.12, -0.28] : cat === 'sniper' ? [0.13, -0.17, -0.46] : [0.12, -0.125, -0.28];
+  u.rot = cat === 'knife' ? [0.35, 0.55, -0.25] : cat === 'grenade' || cat === 'c4' ? [0.1, 0.2, 0] : [0.03, 0.07, 0];
   vm.traverse(o => { o.renderOrder = 10; o.frustumCulled = false; });
+}
+// ubica los brazos (cada cuadro, después de mover hold)
+const vS = new THREE.Vector3(), vT = new THREE.Vector3(), vEl = new THREE.Vector3(), vP = new THREE.Vector3(), gm = new THREE.Matrix4();
+export function updateViewArms(vm) {
+  const u = vm.userData; if (!u.id) return;
+  u.hold.updateMatrix(); u.gun.updateMatrix();
+  gm.multiplyMatrices(u.hold.matrix, u.gun.matrix);
+  const info = u.info || {}, cat = u.cat;
+  for (let k = 0; k < 2; k++) {
+    const A = u.arms[k], right = k === 0;
+    vS.set(right ? 0.2 : -0.22, -0.3, 0.12);
+    let T = null;
+    if (right) T = vT.set(0.004, -0.012, cat === 'knife' ? 0.065 : 0).applyMatrix4(gm);
+    else if (info.fore && cat !== 'knife') T = vT.set(-0.004, info.fore[1] - 0.03, -info.fore[0]).applyMatrix4(gm);
+    else if (cat === 'pistol' || u.id === 'zeus') T = vT.set(-0.035, -0.065, 0.025).applyMatrix4(gm);
+    const vis = !!T;
+    A.u.visible = A.f.visible = A.h.visible = vis;
+    if (!vis) continue;
+    vP.set(right ? 0.6 : -0.65, -0.7, 0.3);
+    const T2 = ik(vS, T, 0.4, 0.4, vP, vEl);
+    placeSeg(A.u, vS, vEl); placeSeg(A.f, vEl, T2);
+    A.h.position.copy(T2);
+    A.h.quaternion.setFromRotationMatrix(gm);
+    if (!right) A.h.rotateZ(0.35);
+  }
 }

@@ -3,7 +3,8 @@
 import { blocked, STEP, zoneCells } from './world.js';
 import { PM } from './player.js';
 
-const JUMP = 1.15; // los bots saltan escalones/cajas de hasta esta altura
+const JUMP = 1.15, NSTEP = 0.74; // nodos cada 2 celdas: una rampa empinada sube ~0.65 entre nodos
+ // los bots saltan escalones/cajas de hasta esta altura
 export function buildNav(W) {
   const k = 2, m = W.n / k, N = m * m, c = W.cell * k;
   // por cada nodo y capa: altura del piso (NaN si no se puede estar)
@@ -14,7 +15,7 @@ export function buildNav(W) {
     const i = W.idx(wx, wz);
     for (let l = 0; l < W.L; l++) {
       const t = W.top[l][i]; if (isNaN(t)) continue;
-      const cl = W.cls[l][i]; if (cl === 3) continue;
+      const cl = W.cls[l][i]; if (cl === 3 || cl === 4) continue;
       if (blocked(W, wx, wz, t, PM.hCrouch + 0.05, 0.36)) continue;
       H[l][z * m + x] = t;
     }
@@ -53,13 +54,13 @@ export function buildNav(W) {
         const h2 = H[l2][j]; if (isNaN(h2)) continue;
         const up = h2 - h;
         if (up > JUMP || -up > 2.2) continue;
-        if (up > STEP && d >= 4) continue; // saltos solo en línea recta
-        out.push(l2 * N + j, (d >= 4 ? 1.414 : 1) + (up > STEP ? 4 : 0));
+        if (up > NSTEP && d >= 4) continue; // saltos solo en línea recta
+        out.push(l2 * N + j, (d >= 4 ? 1.414 : 1) + (up > NSTEP ? 4 : 0));
       }
     }
     return out;
   };
-  function ok(l, j, h) { for (let l2 = 0; l2 < W.L; l2++) { const h2 = H[l2][j]; if (!isNaN(h2) && Math.abs(h2 - h) <= STEP) return true; } return false; }
+  function ok(l, j, h) { for (let l2 = 0; l2 < W.L; l2++) { const h2 = H[l2][j]; if (!isNaN(h2) && Math.abs(h2 - h) <= NSTEP) return true; } return false; }
   // penalizar bordes (para que los bots no rocen las paredes)
   const edge = new Uint8Array(W.L * N);
   for (let l = 0; l < W.L; l++) for (let i = 0; i < N; i++) {
