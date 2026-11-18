@@ -15,6 +15,7 @@ export const eyeH = p => PM.eyeStand + (PM.eyeCrouch - PM.eyeStand) * p.duck;
 
 // inp: { f, s (adelante/costado -1..1), jump, crouch, walk }, maxSpeed en m/s
 export function movePlayer(W, p, inp, dt, maxSpeed) {
+  p.sinceLand = (p.sinceLand ?? 1) + dt;
   // agacharse (se para solo si hay lugar)
   const want = inp.crouch ? 1 : 0;
   if (want > p.duck) p.duck = Math.min(1, p.duck + dt * 8);
@@ -36,7 +37,8 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   if (p.onGround) {
     // salto (hay que soltar y volver a apretar)
     if (inp.jump && !p.jumpHeld && ceiling(W, p.x, p.z, p.y) > p.y + p.h + 0.05) {
-      p.vy = PM.jump; p.onGround = false; p.jumpHeld = true;
+      // cansancio de CS:GO: saltar enseguida después de caer salta menos (limita el bunny hop)
+      p.vy = PM.jump * ((p.sinceLand || 1) < 0.4 ? 0.88 : 1); p.onGround = false; p.jumpHeld = true;
     } else {
       // fricción
       const sp = Math.hypot(p.vx, p.vz);
@@ -52,12 +54,14 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   if (p.landT > 0) p.landT -= dt;
 
   // si quedó encajado en una esquina (no se puede mover para ningún lado), se lo corre al lugar libre más cercano
-  if (blocked(W, p.x, p.z, p.y, p.h, PM.r)) unstick(W, p);
+  if (blocked(W, p.x, p.z, p.y, p.h, PM.r) && !unstick(W, p)) { p.blkT = (p.blkT || 0) + dt; if (p.blkT > 0.3) { unpocket(W, p); p.blkT = 0; } }
   // mover en X y Z por separado (se desliza por las paredes)
   const nx = p.x + p.vx * dt;
   if (!blocked(W, nx, p.z, p.y, p.h, PM.r)) p.x = nx; else p.vx = 0;
   const nz = p.z + p.vz * dt;
   if (!blocked(W, p.x, nz, p.y, p.h, PM.r)) p.z = nz; else p.vz = 0;
+  // hueco sin salida (entra el jugador pero no se puede mover hacia ningún lado): después de un rato se lo saca
+  if ((inp.f || inp.s) && p.onGround && pocket(W, p)) { p.pocketT = (p.pocketT || 0) + dt; if (p.pocketT > 0.6) { unpocket(W, p); p.pocketT = 0; } } else p.pocketT = 0;
 
   // vertical
   const g = ground(W, p.x, p.z, p.y, PM.r - 0.02);
@@ -74,7 +78,9 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
     if (p.y + p.h > c && p.vy > 0) { p.y = Math.max(y0, c - p.h); p.vy = 0; }
     const g2 = ground(W, p.x, p.z, p.y - p.vy * dt, PM.r - 0.02);
     if (p.vy <= 0 && p.y <= g2) {
-      const fall = -p.vy; p.y = g2; p.vy = 0; p.onGround = true; p.landT = 0.12;
+      const fall = -p.vy; p.y = g2; p.vy = 0; p.onGround = true; p.landT = 0.12; p.sinceLand = 0;
+      // al caer se pierde velocidad (no se puede encadenar saltos sin frenar)
+      if (Math.hypot(p.vx, p.vz) > 4) { p.vx *= 0.78; p.vz *= 0.78; }
       return fall; // velocidad de caída (para daño)
     }
   }
@@ -85,6 +91,23 @@ function unstick(W, p) {
   for (let r = 0.04; r <= 0.8; r += 0.04) for (let k = 0; k < 16; k++) {
     const a = k * Math.PI / 8, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
     for (const dy of [0, STEP * 0.9]) if (!blocked(W, x, z, p.y + dy, p.h, PM.r)) { p.x = x; p.z = z; p.y += dy; return true; }
+  }
+  return false;
+}
+function pocket(W, p) {
+  for (let d = 0; d < 8; d++) { const a = d * Math.PI / 4; if (!blocked(W, p.x + Math.cos(a) * 0.15, p.z + Math.sin(a) * 0.15, p.y, p.h, PM.r)) return false; }
+  return true;
+}
+function unpocket(W, p) {
+  // busca el lugar libre más cercano desde el que sí se pueda caminar (mismo nivel, un escalón arriba o más abajo)
+  for (let r = 0.2; r <= 4; r += r < 2.4 ? 0.1 : 0.25) for (let k = 0; k < 24; k++) {
+    const a = k * Math.PI / 12, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+    for (const dy of [0, STEP * 0.9, -0.6, -1.4, -2.5]) {
+      const y = p.y + dy; if (blocked(W, x, z, y, p.h, PM.r)) continue;
+      const g = ground(W, x, z, y + 0.05); if (!(g > -50)) continue;
+      const q = { x, z, y: g, h: p.h }; if (blocked(W, x, z, g, p.h, PM.r) || pocket(W, q)) continue;
+      p.x = x; p.z = z; p.y = g; p.vx = p.vz = 0; return true;
+    }
   }
   return false;
 }

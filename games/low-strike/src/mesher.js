@@ -515,12 +515,12 @@ function addDetails(W, mapId, B, T) {
 // ---------------- mapas importados de modelos 3D ----------------
 const MCOL = {
   dust2: {
-    floor: [[0.9, 0.76, 0.56], 'sand', 3.2], road: [[0.8, 0.72, 0.6], 'tiles', 3.0], wall: [[0.95, 0.84, 0.66], 'blocks', 2.6], trim: [[0.8, 0.69, 0.52], 'stone', 1.6],
+    floor: [[0.9, 0.76, 0.56], 'sand', 3.2], road: [[0.86, 0.76, 0.6], 'cobble', 2.4], wall: [[0.95, 0.84, 0.66], 'blocks', 2.6], trim: [[0.8, 0.69, 0.52], 'stone', 1.6],
     crate: [[1, 0.95, 0.88], 'crate', 1.6256], door: [[0.66, 0.48, 0.3], 'wood', 1.6], concrete: [[0.8, 0.76, 0.68], 'concrete', 2.4], rock: [[0.76, 0.65, 0.52], 'stone', 2],
-    metal: [[0.42, 0.44, 0.47], 'metal', 1.5], dark: [[0.16, 0.14, 0.12], null, 1], ceiling: [[0.66, 0.5, 0.34], 'wood', 2], roof: [[0.86, 0.74, 0.56], 'blocks', 2.6],
+    metal: [[0.42, 0.44, 0.47], 'metal', 1.5], dark: [[0.16, 0.14, 0.12], null, 1], ceiling: [[0.66, 0.5, 0.34], 'wood', 2], roof: [[0.86, 0.74, 0.56], 'blocks', 2.6], base: [[0.8, 0.68, 0.52], 'stone', 1.6],
   },
   mirage: {
-    floor: [[0.92, 0.84, 0.7], 'tiles', 2.2], wall: [[0.97, 0.9, 0.77], 'plaster', 3.0], ceiling: [[0.66, 0.47, 0.32], 'wood', 2], roof: [[0.8, 0.44, 0.3], 'roof', 2.0],
+    floor: [[0.9, 0.82, 0.68], 'slabs', 4.0], wall: [[0.96, 0.89, 0.76], 'plaster', 3.0], base: [[0.78, 0.7, 0.6], 'stone', 1.6], ceiling: [[0.66, 0.47, 0.32], 'wood', 2], roof: [[0.8, 0.44, 0.3], 'roof', 2.0],
   },
 };
 export function buildFromModel(W, mesh, info, mapId, nav) {
@@ -535,6 +535,12 @@ export function buildFromModel(W, mesh, info, mapId, nav) {
       if (part.cat === 'floor' && nav && C.roof) {
         const a = o + t * 9, cx = (mesh[a] + mesh[a + 3] + mesh[a + 6]) / 300, cy = (mesh[a + 1] + mesh[a + 4] + mesh[a + 7]) / 300, cz = (mesh[a + 2] + mesh[a + 5] + mesh[a + 8]) / 300;
         if (isRoof(nav, cx, cy, cz)) key = 'roof';
+      }
+      if (part.cat === 'wall' && C.base) {
+        const a = o + t * 9, y0 = Math.min(mesh[a + 1], mesh[a + 4], mesh[a + 7]) / 100, y1 = Math.max(mesh[a + 1], mesh[a + 4], mesh[a + 7]) / 100;
+        const cx = (mesh[a] + mesh[a + 3] + mesh[a + 6]) / 300, cz = (mesh[a + 2] + mesh[a + 5] + mesh[a + 8]) / 300;
+        const f = floorAt(W, cx, cz, y0 + 0.3);
+        if (f > -1e8 && y1 - f < 0.95 && y1 - y0 < 1.0) key = 'base';
       }
       keyOf[t0 + t] = key;
     }

@@ -7,7 +7,7 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
 ## Qué tiene
 - **Mapas:** Dust II y Mirage, importados de modelos 3D de los mapas originales (ver *Mapas*).
 - **Armas:** todas las de CS2, con su precio, premio por baja, daño, penetración de blindaje, cadencia y cargador. El retroceso sigue un patrón y las balas atraviesan paredes finas.
-- **Menú de compra:** como el de CS2, en 5 columnas: Pistolas, Intermedias, Rifles, Equipo y Granadas. Se abre con **B** y se compra con las teclas 1-5 y después 1-n, o con el mouse.
+- **Menú de compra:** se abre con **B**. Por defecto es la rueda de CS:GO (6 categorías: Pistolas, Pesadas, Subfusiles, Rifles, Equipo y Granadas). En la configuración se puede cambiar a las 5 columnas de CS2. Se compra con los números o con el mouse; Esc o 0 vuelven atrás.
 - **Economía de CS2:**
   - Arrancás con $800 y el máximo es $16000.
   - Ganar una ronda paga $3250, o $3500 si fue por bomba o desactivación.
@@ -15,11 +15,19 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
   - Plantar paga $300 al que planta y $800 a todo el equipo T si pierde la ronda.
   - Desactivar paga $300.
   - Los T que siguen vivos cuando se termina el tiempo no cobran.
+- **Modos de juego:** Competitivo, Casual (plata hasta $10000, chaleco y kit gratis), Deathmatch (reaparición y compra libre), Carrera de armamentos (cada baja te sube de arma; se gana con una baja de cuchillo), Retake (la bomba arranca plantada y los CT la tienen que recuperar) y Práctica (plata infinita, marca dónde pegan las balas y muestra la trayectoria de la granada).
 - **Rondas:**
-  - 12 s para comprar antes de empezar y 1:55 de ronda.
+  - 15 s para comprar antes de empezar y 1:55 de ronda.
+  - Si termina empatado hay tiempo extra: bloques de 6 rondas con $10000, cambiando de lado cada 3.
+  - Cada equipo tiene 3 tiempos muertos de 30 s y puede votar para rendirse (radio **C**). Todavía no hay votación para expulsar jugadores.
   - Con la bomba plantada hay 40 s. Desactivarla lleva 10 s, o 5 s con kit.
   - Los equipos cambian de lado en el entretiempo.
   - Duración de la partida: Rápida (gana el primero a 5), Corta (a 9) o Competitiva (a 13).
+- **Comunicación:** radio con **Z / X / C** (los comandos de CS:GO), marcador en el piso y en el radar con **V** o la rueda del mouse.
+- **Fin de partida:** tabla con bajas, asistencias, muertes, HS%, ADR y MVP. La tabla con Tab muestra también la plata de tu equipo.
+- **Kill feed:** íconos de headshot, a través de pared, sin mira, a través de humo y atacante cegado.
+- **Movimiento:** saltar justo al caer salta menos y caer rápido frena, como en CS:GO. Si quedás en un hueco sin salida, te saca solo.
+- **Retroceso:** patrones fijos para AK-47, M4A4 y los demás rifles, siempre iguales para que se puedan aprender.
 - **Granadas:** HE, flash, humo (tapa la vista de los bots y apaga el fuego), molotov/incendiaria y señuelo.
 - **Bots:** se mueven con navegación A*, compran, plantan y desactivan. Tienen 4 niveles.
   - No son un aimbot: apuntan sobre todo al pecho, arrancan con la mira desviada y la van corrigiendo, reaccionan más lento si el enemigo aparece de costado y se desacomodan entre ráfagas.
@@ -34,9 +42,9 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
 
 ## Mapas
 Los mapas salen de modelos 3D de Dust II y Mirage que subió el usuario (no son obra nuestra: son recreaciones de mapas de Valve, así que conviene tenerlo en cuenta antes de publicar el juego en otro lado). `tools/import_map.py` los convierte:
-- **Colisión:** muestrea la malla y arma, por celda, hasta 3 tramos sólidos (piso, techos, pasarelas) en `maps/<id>.png`. Detecta paredes, abre las hojas de puerta que tapaban el paso (`open` en `tools/zones_<id>.json`) y descarta cables y vigas colgantes.
-- **Render:** guarda la malla en centímetros en `maps/<id>.bin`, separada por tipo (piso, pared, techo…). Mirage se reduce a ~200 mil triángulos.
-- **Zonas:** sitios A y B y spawns se marcan a mano en `tools/zones_<id>.json` (en una grilla de 512; el mapa se importa a 1024 celdas, ~14 cm por celda en Dust II).
+- **Colisión:** muestrea la malla y arma, por celda, hasta 3 tramos sólidos (piso, techos, pasarelas) en `maps/<id>.png`. Detecta paredes, deja las puertas y portones del modelo (las hojas abiertas no tapan el paso) y descarta cables y vigas colgantes.
+- **Render:** guarda la malla en centímetros en `maps/<id>.bin`, separada por tipo (piso, pared, techo…). Mirage se reduce a ~340 mil triángulos.
+- **Zonas:** sitios A y B y spawns se ubicaron con las coordenadas reales de cada mapa (los carteles de los sitios y los spawns de cada equipo) y se marcan en `tools/zones_<id>.json` (en una grilla de 512; el mapa se importa a 1024 celdas, ~14 cm por celda en Dust II).
 - Las grietas entre piezas de piso del modelo se rellenan para que no aparezcan paredes invisibles.
 
 Al cargar, el juego tapa con paredes invisibles los lugares de los que un jugador no podría volver (afuera del mapa, pozos) y los techos a los que se llega trepando, así nadie se cae del mapa ni camina por arriba. Si un jugador queda encajado en una esquina, se lo corre al lugar libre más cercano.
@@ -46,7 +54,11 @@ En el juego la malla se pinta con texturas generadas por código al estilo de Du
 ## Gráficos
 - Texturas generadas por código en 512 px con relieve (normal maps): arenisca en bloques, revoque con partes descascaradas, arena con piedritas, baldosas irregulares, madera, tejas, chapa. Materiales PBR con luz de entorno.
 - Personajes y armas de poligonado medio: cuerpos redondeados, cascos y cabezas esféricas, piernas y brazos cilíndricos, armas con biseles y cilindros suaves.
-- El sol proyecta sombras (se pueden bajar o sacar en la configuración).
+- El sol proyecta sombras (se pueden bajar o sacar en la configuración). Cada jugador tiene además una sombra suave debajo.
+- **Props:** barriles, pallets, gomas, garrafas, macetas, bolsas de arena, carros, cajas y puestos de fruta repartidos por cada mapa (también tapan balas y bloquean el paso).
+- Pisos nuevos: adoquines en Dust II y losas de piedra en Mirage; zócalos de piedra al pie de las paredes.
+- **Animaciones:** recarga con la mano sacando y metiendo el cargador; los cuerpos caen hacia el lado contrario al disparo, rebotan y quedan con brazos y piernas sueltos; al mirar abajo ves tus piernas.
+- Agujeros de bala, música de inicio de ronda y de MVP.
 - Las armas se modelan por perfil con detalles: rieles, ventilaciones, estrías de la corredera, lentes de la mira, nervios del cargador. Las manos las agarran con IK.
 
 ## Controles
@@ -54,7 +66,9 @@ En el juego la malla se pinta con texturas generadas por código al estilo de Du
 |---|---|
 | WASD | moverse |
 | Shift | caminar |
-| C o Ctrl | agacharse (en pantalla completa Ctrl+W no cierra la pestaña) |
+| Ctrl | agacharse (en pantalla completa Ctrl+W no cierra la pestaña) |
+| Z / X / C | radio: órdenes, respuestas y tácticas (timeout táctico y rendirse están en C) |
+| V o clic de la rueda | marcar un lugar para el equipo |
 | Espacio | saltar |
 | Clic | disparar |
 | Clic derecho | mira o puñalada |

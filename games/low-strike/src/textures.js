@@ -112,6 +112,34 @@ const GEN = {
       return [clamp(lum), clamp(lum * 0.97), clamp(lum * 0.92), hgt];
     }, 3.0);
   },
+  // losas rectangulares de piedra en hiladas (pisos de Mirage)
+  slabs() {
+    const N = makeNoise(43), N2 = makeNoise(44), R = rng(8), rows = 8, cuts = [], tint = [];
+    for (let j = 0; j < rows; j++) { const c = [0]; let x = 0; while (x < 1) { x += 0.14 + R() * 0.18; c.push(Math.min(1, x)); } if (1 - c[c.length - 2] < 0.08) c.splice(c.length - 2, 1); cuts.push(c); tint.push(c.map(() => 0.86 + R() * 0.14)); }
+    return build((u, v) => {
+      const j = Math.floor(v * rows), fv = v * rows - j, c = cuts[j]; let k = 0; while (k < c.length - 2 && u > c[k + 1]) k++;
+      const a = c[k], b = c[k + 1], fu = (u - a) / (b - a);
+      const e = Math.min(fu * (b - a) * rows, (1 - fu) * (b - a) * rows, fv, 1 - fv);
+      const g = N(u, v, 32, 4), dirt = N2(u, v, 3, 3);
+      let lum = tint[j][k] * (0.82 + g * 0.18) * (0.92 + dirt * 0.12), hgt = 0.6 + g * 0.25 - (1 - Math.min(1, e * 12)) * 0.2;
+      if (e < 0.03) { lum *= 0.72; hgt = 0.05; }
+      const cr = Math.abs(N2(u * 2, v * 2, 6, 3) - 0.5); if (cr < 0.004) lum *= 0.8;
+      return [clamp(lum), clamp(lum * 0.96), clamp(lum * 0.9), hgt];
+    }, 2.6);
+  },
+  // empedrado de piedras redondeadas (calles de Dust II)
+  cobble() {
+    const N = makeNoise(45), R = rng(14), pts = [];
+    const G = 9; for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) pts.push([(i + 0.15 + R() * 0.7) / G, (j + 0.15 + R() * 0.7) / G, 0.8 + R() * 0.2]);
+    return build((u, v) => {
+      let d1 = 9, d2 = 9, t = 1;
+      for (const [px, py, tt] of pts) { let dx = Math.abs(u - px), dy = Math.abs(v - py); dx = Math.min(dx, 1 - dx); dy = Math.min(dy, 1 - dy); if (dx > 0.25 || dy > 0.25) continue; const d = Math.hypot(dx, dy); if (d < d1) { d2 = d1; d1 = d; t = tt; } else if (d < d2) d2 = d; }
+      const e = d2 - d1, g = N(u, v, 48, 3), dome = Math.min(1, e * 18);
+      let lum = t * (0.76 + g * 0.18) * (0.75 + dome * 0.25), hgt = dome * 0.9 + g * 0.1;
+      if (e < 0.01) { lum = 0.62 + g * 0.1; hgt = 0; }
+      return [clamp(lum), clamp(lum * 0.92), clamp(lum * 0.8), hgt];
+    }, 3.2);
+  },
   // piedra natural / zócalos
   stone() {
     const N = makeNoise(51), N2 = makeNoise(52);

@@ -198,6 +198,14 @@ export function makeBots(G, H) {
         const bomb = G.bomb;
         let goal = null, stay = false;
         // los T esperan juntos antes de entrar (o entran si se acaba el tiempo / ya hay pelea en el sitio)
+        const md = G.cfg.mode || 'comp';
+        if (md === 'dm' || md === 'ar') {
+          // deathmatch / arms race: recorrer el mapa buscando pelea
+          if (!b.goal || b.goalKind !== 'roam' || (b.path && b.pi >= b.path.length) || rnd() < dt * 0.04) {
+            let n = -1; for (let k = 0; k < 20 && n < 0; k++) { const c = Math.floor(rnd() * G.nav.L * G.nav.N); if (G.nav.main[c]) n = c; }
+            if (n >= 0) { goal = G.nav.pos(n); b.goalKind = 'roam'; b.look = null; }
+          }
+        } else
         if (p.team === 'T' && live && !plan.go) {
           plan.goT -= dt / Math.max(1, aliveCount('T'));
           const st = plan['stage' + b.site];
@@ -208,7 +216,8 @@ export function makeBots(G, H) {
           }
         }
         const seen = team(p).seen; if (seen) { seen.t -= dt / Math.max(1, aliveCount(p.team)); if (seen.t <= 0) team(p).seen = null; }
-        if (p.team === 'T') {
+        if (md === 'dm' || md === 'ar') { /* ya eligió adónde ir */ }
+        else if (p.team === 'T') {
           const st = plan['stage' + b.site];
           if (bomb.state === 'dropped') { if (b.goalKind !== 'bomb' || b.repath <= 0) { goal = [bomb.x, bomb.y, bomb.z]; b.goalKind = 'bomb'; } if (Math.hypot(pl.x - bomb.x, pl.z - bomb.z) < 1.2) H.handle('take', { id: 'c4' }, p.id); }
           else if (bomb.state === 'planted') {

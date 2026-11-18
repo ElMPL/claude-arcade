@@ -21,15 +21,31 @@ export function inaccuracy(w, st) {
   if (w.cat === 'pistol' && !w.auto) a += Math.min(0.03, st.shots * 0.006);
   return a;
 }
-// patrón de retroceso: devuelve [dPitch, dYaw] en grados para el disparo k
+// Patrón de retroceso fijo por arma, como en CS:GO: siempre el mismo dibujo (aprendible), con un temblor
+// mínimo. El AK hace la "7": sube derecho ~8 balas, tira a la izquierda y después a la derecha.
+// Devuelve [dPitch, dYaw] en grados para el disparo k.
+const PAT = {
+  ak47: [[0.6, 0], [1.1, 0.05], [1.3, 0.1], [1.35, -0.05], [1.3, 0.15], [1.15, 0.2], [0.95, 0.1], [0.75, -0.3], [0.55, -0.7], [0.4, -0.9], [0.3, -0.8], [0.25, -0.5], [0.2, 0.2], [0.18, 0.8], [0.15, 1.0], [0.15, 0.9], [0.12, 0.5], [0.12, -0.3], [0.1, -0.8], [0.1, -0.9], [0.1, -0.4], [0.1, 0.4], [0.1, 0.8], [0.1, 0.6], [0.1, -0.2], [0.1, -0.6], [0.1, -0.5], [0.1, 0.2], [0.1, 0.5], [0.1, 0.3]],
+  m4a4: [[0.5, 0], [0.9, 0.05], [1.05, -0.05], [1.1, 0.1], [1.0, 0.15], [0.85, -0.1], [0.7, -0.35], [0.5, -0.55], [0.38, -0.5], [0.3, -0.2], [0.25, 0.3], [0.2, 0.55], [0.18, 0.6], [0.15, 0.35], [0.12, -0.1], [0.12, -0.45], [0.1, -0.5], [0.1, -0.2], [0.1, 0.25], [0.1, 0.45], [0.1, 0.3], [0.1, -0.1], [0.1, -0.35], [0.1, -0.3], [0.1, 0.05], [0.1, 0.3], [0.1, 0.25], [0.1, -0.05], [0.1, -0.25], [0.1, -0.1]],
+};
+PAT.m4a1s = PAT.m4a4.map(([u, s]) => [u * 0.85, s * 0.7]);
+PAT.galil = PAT.ak47.map(([u, s]) => [u * 0.8, s * 0.85]);
+PAT.famas = PAT.m4a4.map(([u, s]) => [u * 0.9, s * 0.9]);
+PAT.sg553 = PAT.ak47.map(([u, s]) => [u * 0.85, -s * 0.8]);
+PAT.aug = PAT.m4a4.map(([u, s]) => [u * 0.85, -s * 0.8]);
+// temblor determinístico chico (mismo para todos los jugadores)
+const jit = (id, k) => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) | 0; h = Math.imul(h ^ (k * 2654435761), 1597334677); return ((h >>> 0) / 4294967296 - 0.5); };
 export function recoilStep(w, k, rnd) {
   if (w.pellets > 1 || w.cat === 'sniper') return [w.kick, (rnd() - 0.5) * w.sway];
+  const pat = PAT[w.id];
+  if (pat) { const [u, sd] = pat[Math.min(k, pat.length - 1)]; const sc = w.kick / 0.7; return [u * sc, sd * w.sway * 0.9 + jit(w.id, k) * w.sway * 0.12]; }
+  // el resto: patrón generado a partir de la misma semilla del arma (siempre igual)
   const up = k === 0 ? w.kick * 0.6 : k < 9 ? w.kick : w.kick * 0.25;
-  let side = (rnd() - 0.5) * w.sway * 0.5;
+  let side = jit(w.id, k) * w.sway * 0.45;
   if (w.auto && w.cat !== 'pistol') {
-    if (k >= 7 && k < 14) side += -w.sway * 1.1;       // tira a la izquierda
-    else if (k >= 14 && k < 22) side += w.sway * 1.25; // y después a la derecha (la "7" del AK)
-    else if (k >= 22) side += Math.sin(k * 0.9) * w.sway;
+    if (k >= 7 && k < 14) side += -w.sway * 0.9;
+    else if (k >= 14 && k < 22) side += w.sway * 1.0;
+    else if (k >= 22) side += Math.sin(k * 0.9) * w.sway * 0.7;
   }
   return [up, side];
 }

@@ -248,3 +248,39 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #556; border-bo
 .st-prev .xh i, .st-prev .xh b { position: absolute; }
 .st-btns { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .fn-play.ghost { background: transparent; border: 2px solid rgba(255, 255, 255, .35); color: #fff; }
+/* radio, marcadores y pantalla final */
+#radioMenu { position: fixed; left: 18px; top: 38%; z-index: 30; background: rgba(8, 14, 30, .82); border-left: 3px solid #ffd34a; padding: 10px 16px; font: 600 17px 'Rajdhani', sans-serif; color: #fff; min-width: 240px; }
+#radioMenu h5 { margin: 0 0 6px; font: 400 20px 'Bebas Neue', sans-serif; letter-spacing: 2px; color: #ffd34a; }
+#radioMenu div { padding: 2px 0; } #radioMenu b { display: inline-block; width: 22px; color: #ffd34a; } #radioMenu small { opacity: .6; }
+#radioLog { position: fixed; left: 18px; bottom: 180px; z-index: 25; font: 600 15px 'Rajdhani', sans-serif; pointer-events: none; }
+#radioLog .rmsg { background: rgba(0, 0, 0, .45); padding: 3px 9px; margin-top: 3px; border-radius: 3px; color: #e8e8e8; }
+#radioLog .rmsg.T b { color: #f0c060; } #radioLog .rmsg.CT b { color: #8ab8ff; } #radioLog i { opacity: .6; }
+#feed .fi { display: inline-block; margin: 0 3px; font-size: 15px; color: #fff; opacity: .9; } #feed .fi.sm { color: #cfd6e0; } #feed .fi.bl { color: #ffe680; }
+#board .tt small { float: right; font-size: 13px; opacity: .75; margin-right: 8px; }
+#endScreen { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; background: rgba(4, 8, 20, .72); }
+#endScreen .es-box { width: min(860px, 95vw); background: rgba(10, 18, 40, .95); border: 1px solid rgba(255, 255, 255, .15); border-radius: 8px; padding: 18px 24px; color: #fff; font-family: 'Rajdhani', sans-serif; }
+#endScreen h2 { margin: 0; text-align: center; font: 400 40px 'Bebas Neue', sans-serif; letter-spacing: 4px; }
+#endScreen .es-score { text-align: center; font: 400 34px 'Bebas Neue', sans-serif; margin-bottom: 8px; }
+#endScreen .es-mvp { text-align: center; margin: 6px 0 14px; } #endScreen .es-mvp span { display: block; color: #ffd34a; letter-spacing: 3px; font-weight: 700; } #endScreen .es-mvp b { font-size: 30px; } #endScreen .es-mvp small { display: block; opacity: .75; }
+#endScreen table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 16px; } #endScreen th { text-align: left; opacity: .6; font-weight: 600; } #endScreen td, #endScreen th { padding: 3px 6px; }
+#endScreen tr.T td:first-child { color: #f0c060; } #endScreen tr.CT td:first-child { color: #8ab8ff; } #endScreen tr.me { background: rgba(255, 255, 255, .08); } #endScreen .star { color: #ffd34a; }
+.gmodes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 12px; }
+.gmode { background: rgba(255, 255, 255, .06); border: 2px solid rgba(255, 255, 255, .12); border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+.gmode b { display: block; font: 400 22px 'Bebas Neue', sans-serif; letter-spacing: 1.5px; color: #fff; } .gmode small { font: 600 13px 'Rajdhani', sans-serif; opacity: .75; }
+.gmode.on { border-color: #ffd34a; background: rgba(255, 211, 74, .14); }
+@media (max-width: 760px) { .gmodes { grid-template-columns: repeat(2, 1fr); } }
+/* rueda de compra (CS:GO) */
+#buy.wheel { width: min(720px, 96vw); background: rgba(14, 16, 20, .82); border-radius: 50% / 46%; }
+#buy.wheel .buy-foot span:last-child { visibility: hidden; }
+#buy .wheel { position: relative; width: min(560px, 90vw); aspect-ratio: 1; margin: 0 auto; }
+#buy .wsvg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#buy .wsec { fill: rgba(255, 255, 255, .07); stroke: rgba(255, 255, 255, .18); stroke-width: 1.5; cursor: pointer; transition: fill .12s; }
+#buy .wsec:hover, #buy .wsec.sel { fill: rgba(255, 211, 74, .28); stroke: #ffd34a; }
+#buy .wlab { fill: #fff; font: 700 15px 'Rajdhani', sans-serif; text-anchor: middle; pointer-events: none; } #buy .wk { fill: #ffd34a; }
+#buy .wmid { fill: rgba(0, 0, 0, .45); stroke: rgba(255, 255, 255, .15); }
+#buy #wMid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; color: #fff; pointer-events: none; font-family: 'Rajdhani', sans-serif; }
+#buy #wMid b { display: block; font: 400 30px 'Bebas Neue', sans-serif; color: #8dff8a; } #buy #wMid small { opacity: .75; }
+#buy #wItems { position: absolute; inset: 0; pointer-events: none; }
+#buy .wit { position: absolute; transform: translate(-50%, -50%); width: 128px; pointer-events: auto; background: rgba(30, 32, 38, .92); border: 1px solid rgba(255, 255, 255, .15); border-radius: 6px; padding: 4px 6px; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; }
+#buy .wit img { width: 110px; height: 36px; object-fit: contain; } #buy .wit .n { font-size: 13px; } #buy .wit .k { position: absolute; left: 5px; top: 2px; color: #ffd34a; font-weight: 700; }
+#buy .wit:hover { border-color: #ffd34a; } #buy .wit.no { opacity: .45; } #buy .wit.own { border-color: #6bd36b; }

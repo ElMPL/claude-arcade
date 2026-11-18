@@ -92,3 +92,25 @@ export function sfxSting(win) {
   notes.forEach((f, i) => { tone(o, t + i * 0.11, 0.5, f, f, 'triangle', 0.35); tone(o, t + i * 0.11, 0.5, f / 2, f / 2, 'sawtooth', 0.08); });
 }
 export function sfxRoundStart() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.25); [392, 523].forEach((f, i) => tone(o, t + i * 0.12, 0.25, f, f, 'triangle', 0.35)); }
+
+// ---------- música (sintetizada): inicio de ronda, MVP, radio, ping ----------
+function chord(o, t, notes, dur, type = 'triangle', vol = 0.18) { for (const f of notes) { tone(o, t, dur, f, f, type, vol, 0.02); tone(o, t, dur, f * 1.003, f * 1.003, 'sawtooth', vol * 0.18, 0.02); } }
+// melodía corta de "kit de música" al empezar la ronda (en el congelamiento)
+export function musicRoundStart() {
+  if (!ctx) return; const t = ctx.currentTime, o = out(null, 0.22);
+  const prog = [[220, 277, 330], [196, 247, 294], [175, 220, 262], [196, 247, 330]];
+  prog.forEach((c, i) => chord(o, t + i * 0.55, c, 0.6, 'triangle', 0.12));
+  [440, 494, 523, 587, 659, 587, 523, 494].forEach((f, i) => tone(o, t + i * 0.275, 0.25, f, f, 'square', 0.05, 0.01));
+  for (let i = 0; i < 8; i++) noise(o, t + i * 0.275, 0.05, 6000, 3000, 2, 'highpass', 0.001, 0.15);
+  for (let i = 0; i < 4; i++) tone(o, t + i * 0.55, 0.2, 80, 45, 'sine', 0.5);
+}
+// fanfarria del MVP
+export function musicMVP(mine) {
+  if (!ctx) return; const t = ctx.currentTime, o = out(null, mine ? 0.32 : 0.2);
+  const mel = [523, 659, 784, 1047, 988, 1047, 1175, 1319];
+  mel.forEach((f, i) => tone(o, t + i * 0.16, 0.3, f, f, 'triangle', 0.22, 0.01));
+  [[262, 330, 392], [294, 370, 440], [330, 415, 494], [349, 440, 523]].forEach((c, i) => chord(o, t + i * 0.32, c, 0.36, 'sawtooth', 0.05));
+  for (let i = 0; i < 8; i++) { tone(o, t + i * 0.16, 0.12, 65, 40, 'sine', 0.45); noise(o, t + i * 0.16 + 0.08, 0.06, 5000, 2500, 1, 'highpass', 0.001, 0.2); }
+}
+export function sfxRadio() { if (!ctx) return; const t = ctx.currentTime, o = out(null, 0.28); noise(o, t, 0.08, 3000, 1500, 3, 'bandpass', 0.001, 0.6); tone(o, t + 0.05, 0.06, 1200, 1200, 'square', 0.12); noise(o, t + 0.45, 0.06, 2500, 1200, 3, 'bandpass', 0.001, 0.4); }
+export function sfxPing(pos) { if (!ctx) return; const t = ctx.currentTime, o = out(pos, 0.5, 80) || out(null, 0.3); tone(o, t, 0.12, 1568, 1568, 'sine', 0.35); tone(o, t + 0.1, 0.18, 2093, 2093, 'sine', 0.3); }

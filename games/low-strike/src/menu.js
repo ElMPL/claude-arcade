@@ -81,6 +81,13 @@ export function makeMenu(o) {
       b.onclick = () => { if (!o.isHost()) return; G.cfg.size = s; o.pushCfg(); };
       box.appendChild(b);
     }
+    const gm = $('gmodes'); gm.innerHTML = '';
+    for (const [k, v] of Object.entries(o.MODES)) {
+      const b = document.createElement('div'); b.className = 'gmode'; b.dataset.m = k;
+      b.innerHTML = `<b>${v.name}</b><small>${v.sub}</small>`;
+      b.onclick = () => { if (!o.isHost()) return; G.cfg.mode = k; o.pushCfg(); };
+      gm.appendChild(b);
+    }
     const bt = $('botsSeg'); bt.innerHTML = '';
     for (const [v, l] of [[true, 'Con bots'], [false, 'Sin bots']]) { const b = document.createElement('button'); b.textContent = l; b.dataset.v = v; b.onclick = () => { if (!o.isHost()) return; G.cfg.bots = v; o.pushCfg(); }; bt.appendChild(b); }
     const seg = (el, opts, key) => { el.innerHTML = ''; for (const [k, l] of opts) { const b = document.createElement('button'); b.textContent = l; b.dataset.k = k; b.onclick = () => { if (!o.isHost()) return; G.cfg[key] = k; o.pushCfg(); }; el.appendChild(b); } };
@@ -113,7 +120,7 @@ export function makeMenu(o) {
     // tarjeta de modo
     const map = o.MAPS.find(m => m.id === G.cfg.map) || o.MAPS[0];
     $('modeTitle').textContent = `${per} VS ${per}`;
-    $('modeSub').textContent = `${map.name} · ${G.cfg.bots ? 'con bots' : 'sin bots'} · ${o.LENGTHS[G.cfg.len].name}`;
+    $('modeSub').textContent = `${o.MODES[G.cfg.mode || 'comp'].name} · ${map.name} · ${G.cfg.bots ? 'con bots' : 'sin bots'}${['comp', 'casual'].includes(G.cfg.mode || 'comp') ? ' · ' + o.LENGTHS[G.cfg.len].name : ''}`;
     o.mapThumb(map.id).then(img => { if (!img) return; const cv = $('modeMap'), x = cv.getContext('2d'); x.fillStyle = '#0b1530'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(img, 0, 0, cv.width, cv.height); });
     $('modeBtn').textContent = host ? 'CAMBIAR MODO' : 'VER MODO';
     const go = $('goBtn'), ok = canStart();
@@ -122,6 +129,7 @@ export function makeMenu(o) {
     $('goNote').textContent = !ok && host ? 'Sin bots hacen falta al menos 2 jugadores en la sala.' : host ? '' : 'El host elige el modo y empieza la partida.';
     // selector de modo
     for (const el of document.querySelectorAll('#modes .mode')) el.classList.toggle('on', +el.dataset.s === G.cfg.size);
+    for (const el of document.querySelectorAll('#gmodes .gmode')) el.classList.toggle('on', el.dataset.m === (G.cfg.mode || 'comp'));
     for (const el of document.querySelectorAll('#botsSeg button')) el.classList.toggle('on', String(G.cfg.bots) === el.dataset.v);
     for (const el of document.querySelectorAll('#len button')) el.classList.toggle('on', el.dataset.k === G.cfg.len);
     for (const el of document.querySelectorAll('#diff button')) el.classList.toggle('on', el.dataset.k === G.cfg.diff);

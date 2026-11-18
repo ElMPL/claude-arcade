@@ -456,8 +456,22 @@ export function poseModel(root, o, dt) {
     placeSeg(A.u, sh, el); placeSeg(A.f, el, T2);
     A.h.position.copy(T2); A.h.quaternion.copy(A.f.quaternion);
   }
-  u.body.rotation.x = 0; u.body.position.y = 0;
-  if (o.dead > 0) { const k = Math.min(1, o.dead); u.body.rotation.x = k * 1.45; u.body.position.y = k * 0.15; }
+  u.body.rotation.set(0, 0, 0); u.body.position.y = 0;
+  if (o.dead > 0) {
+    // caída tipo ragdoll: cae con gravedad hacia el lado contrario al disparo, rebota, y brazos y piernas quedan flojos
+    const t = o.dead / 2.5, dir = o.deadDir || 1, side = o.deadSide || 0;
+    let a = Math.min(1, (t * 2.2) ** 2);
+    if (t * 2.2 > 1) a = 1 + Math.sin((t * 2.2 - 1) * 9) * Math.exp(-(t * 2.2 - 1) * 5) * 0.08;
+    const ang = 1.5 * a;
+    u.body.rotation.x = ang * dir; u.body.rotation.z = side * ang * 0.35; u.body.position.y = Math.sin(ang) * 0.12;
+    const k = Math.min(1, t * 2);
+    // piernas: una flexionada, la otra estirada; rodillas sueltas
+    L.hip.rotation.x = -0.25 * k * dir + side * 0.2; R.hip.rotation.x = 0.35 * k * dir; L.knee.rotation.x = 0.9 * k; R.knee.rotation.x = 0.25 * k;
+    u.neck.rotation.x = -0.5 * k * dir; u.chest.rotation.x = 0.15 * k * dir;
+    // brazos abiertos (se deja el arma)
+    for (let j = 0; j < 2; j++) { const A = u.arms[j], sgn = j === 0 ? 1 : -1; sh.set(sgn * 0.24, 0.46, 0); el.set(sgn * (0.24 + 0.28 * k), 0.46 - 0.12 * k, 0.12 * k * dir); tg.set(sgn * (0.3 + 0.45 * k), 0.38 - 0.1 * k, 0.3 * k * dir); placeSeg(A.u, sh, el); placeSeg(A.f, el, tg); A.h.position.copy(tg); }
+    u.gun.visible = false;
+  } else u.gun.visible = true;
 }
 
 // ---------------- primera persona ----------------
@@ -494,6 +508,10 @@ export function setViewGun(vm, id, team, si = 0, finish = 0) {
   u.info = gunInfo(id); u.cat = cat;
   const P = vmParts(team, si);
   for (const a of u.arms) { a.u.geometry = P.sleeve; a.f.geometry = P.forearm; a.h.add(new THREE.Mesh(P.hand, MAT_VM)); }
+  // cargador suelto (en la mano izquierda durante la recarga)
+  const isMagGun = WEAPONS[id] && WEAPONS[id].mag > 1 && cat !== 'heavy' && cat !== 'sniper' || id === 'awp';
+  u.mag = null;
+  if (isMagGun) { const mg = new THREE.Mesh(new RoundedBoxGeometry(0.026, cat === 'pistol' ? 0.09 : 0.13, 0.05, 2, 0.006), new THREE.MeshStandardMaterial({ color: '#2a2b2d', roughness: 0.5, metalness: 0.4 })); mg.position.set(0, -0.05, -0.01); mg.rotation.x = 0.15; mg.visible = false; u.arms[1].h.add(mg); u.mag = mg; }
   // dónde se sostiene respecto de la cámara
   u.base = id === 'dualies' ? [0.12, -0.15, -0.48] : cat === 'pistol' || id === 'zeus' ? [0.15, -0.125, -0.44] : cat === 'knife' ? [0.17, -0.18, -0.4] : cat === 'grenade' || cat === 'c4' || id === 'defuser' ? [0.16, -0.17, -0.38] : cat === 'sniper' ? [0.19, -0.22, -0.55] : [0.19, -0.2, -0.43];
   u.rot = cat === 'knife' ? [0.35, 0.55, -0.25] : cat === 'grenade' || cat === 'c4' ? [0.1, 0.2, 0] : [0.03, 0.07, 0];
@@ -512,6 +530,20 @@ export function updateViewArms(vm) {
     let T = null;
     if (right) T = vT.set(0.004, -0.012, cat === 'knife' ? 0.065 : 0).applyMatrix4(gm);
     else if (info.fore && cat !== 'knife') T = vT.set(-0.004, info.fore[1] - 0.03, -info.fore[0]).applyMatrix4(gm);
+    // recarga: la mano izquierda saca el cargador, baja, trae uno nuevo y lo mete
+    const rk = u.reloadK || 0;
+    if (!right && rk > 0.08 && rk < 0.94 && cat !== 'knife' && cat !== 'grenade' && !u.dual) {
+      const s2 = (rk - 0.08) / 0.86, magW = cat === 'pistol' ? [0, -0.11, 0.02] : [0, -0.12, -0.14], low = [0.05, -0.55, 0.12];
+      const base = T ? [T.x, T.y, T.z] : null;
+      const mw = vP.set(...magW).applyMatrix4(gm).clone(), lw = vEl.set(...low).applyMatrix4(gm).clone();
+      const lerp3 = (a, b, k) => vT.set(a[0] + (b.x - a[0]) * k, a[1] + (b.y - a[1]) * k, a[2] + (b.z - a[2]) * k);
+      const sm = k => k * k * (3 - 2 * k);
+      if (s2 < 0.22) T = base ? lerp3(base, mw, sm(s2 / 0.22)) : vT.copy(mw);
+      else if (s2 < 0.48) T = lerp3([mw.x, mw.y, mw.z], lw, sm((s2 - 0.22) / 0.26));
+      else if (s2 < 0.74) T = lerp3([lw.x, lw.y, lw.z], mw, sm((s2 - 0.48) / 0.26));
+      else T = base ? lerp3([mw.x, mw.y, mw.z], { x: base[0], y: base[1], z: base[2] }, sm((s2 - 0.74) / 0.26)) : vT.copy(mw);
+      if (u.mag) u.mag.visible = s2 > 0.22 && s2 < 0.76;
+    } else if (!right && u.mag) u.mag.visible = false;
     else if (u.dual) T = vT.set(-0.206, -0.012, 0.02).applyMatrix4(gm);
     else if (cat === 'pistol' || u.id === 'zeus') T = vT.set(-0.035, -0.065, 0.025).applyMatrix4(gm);
     const vis = !!T;

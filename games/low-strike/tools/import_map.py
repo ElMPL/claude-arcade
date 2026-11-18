@@ -23,8 +23,19 @@ def load_dust2(path):
   return parts
 
 # categoría de render según el nombre del material (Dust II)
+# el OBJ de Dust II trae materiales numerados (material_N); se clasifican mirando sus texturas
+D2MAT = {12: 'crate', 7: 'door', 23: 'door', 26: 'door', 28: 'door', 29: 'door', 30: 'door', 2: 'door', 9: 'door', 17: 'door',
+         11: 'rock', 20: 'metal', 21: 'metal', 31: 'metal', 33: 'metal', 18: 'dark', 32: 'dark', 3: 'dark',
+         0: 'trim', 13: 'trim', 14: 'trim', 19: 'trim', 24: 'trim', 5: 'road', 25: 'road', 10: 'concrete'}
 def cat_dust2(mn, nrm):
   n = mn.lower()
+  import re as _re
+  mm = _re.search(r'material_(\d+)', n)
+  if mm and int(mm.group(1)) in D2MAT:
+    c = D2MAT[int(mm.group(1))]
+    if c in ('road',) and nrm[1] < 0.5: return 'wall'
+    if c == 'concrete': return 'floor' if nrm[1] > 0.5 else 'wall'
+    return c
   if 'crt' in n or 'crte' in n: return 'crate'
   if 'door' in n: return 'door'
   if 'trim' in n: return 'trim'

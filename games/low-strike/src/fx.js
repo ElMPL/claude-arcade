@@ -39,8 +39,14 @@ export function makeFx(scene) {
   };
   // ---------- marcas de bala ----------
   const DMAX = 220;
-  const dg = new THREE.PlaneGeometry(0.07, 0.07);
-  const dm = new THREE.InstancedMesh(dg, new THREE.MeshBasicMaterial({ color: '#1d1a17', polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false }), DMAX);
+  const dg = new THREE.PlaneGeometry(0.1, 0.1);
+  // agujero de bala: centro oscuro, borde astillado más claro y grietas
+  const hc = document.createElement('canvas'); hc.width = hc.height = 64; { const x = hc.getContext('2d');
+    const g = x.createRadialGradient(32, 32, 2, 32, 32, 30); g.addColorStop(0, 'rgba(10,8,6,1)'); g.addColorStop(0.28, 'rgba(25,20,16,0.95)'); g.addColorStop(0.42, 'rgba(90,80,66,0.7)'); g.addColorStop(0.6, 'rgba(60,52,42,0.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64); x.strokeStyle = 'rgba(20,16,12,0.6)'; x.lineWidth = 1.2;
+    for (let i = 0; i < 7; i++) { const a = i / 7 * 6.28 + Math.random() * 0.5; x.beginPath(); x.moveTo(32 + Math.cos(a) * 8, 32 + Math.sin(a) * 8); x.lineTo(32 + Math.cos(a + 0.2) * (16 + Math.random() * 12), 32 + Math.sin(a + 0.2) * (16 + Math.random() * 12)); x.stroke(); } }
+  const htex = new THREE.CanvasTexture(hc); htex.colorSpace = THREE.SRGBColorSpace;
+  const dm = new THREE.InstancedMesh(dg, new THREE.MeshBasicMaterial({ map: htex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false }), DMAX);
   dm.count = 0; dm.frustumCulled = false; scene.add(dm);
   let dIdx = 0;
   fx.decal = (p, n) => {
@@ -66,6 +72,11 @@ export function makeFx(scene) {
     fx.particle(p[0], p[1], p[2], 0, 0, 0, 0.05, 0.05, '#fff2a0', 0);
     if (Math.random() < 0.45) for (let i = 0; i < 4; i++) fx.particle(p[0], p[1], p[2], n[0] * 3 + (Math.random() - 0.5) * 5, n[1] * 3 + Math.random() * 3, n[2] * 3 + (Math.random() - 0.5) * 5, 0.012, 0.18 + Math.random() * 0.15, '#ffd060', 12);
   };
+  // modo práctica: cubitos donde pegó cada bala (rojo = cliente)
+  const dbg = [];
+  const dbgGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06), dbgMat = new THREE.MeshBasicMaterial({ color: '#ff3030', depthTest: false, transparent: true, opacity: 0.85 });
+  fx.debugBox = (p) => { const m = new THREE.Mesh(dbgGeo, dbgMat); m.position.set(p[0], p[1], p[2]); m.renderOrder = 25; scene.add(m); dbg.push({ m, t: 8 }); if (dbg.length > 120) scene.remove(dbg.shift().m); };
+  fx.tickDebug = (dt) => { for (let i = dbg.length - 1; i >= 0; i--) { dbg[i].t -= dt; if (dbg[i].t <= 0) { scene.remove(dbg[i].m); dbg.splice(i, 1); } } };
   fx.muzzleSmoke = (p) => { for (let i = 0; i < 2; i++) fx.particle(p[0], p[1], p[2], (Math.random() - 0.5) * 0.3, 0.25 + Math.random() * 0.2, (Math.random() - 0.5) * 0.3, 0.05, 0.6 + Math.random() * 0.4, '#bdbab4', -0.2, 0.22); };
   fx.dust = (p) => { for (let i = 0; i < 2; i++) fx.particle(p[0] + (Math.random() - 0.5) * 0.3, p[1] + 0.03, p[2] + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.4, 0.2, (Math.random() - 0.5) * 0.4, 0.05, 0.5, '#d8c4a0', 0.2, 0.15); };
   fx.blood = (p, dir, head) => {

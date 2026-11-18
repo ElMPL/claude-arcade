@@ -1,6 +1,6 @@
 // HUD estilo CS2: radar, plata, reloj y marcador, vida/blindaje, munición, killfeed, tabla y menú de compra.
 import { styleCrosshair } from './settings.js';
-import { WEAPONS, BUY, DESC } from './weapons.js';
+import { WEAPONS, BUY, DESC, WHEEL } from './weapons.js';
 import { iconURL } from './icons.js';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -42,7 +42,7 @@ export function drawRadar(cv, img, W, view, list, bomb, meTeam) {
   x.drawImage(img, -cx, -cz);
   const dot = (px, pz, col, r = 3.4) => { x.fillStyle = col; x.beginPath(); x.arc(px / W.cell - cx, pz / W.cell - cz, r / sc, 0, 7); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1 / sc; x.stroke(); };
   if (bomb && (bomb.s === 'planted' || bomb.s === 'dropped') && (meTeam === 'T' || bomb.s === 'planted' && bomb.seen)) { x.fillStyle = bomb.s === 'planted' ? '#ff4038' : '#ffb03a'; const bx = bomb.x / W.cell - cx, bz = bomb.z / W.cell - cz; x.fillRect(bx - 4 / sc, bz - 3 / sc, 8 / sc, 6 / sc); }
-  for (const p of list) dot(p.x, p.z, p.col, p.me ? 0 : 3.4);
+  for (const p of list) { if (p.ping) { x.strokeStyle = p.col; x.lineWidth = 2 / sc; x.beginPath(); x.arc(p.x / W.cell - cx, p.z / W.cell - cz, 6 / sc, 0, 7); x.stroke(); continue; } dot(p.x, p.z, p.col, p.me ? 0 : 3.4); }
   x.restore();
   // yo: flecha en el centro
   x.fillStyle = '#fff'; x.beginPath(); x.moveTo(S / 2, S / 2 - 7); x.lineTo(S / 2 + 5, S / 2 + 5); x.lineTo(S / 2, S / 2 + 2); x.lineTo(S / 2 - 5, S / 2 + 5); x.closePath(); x.fill();
@@ -65,10 +65,12 @@ export const hud = {
     const pips = (el, list) => { const k = list.map(p => p.n + p.a).join(); if (el._k === k) return; el._k = k; el.innerHTML = list.map(p => `<i class="${p.a ? '' : 'dead'}" title="${esc(p.n)}">${esc(p.n.slice(0, 1).toUpperCase())}</i>`).join(''); };
     pips(this.el.pipsT, listT); pips(this.el.pipsCT, listCT);
   },
-  feed(k, v, w, hs, wb, mine) {
+  feed(k, v, w, hs, wb, mine, f = {}) {
     const d = document.createElement('div'); if (mine) d.className = 'mine';
     const ic = w === 'world' ? iconURL('skull', 60, 40) : w === 'molotov' || w === 'incendiary' ? iconURL('fire', 60, 40) : iconURL(w, 120, 40);
-    d.innerHTML = (k ? `<span class="${k.team}">${esc(k.name)}</span>` : '') + `<img src="${ic}">` + (wb ? '<span class="w">⟂</span>' : '') + (hs ? `<img class="hs" src="${iconURL('hs', 40, 40)}">` : '') + `<span class="${v.team}">${esc(v.name)}</span>`;
+    // íconos como en CS:GO: cegado, sin mira, a través del humo, a través de la pared, a la cabeza
+    const tag = (t, cls) => `<span class="fi ${cls}" title="${t}">${t === 'cegado' ? '◉' : t === 'sin mira' ? '⊘' : t === 'humo' ? '☁' : '⟂'}</span>`;
+    d.innerHTML = (k ? (f.bl ? tag('cegado', 'bl') : '') + `<span class="${k.team}">${esc(k.name)}</span>` : '') + `<img src="${ic}">` + (f.ns ? tag('sin mira', 'ns') : '') + (f.sm ? tag('humo', 'sm') : '') + (wb ? tag('pared', 'wb') : '') + (hs ? `<img class="hs" src="${iconURL('hs', 40, 40)}">` : '') + `<span class="${v.team}">${esc(v.name)}</span>`;
     this.el.feed.appendChild(d); while (this.el.feed.children.length > 6) this.el.feed.firstChild.remove();
     setTimeout(() => d.remove(), 7000);
   },
@@ -90,24 +92,45 @@ export const hud = {
   progress(label, k) { if (k == null) { this.el.prog.hidden = true; return; } this.el.prog.hidden = false; set(this.el.progL, label); this.el.progB.style.width = (k * 100).toFixed(1) + '%'; },
   hint(t) { set(this.el.hint, t || ''); },
   dmgDir(angle) { const i = document.createElement('i'); i.style.transform = `rotate(${angle}rad) translateY(-140px)`; this.el.dmgDir.appendChild(i); setTimeout(() => i.remove(), 1500); },
+  radio(p, msg) {
+    const d = document.createElement('div'); d.className = 'rmsg ' + p.team; d.innerHTML = `<b>${esc(p.name)}</b> <i>(radio)</i>: ${esc(msg)}`;
+    const box = $('radioLog'); box.appendChild(d); while (box.children.length > 5) box.firstChild.remove(); setTimeout(() => d.remove(), 6000);
+  },
+  // pantalla final: MVP y estadísticas de cada jugador
+  endScreen(stats, meId, wg, score, mode) {
+    const el = $('endScreen'); el.hidden = false;
+    const best = stats.slice().sort((a, b) => b.mvp - a.mvp || b.k - a.k)[0];
+    const row = s => `<tr class="${s.t} ${s.id === meId ? 'me' : ''}"><td>${esc(s.n)}${s.id === best.id ? ' <b class="star">★</b>' : ''}</td><td>${s.k}</td><td>${s.a}</td><td>${s.d}</td><td>${(s.k / Math.max(1, s.d)).toFixed(2)}</td><td>${s.adr}</td><td>${s.hs}%</td><td>${s.mvp ? '★' + s.mvp : ''}</td></tr>`;
+    const tbl = g => `<table><tr><th>Jugador</th><th>K</th><th>A</th><th>D</th><th>K/D</th><th>ADR</th><th>HS%</th><th>MVP</th></tr>${stats.filter(s => s.g === g).sort((a, b) => b.k - a.k).map(row).join('')}</table>`;
+    el.innerHTML = `<div class="es-box"><h2>${wg < 0 ? 'EMPATE' : 'FIN DE LA PARTIDA'}</h2><div class="es-score"><b>${score[0]}</b> – <b>${score[1]}</b></div>
+      <div class="es-mvp"><span>★ MVP DE LA PARTIDA</span><b>${esc(best.n)}</b><small>${best.k} bajas · ${best.adr} ADR · ${best.hs}% a la cabeza</small></div>${tbl(0)}${tbl(1)}</div>`;
+    setTimeout(() => { el.hidden = true; }, 11500);
+  },
   banner(team, a, b) { const e = this.el.banner; if (!a) { e.hidden = true; return; } e.className = team || ''; e.hidden = false; set(this.el.ban1, a); set(this.el.ban2, b || ''); },
 };
 
 // ---------- tabla ----------
 export function renderBoard(G, meId) {
   const ps = [...G.players.values()];
-  const row = p => `<tr class="${p.team} ${p.alive ? '' : 'dead'} ${p.id === meId ? 'me' : ''}"><td>${esc(p.name)}${p.inv && p.inv.c4 && (G.players.get(meId)?.team === 'T') ? ' 💣' : ''}</td><td>$${p.money}</td><td>${p.k}</td><td>${p.d}</td><td>${p.a}</td><td>${p.mvp ? '★' + p.mvp : ''}</td><td>${p.ping || ''}</td></tr>`;
+  const myTeam = G.players.get(meId)?.team;
+  const row = p => `<tr class="${p.team} ${p.alive ? '' : 'dead'} ${p.id === meId ? 'me' : ''}"><td>${esc(p.name)}${p.inv && p.inv.c4 && myTeam === 'T' ? ' 💣' : ''}${p.inv && p.inv.kit && myTeam === 'CT' && p.team === 'CT' ? ' ✂' : ''}</td><td>${p.team === myTeam ? '$' + p.money : ''}</td><td>${p.k}</td><td>${p.a}</td><td>${p.d}</td><td>${p.k ? Math.round((p.hsK || 0) / p.k * 100) + '%' : '—'}</td><td>${Math.round((p.dmgT || 0) / Math.max(1, p.rounds || 1))}</td><td>${p.mvp ? '★' + p.mvp : ''}</td><td>${p.bot ? 'BOT' : (p.ping || '—')}</td></tr>`;
   const tbl = (team) => {
     const l = ps.filter(p => p.team === team).sort((a, b) => b.k - a.k || a.d - b.d);
-    return `<div class="tt ${team}">${team === 'T' ? 'TERRORISTAS' : 'CONTRATERRORISTAS'}</div><table><tr><th>Jugador</th><th>Plata</th><th>K</th><th>D</th><th>A</th><th>MVP</th><th></th></tr>${l.map(row).join('')}</table>`;
+    const cash = l.reduce((a, p) => a + (p.money || 0), 0);
+    return `<div class="tt ${team}">${team === 'T' ? 'TERRORISTAS' : 'CONTRATERRORISTAS'}${team === myTeam ? `<small>plata del equipo $${cash}</small>` : ''}</div><table><tr><th>Jugador</th><th>Plata</th><th>K</th><th>A</th><th>D</th><th>HS%</th><th>ADR</th><th>MVP</th><th>Ping</th></tr>${l.map(row).join('')}</table>`;
   };
   const sT = G.score[G.half === 0 ? 0 : 1], sCT = G.score[G.half === 0 ? 1 : 0];
-  return `<div class="bh"><span>${esc(G.mapName)} · Ronda ${G.round}</span><span><b style="color:var(--t)">${sT}</b> – <b style="color:var(--ct)">${sCT}</b></span></div>${tbl('T')}${tbl('CT')}`;
+  return `<div class="bh"><span>${esc(G.mapName)} · ${G.cfg.mode && G.cfg.mode !== 'comp' ? ({ casual: 'Casual', dm: 'Deathmatch', ar: 'Arms Race', retake: 'Retakes', practice: 'Práctica' })[G.cfg.mode] + ' · ' : ''}Ronda ${G.round}${G.ot ? ' · Tiempo extra ' + G.ot : ''}</span><span><b style="color:var(--t)">${sT}</b> – <b style="color:var(--ct)">${sCT}</b></span></div>${tbl('T')}${tbl('CT')}`;
 }
 
 // ---------- menú de compra (como CS2: 5 columnas, teclas 1-5 y después 1-5) ----------
-export function buildBuy(team, icon, onBuy, onHover) {
+let wheel = null;
+export const buyCats = () => (wheel ? WHEEL : BUY);
+export function buildBuy(team, icon, onBuy, onHover, style = 'grid', onCat = null) {
   const cols = $('buyCols'); cols.innerHTML = '';
+  wheel = style === 'wheel' ? { team, onBuy, onHover, onCat } : null;
+  $('buy').classList.toggle('wheel', !!wheel);
+  if (wheel) { buildWheel(); return; }
   BUY.forEach((cat, ci) => {
     const col = document.createElement('div'); col.className = 'bcol'; col.dataset.c = ci;
     col.innerHTML = `<h5><b>${ci + 1}</b>${cat.name}</h5>`;
@@ -120,8 +143,40 @@ export function buildBuy(team, icon, onBuy, onHover) {
     cols.appendChild(col);
   });
 }
+// rueda: anillo de categorías y, adentro, las armas de la categoría elegida
+function buildWheel() {
+  const cols = $('buyCols'), R = 230, r0 = 70, n = WHEEL.length;
+  const arc = (a0, a1, ri, ro) => { const p = (a, rr) => [R + Math.cos(a) * rr, R + Math.sin(a) * rr]; const [x0, y0] = p(a0, ro), [x1, y1] = p(a1, ro), [x2, y2] = p(a1, ri), [x3, y3] = p(a0, ri); return `M${x0},${y0} A${ro},${ro} 0 0 1 ${x1},${y1} L${x2},${y2} A${ri},${ri} 0 0 0 ${x3},${y3} Z`; };
+  let svg = `<svg class="wsvg" viewBox="0 0 ${R * 2} ${R * 2}">`;
+  for (let i = 0; i < n; i++) {
+    const a0 = -Math.PI / 2 + (i - 0.5) * 2 * Math.PI / n + 0.02, a1 = a0 + 2 * Math.PI / n - 0.04, am = (a0 + a1) / 2;
+    svg += `<path class="wsec" data-c="${i}" d="${arc(a0, a1, 160, 226)}"/><text x="${R + Math.cos(am) * 193}" y="${R + Math.sin(am) * 193 + 6}" class="wlab"><tspan class="wk">${i + 1}</tspan> ${WHEEL[i].name}</text>`;
+  }
+  svg += `<circle cx="${R}" cy="${R}" r="${r0}" class="wmid"/></svg><div id="wItems"></div><div id="wMid"></div>`;
+  cols.innerHTML = `<div class="wheel">${svg}</div>`;
+  for (const el of cols.querySelectorAll('.wsec')) { el.onclick = () => wheel.onCat(+el.dataset.c); el.onmouseenter = () => wheel.onCat(+el.dataset.c, true); }
+}
+function refreshWheel(P, sel) {
+  for (const el of document.querySelectorAll('.wsec')) el.classList.toggle('sel', +el.dataset.c === sel);
+  const box = $('wItems'); if (!box) return;
+  const key = sel + '|' + wheel.team; if (box._k !== key) {
+    box._k = key; box.innerHTML = '';
+    if (sel >= 0) {
+      const list = WHEEL[sel].items[wheel.team], n = list.length;
+      list.forEach((id, i) => {
+        const a = -Math.PI / 2 + i * 2 * Math.PI / n, w = WEAPONS[id], it = document.createElement('div'); it.className = 'bit wit'; it.dataset.id = id;
+        it.style.left = (50 + Math.cos(a) * 24) + '%'; it.style.top = (50 + Math.sin(a) * 24) + '%';
+        it.innerHTML = `<span class="k">${i + 1}</span><img src="${iconURL(id, 160, 52)}"><span class="n">${esc(w.name)}</span><span class="p">$${w.price}</span>`;
+        it.onclick = () => wheel.onBuy(id); it.onmouseenter = () => wheel.onHover(id); it.onmouseleave = () => wheel.onHover(null);
+        box.appendChild(it);
+      });
+    }
+  }
+  $('wMid').innerHTML = `<b>$${P.money}</b><small>${sel >= 0 ? WHEEL[sel].name : 'Elegí una categoría'}</small>`;
+}
 export function refreshBuy(P, sel) {
   $('buyMoney').textContent = P.money;
+  if (wheel) refreshWheel(P, sel);
   for (const it of document.querySelectorAll('#buyCols .bit')) {
     const id = it.dataset.id, w = WEAPONS[id];
     let price = w.price;

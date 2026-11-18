@@ -99,3 +99,13 @@ export function applyDamage(dmg, ap, part, armor, helmet, hsMul = 4) {
   }
   return { hp: Math.max(1, Math.round(d)), armor: Math.round(armorDmg) };
 }
+
+// Menú de compra circular de CS:GO: 6 categorías, hasta 6 cosas cada una
+export const WHEEL = [
+  { name: 'Pistolas', items: { T: ['glock', 'dualies', 'p250', 'tec9', 'deagle', 'cz75'], CT: ['usp', 'dualies', 'p250', 'fiveseven', 'deagle', 'cz75'] } },
+  { name: 'Pesadas', items: { T: ['nova', 'xm1014', 'sawedoff', 'm249', 'negev'], CT: ['nova', 'xm1014', 'mag7', 'm249', 'negev'] } },
+  { name: 'Subfusiles', items: { T: ['mac10', 'mp7', 'ump', 'p90', 'bizon', 'mp5'], CT: ['mp9', 'mp7', 'ump', 'p90', 'bizon', 'mp5'] } },
+  { name: 'Rifles', items: { T: ['galil', 'ak47', 'ssg08', 'sg553', 'awp', 'g3sg1'], CT: ['famas', 'm4a4', 'ssg08', 'aug', 'awp', 'scar20'] } },
+  { name: 'Equipo', items: { T: ['vest', 'vesthelm', 'zeus'], CT: ['vest', 'vesthelm', 'zeus', 'defuser'] } },
+  { name: 'Granadas', items: { T: ['molotov', 'decoy', 'flash', 'he', 'smoke'], CT: ['incendiary', 'decoy', 'flash', 'he', 'smoke'] } },
+];
