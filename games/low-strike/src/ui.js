@@ -40,7 +40,7 @@ export function drawRadar(cv, img, W, view, list, bomb, meTeam) {
   x.save(); x.beginPath(); x.rect(0, 0, S, S); x.clip();
   x.translate(S / 2, S / 2); x.rotate(view.yaw); x.scale(sc, sc);
   const cx = view.x / W.cell, cz = view.z / W.cell;
-  x.drawImage(img, -cx, -cz);
+  { const R = Math.ceil(S * 0.75 / sc) + 2, sx = Math.max(0, Math.floor(cx - R)), sz = Math.max(0, Math.floor(cz - R)), sw = Math.min(img.width, Math.ceil(cx + R)) - sx, sh = Math.min(img.height, Math.ceil(cz + R)) - sz; if (sw > 0 && sh > 0) x.drawImage(img, sx, sz, sw, sh, sx - cx, sz - cz, sw, sh); } // solo el pedazo visible
   const dot = (px, pz, col, r = 3.4) => { x.fillStyle = col; x.beginPath(); x.arc(px / W.cell - cx, pz / W.cell - cz, r / sc, 0, 7); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1 / sc; x.stroke(); };
   if (bomb && (bomb.s === 'planted' || bomb.s === 'dropped') && (meTeam === 'T' || bomb.s === 'planted' && bomb.seen)) { x.fillStyle = bomb.s === 'planted' ? '#ff4038' : '#ffb03a'; const bx = bomb.x / W.cell - cx, bz = bomb.z / W.cell - cz; x.fillRect(bx - 4 / sc, bz - 3 / sc, 8 / sc, 6 / sc); }
   for (const p of list) { if (p.ping) { x.strokeStyle = p.col; x.lineWidth = 2 / sc; x.beginPath(); x.arc(p.x / W.cell - cx, p.z / W.cell - cz, 6 / sc, 0, 7); x.stroke(); continue; } dot(p.x, p.z, p.col, p.me ? 0 : 3.4); }

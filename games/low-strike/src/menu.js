@@ -12,20 +12,31 @@ export function makeMenu(o) {
   const look = { t: store.get('ls:look', { t: -1 }).t ?? -1 };
   // ---------- escena 3D ----------
   const scene = new THREE.Scene();
+  // fondo oscuro tipo CS2: degradé con luz cálida abajo, piso que se pierde en la niebla y polvo flotando
   const bg = document.createElement('canvas'); bg.width = 2; bg.height = 256;
-  { const x = bg.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#0f2a6b'); gr.addColorStop(0.55, '#2d63d6'); gr.addColorStop(1, '#7fc4ff'); x.fillStyle = gr; x.fillRect(0, 0, 2, 256); }
+  { const x = bg.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#06090f'); gr.addColorStop(0.5, '#141c28'); gr.addColorStop(0.78, '#2a2a2c'); gr.addColorStop(1, '#3b3127'); x.fillStyle = gr; x.fillRect(0, 0, 2, 256); }
   const bgt = new THREE.CanvasTexture(bg); bgt.colorSpace = THREE.SRGBColorSpace; scene.background = bgt;
+  scene.fog = new THREE.Fog('#1a1d22', 6, 16);
   const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
-  scene.add(new THREE.HemisphereLight('#cfe2ff', '#2a3a6a', 1.4));
-  const key = new THREE.DirectionalLight('#fff4e0', 2.6); key.position.set(2, 4, 3); scene.add(key);
-  const rim = new THREE.DirectionalLight('#7fd0ff', 2.2); rim.position.set(-3, 2.5, -3); scene.add(rim);
-  // pedestal con anillo
-  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.18, 24), new THREE.MeshLambertMaterial({ color: '#1b2f66' })); ped.position.y = -0.09; scene.add(ped);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.025, 6, 40), new THREE.MeshBasicMaterial({ color: '#7fe0ff' })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.01; scene.add(ring);
-  // rayos de fondo
-  const rays = new THREE.Group(); scene.add(rays);
-  for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 30), new THREE.MeshBasicMaterial({ color: '#9fd4ff', transparent: true, opacity: 0.06, depthWrite: false })); m.rotation.z = i / 14 * Math.PI; rays.add(m); }
-  rays.position.set(0, 1.2, -6);
+  scene.add(new THREE.HemisphereLight('#dbe5f4', '#3a3028', 1.7));
+  const key = new THREE.DirectionalLight('#ffe6c4', 3.4); key.position.set(2.5, 4, 3); scene.add(key);
+  const rim = new THREE.DirectionalLight('#9cc4ff', 2.4); rim.position.set(-3, 2.5, -3); scene.add(rim);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 48), new THREE.MeshLambertMaterial({ color: '#2a2724' })); floor.rotation.x = -Math.PI / 2; floor.position.y = -0.2; scene.add(floor);
+  // pedestal metálico con anillo del color del equipo y luz de piso
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.8, 0.2, 40), new THREE.MeshStandardMaterial({ color: '#2b2f36', roughness: 0.45, metalness: 0.6 })); ped.position.y = -0.1; scene.add(ped);
+  const ringMat = new THREE.MeshBasicMaterial({ color: '#f2c04a' });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.018, 6, 64), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = 0.005; scene.add(ring);
+  const glowC = document.createElement('canvas'); glowC.width = glowC.height = 128;
+  { const x = glowC.getContext('2d'), r = x.createRadialGradient(64, 64, 4, 64, 64, 63); r.addColorStop(0, 'rgba(255,255,255,0.55)'); r.addColorStop(0.5, 'rgba(255,255,255,0.15)'); r.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = r; x.fillRect(0, 0, 128, 128); }
+  const glowMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glowC), color: '#f2c04a', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), glowMat); glow.rotation.x = -Math.PI / 2; glow.position.y = -0.19; scene.add(glow);
+  // halo detrás del personaje
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: glowMat.map, color: '#4a5a72', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); halo.position.set(0, 1.1, -2.5); scene.add(halo);
+  // polvo en el aire
+  const dustN = 160, dustG = new THREE.BufferGeometry(), dp = new Float32Array(dustN * 3);
+  for (let i = 0; i < dustN; i++) { dp[i * 3] = (Math.random() - 0.5) * 7; dp[i * 3 + 1] = Math.random() * 3.2; dp[i * 3 + 2] = (Math.random() - 0.5) * 5 - 1; }
+  dustG.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+  const rays = new THREE.Points(dustG, new THREE.PointsMaterial({ color: '#ffe2b0', size: 0.022, transparent: true, opacity: 0.5, depthWrite: false })); scene.add(rays);
   const holder = new THREE.Group(); scene.add(holder);
   let model = null, modelKey = '', spin = 0.4, drag = null, t0 = 0;
 
@@ -43,11 +54,12 @@ export function makeMenu(o) {
     if (!drag) spin += dt * 0.25;
     holder.rotation.y = Math.PI + Math.sin(spin) * 0.6 + 0.35;
     if (model) poseModel(model, { speed: 0, duck: 0, pitch: Math.sin(t0 * 1.3) * 0.04 - 0.05, onGround: true, dead: 0 }, dt);
-    rays.rotation.z += dt * 0.05;
+    { const a = dustG.attributes.position; for (let i = 0; i < dustN; i++) { let y = a.array[i * 3 + 1] + dt * 0.06; if (y > 3.2) y = 0; a.array[i * 3 + 1] = y; a.array[i * 3] += Math.sin(t0 * 0.4 + i) * dt * 0.02; } a.needsUpdate = true; }
+    { const tc = myTeamPreview() === 'CT' && look.t === 1 ? '#5b9bff' : look.t === -1 ? '#d8dee8' : '#f2c04a'; ringMat.color.set(tc); glowMat.color.set(tc); }
     const asp = innerWidth / innerHeight;
     cam.aspect = asp; cam.fov = asp < 1 ? 46 : 30; cam.updateProjectionMatrix();
-    cam.position.set(asp < 1 ? 0 : 0.15, 1.15, 5.2); cam.lookAt(asp < 1 ? 0 : 0.15, 0.95, 0);
-    renderer.setClearColor('#0f2a6b'); renderer.clear();
+    cam.position.set(asp < 1 ? 0 : -0.05, 1.5, 7.2); cam.lookAt(asp < 1 ? 0 : -0.05, 0.62, 0);
+    renderer.setClearColor('#0b0f16'); renderer.clear();
     renderer.render(scene, cam);
   };
   addEventListener('pointerdown', e => { if (G.phase === 'lobby' && e.target.tagName === 'CANVAS') drag = { x: e.clientX, s: spin }; });
@@ -119,7 +131,7 @@ export function makeMenu(o) {
       + (G.cfg.bots ? `<div class="pm bot"><i></i><span>+ ${Math.max(0, per * 2 - people.length)} bots</span><small>${o.DIFF[G.cfg.diff].name}</small></div>` : '');
     // tarjeta de modo
     const map = o.MAPS.find(m => m.id === G.cfg.map) || o.MAPS[0];
-    $('modeTitle').textContent = `${per} VS ${per}`;
+    $('modeTitle').textContent = `${per} VS ${per}`; $('modeMapName').textContent = map.name;
     $('modeSub').textContent = `${o.MODES[G.cfg.mode || 'comp'].name} · ${map.name} · ${G.cfg.bots ? 'con bots' : 'sin bots'}${['comp', 'casual'].includes(G.cfg.mode || 'comp') ? ' · ' + o.LENGTHS[G.cfg.len].name : ''}`;
     o.mapThumb(map.id).then(img => { if (!img) return; const cv = $('modeMap'), x = cv.getContext('2d'); x.fillStyle = '#0b1530'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(img, 0, 0, cv.width, cv.height); });
     $('modeBtn').textContent = host ? 'CAMBIAR MODO' : 'VER MODO';

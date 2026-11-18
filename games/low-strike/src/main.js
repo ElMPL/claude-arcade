@@ -3,10 +3,11 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadMap } from './mapdata.js';
-import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked , refineSites } from './world.js';
+import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked, refineSites, buildVis } from './world.js';
 import { buildMeshes, buildFromModel, buildEnvironment, themeOf } from './mesher.js';
 import { buildNav, sealTraps, okSpot } from './nav.js';
 import { buildDecor } from './decor.js';
+import { applyFixes } from './fixes.js';
 import { applyWingman, wingmanMesh } from './wingman.js';
 import { placeProps, propsMesh } from './props.js';
 import { makePlayer, movePlayer, eyeH, PM, fallDamage } from './player.js';
@@ -237,11 +238,14 @@ function secondary() {
   if (id === 'knife' && M.fireT <= 0 && M.drawT <= 0) { knife(true); }
   if (w && w.cat === 'grenade' && !mouseL && M.throwT <= 0) { M.nadeHold = 0.001; }
 }
-function dropCurrent() {
-  const P = me(); const s = M.slot; if (!P.alive) return;
-  const p = M.pl;
-  if (s === 'p' || s === 's') { req('drop', { s, x: p.x, y: p.y, z: p.z, yaw: p.yaw, ammo: M.ammo[s] }); }
-  else if (s === 'c4') req('drop', { s: 'c4', x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+function dropCurrent() { // G: tira el arma que tenés en la mano (no el cuchillo), como en CS
+  const P = me(); const s = M.slot; if (!P || !P.alive || !M.pl) return;
+  const p = M.pl, base = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch || 0 };
+  if (s === 'p' || s === 's') req('drop', { ...base, s, ammo: M.ammo[s] });
+  else if (s === 'c4') req('drop', { ...base, s: 'c4' });
+  else if (s === 'g' && !M.nadeHold) { const w = slotWeapon('g'); if (w) req('drop', { ...base, s: 'g', w }); }
+  else return;
+  M.pickCd = 1.0; A.sfxClick(null, 500, 0.3);
 }
 function use() {
   const P = me(); if (!P || !P.alive || !M.pl) return;
@@ -501,7 +505,7 @@ function applySt(s) {
   const b = s.b; Object.assign(G.bomb, { state: b.s, carrier: b.c, x: b.x, y: b.y, z: b.z, t: b.t, site: b.site });
   if (!isHost()) {
     const seen = new Set();
-    for (const r of s.dr) { seen.add(r[0]); G.drops.set(r[0], { id: r[0], w: r[1], x: r[2], y: r[3], z: r[4], ammo: r[5] }); }
+    for (const r of s.dr) { seen.add(r[0]); const o = G.drops.get(r[0]); G.drops.set(r[0], { id: r[0], w: r[1], x: r[2], y: r[3], z: r[4], ammo: r[5], s: r[6] || null, T: r[7] || 0, t0: o ? o.t0 : performance.now() - (r[8] || 0) * 1000 }); }
     for (const id of [...G.drops.keys()]) if (!seen.has(id)) G.drops.delete(id);
   }
   const ids = new Set();
@@ -801,8 +805,11 @@ async function loadGame(id) {
     const L2 = data.layers.map(l => ({ ...l, cls: l.cls.slice(), top: l.top ? l.top.slice() : l.top, bot: l.bot ? l.bot.slice() : l.bot, h: l.h ? l.h.slice() : l.h }));
     if (data.layers.flags) L2.flags = data.layers.flags.slice();
     const W2 = buildWorld(data.info, L2);
+    applyFixes(W2, id);
     refineSites(W2);
+    if (data.mesh) buildVis(W2, data.mesh);
     const props = data.mesh ? placeProps(W2, buildNav(W2), id) : [];
+    if (W2.vis) for (let l = 0; l < W2.L; l++) { const T = W2.top[l], Cc = W2.cls[l], V = W2.vis; for (let i = 0; i < T.length; i++) if (Cc[i] === 2 && !(V[i] >= T[i])) V[i] = T[i] + 0.05; } // props: sí chocan
     if (data.mesh) sealTraps(W2, buildNav(W2));
     return { W: W2, props };
   };
@@ -939,8 +946,13 @@ const dropMeshes = new Map(); let bombMesh = null, bombLight = null, beepT = 0;
 function updateDrops(dt) {
   for (const [id, d] of G.drops) {
     let m = dropMeshes.get(id);
-    if (!m) { m = gunMesh(d.w); m.scale.setScalar(1.2); m.rotation.set(0, Math.random() * 6, Math.PI / 2 * 0.98); scene.add(m); dropMeshes.set(id, m); }
-    m.position.set(d.x, d.y + 0.04, d.z);
+    if (!m) { m = gunMesh(d.w); m.scale.setScalar(1.2); m.userData.ry = Math.random() * 6; m.rotation.set(0, m.userData.ry, Math.PI / 2 * 0.98); scene.add(m); dropMeshes.set(id, m); }
+    const u = d.s && d.T ? Math.min(1, (performance.now() - (d.t0 || 0)) / 1000 / d.T) : 1;
+    if (u < 1) { // en vuelo: arco entre la mano y donde cae, girando
+      const h = Math.max(0.25, d.s[1] - d.y) * 0.35 + 0.3;
+      m.position.set(d.s[0] + (d.x - d.s[0]) * u, d.s[1] + (d.y + 0.04 - d.s[1]) * u + h * 4 * u * (1 - u), d.s[2] + (d.z - d.s[2]) * u);
+      m.rotation.set(u * 5, m.userData.ry + u * 3, Math.PI / 2 * 0.98 * u);
+    } else { m.position.set(d.x, d.y + 0.04, d.z); m.rotation.set(0, m.userData.ry, Math.PI / 2 * 0.98); }
   }
   for (const [id, m] of dropMeshes) if (!G.drops.has(id)) { scene.remove(m); dropMeshes.delete(id); }
   const b = G.bomb;
@@ -1034,7 +1046,9 @@ function updateLocal(dt) {
   if (M.pickCd <= 0) {
     for (const d of G.drops.values()) {
       if (Math.hypot(d.x - p.x, d.z - p.z) > 0.9 || Math.abs(d.y - p.y) > 1.2) continue;
-      if (d.w === 'defuser' ? (P.team === 'CT' && !P.inv.kit) : !slotWeapon(slotOf(d.w) === 1 ? 'p' : 's')) { req('take', { id: d.id }); M.pickCd = 0.6; break; }
+      const age = (performance.now() - (d.t0 || 0)) / 1000; if (age < (d.T || 0) + 0.1) continue;
+      const isN = WEAPONS[d.w]?.cat === 'grenade';
+      if (d.w === 'defuser' ? (P.team === 'CT' && !P.inv.kit) : isN ? P.inv.g.length < 4 && !P.inv.g.includes(d.w === 'incendiary' ? 'molotov' : d.w) && !P.inv.g.includes(d.w) : !slotWeapon(slotOf(d.w) === 1 ? 'p' : 's')) { req('take', { id: d.id }); M.pickCd = 0.6; break; }
     }
     const b = G.bomb;
     if (P.team === 'T' && b.state === 'dropped' && Math.hypot(b.x - p.x, b.z - p.z) < 1.0 && Math.abs(b.y - p.y) < 1.4) { req('take', { id: 'c4' }); M.pickCd = 0.8; }
@@ -1159,12 +1173,27 @@ function updateCamera(dt) {
   hud.crosshair(Math.min(60, gap), showX, CFG);
 }
 let hudT = 0, radarT = 0;
+const radarDots = [];
+function drawRadarNow(P) {
+  if (!radarImg || !M.pl) return;
+  const S = M.spec && !P.alive ? G.players.get(M.spec) : P;
+  const view = S && S !== P ? { x: S.x, z: S.z, yaw: S.yaw } : { x: M.pl.x, z: M.pl.z, yaw: M.pl.yaw };
+  radarDots.length = 0;
+  for (const p of G.players.values()) {
+    if (!p.alive) continue;
+    if (p.team === P.team) radarDots.push({ x: p.id === myId ? M.pl.x : p.x, z: p.id === myId ? M.pl.z : p.z, col: p.team === 'T' ? '#f0c060' : '#8ab8ff', me: p.id === myId });
+    else if (p.seenT > G.time - 0.6) radarDots.push({ x: p.x, z: p.z, col: '#ff4040' });
+  }
+  for (const q of pings) radarDots.push({ x: q.x, z: q.z, col: '#ffd34a', ping: true });
+  drawRadar($('radar'), radarImg, G.W, view, radarDots, { s: G.bomb.state, x: G.bomb.x, z: G.bomb.z, seen: P.team === 'T' || G.bomb.seen || G.bomb.state === 'planted' }, P.team);
+}
 function updateHud(dt) {
   const P = me(); if (!P) return;
   hurtFlash = Math.max(0, hurtFlash - dt * 1.4);
   hud.el.hurt.style.opacity = Math.max(hurtFlash, P.alive && P.hp <= 30 ? 0.22 + 0.14 * Math.sin(G.time * 4) : 0).toFixed(2);
   M.blind = Math.max(0, M.blind - dt);
   hud.el.flash.style.opacity = Math.min(1, M.blind / 1.6).toFixed(3);
+  drawRadarNow(P);
   hudT -= dt; if (hudT > 0) return; hudT = 0.05;
   const S = M.spec && !P.alive ? G.players.get(M.spec) : P;
   hud.money(P.money);
@@ -1202,20 +1231,12 @@ function updateHud(dt) {
   const showBoard = keys.has('Tab') || G.phase === 'over';
   hud.el.board.hidden = !showBoard;
   if (showBoard) hud.el.board.innerHTML = renderBoard(G, myId);
-  // radar
+  // radar: el dibujo va en drawRadarNow (cada frame); acá solo el avistaje (más caro) 10 veces por segundo
   radarT -= 0.05;
   if (radarT <= 0 && radarImg) {
     radarT = 0.1;
     const view = S && S !== P ? { x: S.x, z: S.z, yaw: S.yaw } : { x: M.pl.x, z: M.pl.z, yaw: M.pl.yaw };
-    const dots = [];
     const eye = [M.pl.x, M.pl.y + 1.6, M.pl.z];
-    for (const p of G.players.values()) {
-      if (!p.alive) continue;
-      if (p.team === P.team) dots.push({ x: p.x, z: p.z, col: p.team === 'T' ? '#f0c060' : '#8ab8ff', me: p.id === myId });
-      else if (p.seenT > G.time - 0.6) dots.push({ x: p.x, z: p.z, col: '#ff4040' });
-    }
-    for (const q of pings) dots.push({ x: q.x, z: q.z, col: '#ffd34a', ping: true });
-    drawRadar($('radar'), radarImg, G.W, view, dots, { s: G.bomb.state, x: G.bomb.x, z: G.bomb.z, seen: P.team === 'T' || G.bomb.seen || G.bomb.state === 'planted' }, P.team);
     // detectar enemigos a la vista (para el radar)
     // un enemigo aparece en el radar si lo ve cualquier compañero vivo (dentro de su campo de visión), como en CS
     const mates = [...G.players.values()].filter(q => q.alive && q.team === P.team);

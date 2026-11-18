@@ -759,6 +759,16 @@ function handGeo(S, curl, thumb, mirror, spread = 0.06) {
 }
 // poses: dedos y ubicación (en coordenadas del arma: x derecha, y arriba, -z adelante)
 const C = (a, b, c) => [a, b, c];
+// cuchillo: agarre de martillo con el mango cruzado en diagonal por la palma (pomo en la base del meñique,
+// hoja saliendo entre pulgar e índice); el dorso mira hacia adentro y la muñeca queda abajo/atrás.
+// th = inclinación del mango en la palma, ph = giro del dorso alrededor de la hoja.
+function knifePose(th, ph) {
+  const c = Math.cos(th), s = Math.sin(th), cp = Math.cos(ph), sp = Math.sin(ph);
+  const X = [s * sp, -s * cp, c], Y = [cp, sp, 0], Z = [-c * sp, c * cp, s];
+  const h0 = [-0.004, -0.026, -0.036], H = [0, 0.002, 0.07];
+  const pos = [0, 1, 2].map(i => H[i] - (X[i] * h0[0] + Y[i] * h0[1] + Z[i] * h0[2]));
+  return { curl: [C(1.25, 1.5, 1.0), C(1.3, 1.5, 1.0), C(1.38, 1.5, 1.0), C(1.48, 1.5, 1.0)], thumb: [0.55, -0.8, -0.25, 0.75], basis: [X, Y, Z], tilt: 0, pos };
+}
 const POSES = {
   // mano derecha en la empuñadura: palma del lado derecho, dedos rodean el frente, índice en el gatillo
   grip: { curl: [C(0.35, 0.55, 0.35), C(1.35, 1.45, 0.9), C(1.4, 1.5, 0.9), C(1.45, 1.5, 0.9)], thumb: [0.35, -0.75, -0.55, 0.25], basis: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], tilt: 0.3, pos: [0.034, -0.045, 0.006] },
@@ -767,7 +777,7 @@ const POSES = {
   // mano izquierda abrazando la derecha en las pistolas
   cup: { curl: [C(1.0, 1.0, 0.6), C(1.1, 1.1, 0.6), C(1.2, 1.1, 0.6), C(1.3, 1.1, 0.6)], thumb: [0.15, -0.3, -0.9, 0.05], basis: [[0, 1, 0], [-1, 0, 0], [0, 0, 1]], tilt: 0.3, pos: [-0.046, -0.06, -0.012] },
   // cuchillo: mano cerrada sobre el mango horizontal
-  knife: { curl: [C(1.35, 1.45, 0.9), C(1.4, 1.5, 0.95), C(1.45, 1.5, 0.95), C(1.5, 1.5, 0.95)], thumb: [-0.35, -0.75, -0.35, 0.45], basis: [[0, 0, 1], [1, 0, 0], [0, 1, 0]], tilt: 0, pos: [0.028, 0.034, 0.064] },
+  knife: knifePose(0.42, Math.PI + 0.45),
   // granadas y C4: mano que sostiene algo redondo
   ball: { curl: [C(0.8, 0.8, 0.5), C(0.85, 0.85, 0.5), C(0.9, 0.85, 0.5), C(0.95, 0.85, 0.5)], thumb: [0.3, -0.7, -0.6, 0.2], basis: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], tilt: 0.2, pos: [0.05, -0.01, 0.01] },
 };
@@ -825,8 +835,8 @@ export function setViewGun(vm, id, team, si = 0, finish = 0) {
   u.mag = null;
   if (isMagGun) { const mg = new THREE.Mesh(new RoundedBoxGeometry(0.026, cat === 'pistol' ? 0.09 : 0.13, 0.05, 2, 0.006), new THREE.MeshStandardMaterial({ color: '#2a2b2d', roughness: 0.5, metalness: 0.4 })); mg.position.set(0, -0.06, -0.03); mg.visible = false; u.arms[1].h.add(mg); u.mag = mg; }
   // dónde se sostiene respecto de la cámara
-  u.base = id === 'dualies' ? [0.12, -0.13, -0.44] : cat === 'pistol' || id === 'zeus' ? [0.125, -0.12, -0.42] : cat === 'knife' ? [0.12, -0.16, -0.36] : nade ? [0.14, -0.14, -0.32] : cat === 'sniper' ? [0.15, -0.17, -0.44] : [0.15, -0.165, -0.37];
-  u.rot = cat === 'knife' ? [0.22, 0.32, -0.12] : nade ? [0.1, 0.2, 0] : [0.03, 0.06, 0];
+  u.base = id === 'dualies' ? [0.12, -0.13, -0.44] : cat === 'pistol' || id === 'zeus' ? [0.125, -0.12, -0.42] : cat === 'knife' ? [0.14, -0.125, -0.36] : nade ? [0.14, -0.14, -0.32] : cat === 'sniper' ? [0.15, -0.17, -0.44] : [0.15, -0.165, -0.37];
+  u.rot = cat === 'knife' ? [0.12, 0.38, -0.18] : nade ? [0.1, 0.2, 0] : [0.03, 0.06, 0];
   vm.traverse(o => { o.renderOrder = 10; o.frustumCulled = false; });
 }
 // ubica las manos (pegadas al arma según la pose) y los antebrazos desde abajo de la pantalla

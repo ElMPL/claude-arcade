@@ -26,7 +26,7 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
   - Los equipos cambian de lado en el entretiempo.
   - Duración de la partida: Rápida (gana el primero a 5), Corta (a 9) o Competitiva (a 13).
 - **Votaciones:** rendirse o echar a un compañero (radio **C**, mayoría del equipo).
-- **Radar compartido:** los enemigos que ve cualquier compañero aparecen en tu radar.
+- **Radar compartido:** los enemigos que ve cualquier compañero aparecen en tu radar. Se dibuja en cada cuadro (solo el pedazo visible del mapa) y el avistaje se calcula 10 veces por segundo.
 - **Al morir:** tarjeta con quién te mató, con qué arma, cuánta vida le quedó y el daño que se hicieron.
 - **Inspección** del arma con **F**. **Pantalla de carga** con el plano del mapa (sitios marcados) y consejos.
 - **Comunicación:** radio con **Z / X / C** (los comandos de CS:GO), marcador en el piso y en el radar con **V** o la rueda del mouse.
@@ -35,7 +35,7 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
 - **Movimiento:** saltar justo al caer salta menos y caer rápido frena, como en CS:GO. Si quedás en un hueco sin salida, te saca solo.
 - **Precisión como en CS2:** cada arma tiene su imprecisión parada, agachada, corriendo y en el aire (la SSG es precisa en el punto alto del salto; la AWP no); al caer tarda un instante en recuperarse.
 - **Sonido 3D:** se oye de qué lado viene cada cosa; lo que viene de abajo suena apagado y lo de arriba más agudo. Los pasos cambian según el piso (arena, piedra, madera, metal) y correr se oye más lejos.
-- **Granadas como en CS:** 675 u/s × (0.3 + 0.7·fuerza), el ángulo se levanta 10°, salen 16 u adelante del ojo y se les suma 1.25 × la velocidad del jugador (también la vertical: el jumpthrow llega más lejos). Se tiran 0,1 s después de soltar el botón. Rebotan más en paredes que en el piso, el humo llena el lugar sin atravesar paredes y una flash casi no ciega si estás de espaldas.
+- **Granadas como en CS:** 675 u/s × (0.3 + 0.7·fuerza), el ángulo se levanta 10°, salen 16 u adelante del ojo y se les suma 1.25 × la velocidad del jugador (también la vertical: el jumpthrow llega más lejos). Se tiran 0,1 s después de soltar el botón. No hay techo invisible: solo chocan contra lo que el mapa dibuja (las paredes de colisión que el modelo no muestra se ignoran para las granadas). Rebotan más en paredes que en el piso, el humo llena el lugar sin atravesar paredes y una flash casi no ciega si estás de espaldas.
 - **Bots:** cambian de ruta, chequean ángulos mientras caminan, compran y usan humos, flashes y molotovs, y rotan con lo que avisa el equipo (radio o marcador).
 - **Red:** los jugadores remotos se dibujan interpolados 100 ms atrás (movimiento suave); los tiros los decide quien dispara, según lo que veía.
 - **Retroceso:** patrones fijos para AK-47, M4A4 y los demás rifles, siempre iguales para que se puedan aprender.
@@ -45,7 +45,7 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
   - Juegan en equipo: los T se juntan antes de entrar al sitio, los CT esperan mirando la entrada, rotan cuando un compañero ve a los T, cubren la bomba después de plantar y retroceden con poca vida.
 
 ## Menú de inicio
-- **Pestaña JUGAR:** tu personaje en 3D, el grupo de la sala, la elección de equipo (T, CT o automático) y la tarjeta de modo.
+- **Pestaña JUGAR:** estética oscura tipo CS2 (pedestal con aro del color de tu equipo, polvo en el aire), tu personaje en 3D, el grupo de la sala, la elección de equipo (T, CT o automático) y la tarjeta de modo con el mapa.
 - **Modos:** 2v2, 3v3 o 5v5, con bots o sin bots, en los 2 mapas. Se elige también la duración y el nivel de los bots.
 - **2v2 (estilo Wingman):** se juega en un solo sitio. El otro sitio y sus entradas se cierran con una pared invisible alta (no se puede saltar); los caminos entre los spawns y el sitio quedan libres.
 - **Pestaña CONFIGURACIÓN** (también desde la pausa con Esc): sensibilidad, invertir eje Y, volumen, sombras y la mira (estática o dinámica, color, largo, separación, grosor, punto central y contorno). Se guarda en el navegador.
@@ -92,7 +92,7 @@ En el juego la malla se pinta con texturas generadas por código al estilo de Du
 | 1-5, Q, rueda del mouse | cambiar de arma |
 | B | comprar |
 | E | desactivar o agarrar un arma |
-| G | tirar el arma |
+| G | tirar el arma o la granada que tenés en la mano: sale en arco hacia donde mirás y cualquiera la puede agarrar (vos no la volvés a juntar sin querer) |
 | Tab | tabla de puntajes |
 | [ y ] | sensibilidad del mouse |
 | Esc | soltar el mouse / configuración |

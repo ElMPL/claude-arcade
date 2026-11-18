@@ -298,7 +298,7 @@ export function makeHost(G) {
   H.snapshot = () => ({
     ph: G.phase, tl: +G.timeLeft.toFixed(2), r: G.round, sc: G.score, hf: G.half, ot: G.ot || 0, md: mode(),
     b: { s: G.bomb.state, c: G.bomb.carrier, x: +G.bomb.x.toFixed(2), y: +G.bomb.y.toFixed(2), z: +G.bomb.z.toFixed(2), t: +G.bomb.t.toFixed(2), site: G.bomb.site },
-    dr: [...G.drops.values()].map(d => [d.id, d.w, +d.x.toFixed(2), +d.y.toFixed(2), +d.z.toFixed(2), d.ammo]),
+    dr: [...G.drops.values()].map(d => [d.id, d.w, +d.x.toFixed(2), +d.y.toFixed(2), +d.z.toFixed(2), d.ammo, d.s ? d.s.map(v => +v.toFixed(2)) : 0, +(d.T || 0).toFixed(2), +((performance.now() - (d.t0 || 0)) / 1000).toFixed(2)]),
     p: [...G.players.values()].map(p => [p.id, p.name, p.bot ? 1 : 0, p.grp, p.team, p.hp, p.ar, p.helm ? 1 : 0, p.money, p.alive ? 1 : 0, p.k, p.d, p.a, p.mvp, p.inv, p.god ? 1 : 0, p.skT | 0, p.skCT | 0, p.fin || 0, p.arl || 0, p.hsK || 0, p.dmgT || 0, p.rounds || 0]),
   });
 
@@ -351,11 +351,30 @@ export function makeHost(G) {
     G.bomb.x = p.x; G.bomb.y = p.y; G.bomb.z = p.z;
     G.emit('ev', { t: 'bombdrop' });
   }
-  function spawnDrop(w, x, y, z, ammo, yaw = 0) {
+  // tirar un arma como en CS: sale desde los ojos hacia donde mirás, vuela en arco y queda donde cae
+  function spawnDrop(w, x, y, z, ammo, yaw = 0, pitch = null, by = null) {
     const id = dropSeq++;
-    const fx = x - Math.sin(yaw) * 0.6, fz = z - Math.cos(yaw) * 0.6;
-    const ok = !G.solidAt(fx, y + 0.3, fz);
-    G.drops.set(id, { id, w, x: ok ? fx : x, y: G.floorAt(ok ? fx : x, ok ? fz : z, y + 0.6) + 0.05, z: ok ? fz : z, ammo: ammo || null });
+    let px = x, py = y + 1.45, pz = z, T = 0;
+    if (pitch === null) { // al morir o al cambiar: cae a los pies con un empujoncito
+      const fx = x - Math.sin(yaw) * 0.6, fz = z - Math.cos(yaw) * 0.6, ok = !G.solidAt(fx, y + 0.3, fz);
+      G.drops.set(id, { id, w, x: ok ? fx : x, y: G.floorAt(ok ? fx : x, ok ? fz : z, y + 0.6) + 0.05, z: ok ? fz : z, ammo: ammo || null, s: null, T: 0, t0: performance.now(), by });
+      dirty = true; return;
+    }
+    const sp = 4.2, cp = Math.cos(pitch);
+    let vx = -Math.sin(yaw) * cp * sp, vz = -Math.cos(yaw) * cp * sp, vy = Math.sin(pitch) * sp + 1.2;
+    const sx = px, sy = py, sz = pz, dt = 0.02;
+    for (let k = 0; k < 150; k++) {
+      const nx = px + vx * dt, nz = pz + vz * dt, ny = py + vy * dt; vy -= 9.8 * dt; T += dt;
+      if (G.solidAt(nx, ny, nz)) { // pega en una pared: rebota hacia atrás y cae
+        if (vy > 0 && G.solidAt(px, ny, pz)) vy = 0;
+        if (G.solidAt(nx, py, pz)) vx = -vx * 0.25; if (G.solidAt(px, py, nz)) vz = -vz * 0.25;
+        continue;
+      }
+      const f = G.floorAt(nx, nz, py + 0.05);
+      px = nx; pz = nz; py = ny;
+      if (vy < 0 && py <= f + 0.05) { py = f; break; }
+    }
+    G.drops.set(id, { id, w, x: px, y: py + 0.05, z: pz, ammo: ammo || null, s: [sx, sy, sz], T, t0: performance.now(), by });
     dirty = true;
   }
 
@@ -373,12 +392,16 @@ export function makeHost(G) {
       case 'buy': buy(p, d.i); break;
       case 'drop': {
         if (!p.alive) return;
-        const slot = d.s;
+        const slot = d.s, pitch = Math.max(-1.4, Math.min(1.4, +d.pitch || 0));
         if (slot === 'zeus') { p.inv.zeus = false; p.inv.v++; dirty = true; return; }
-        if (slot === 'c4') { if (!p.inv.c4) return; p.inv.c4 = false; p.inv.v++; dropBomb({ x: d.x, y: d.y, z: d.z }); G.bomb.x -= Math.sin(d.yaw) * 0.6; G.bomb.z -= Math.cos(d.yaw) * 0.6; G.bomb.y = G.floorAt(G.bomb.x, G.bomb.z, d.y + 0.6); dirty = true; return; }
+        if (slot === 'c4') { if (!p.inv.c4) return; p.inv.c4 = false; p.inv.v++; dropBomb({ x: d.x, y: d.y, z: d.z }); G.bomb.x -= Math.sin(d.yaw) * 1.4; G.bomb.z -= Math.cos(d.yaw) * 1.4; if (G.solidAt(G.bomb.x, d.y + 0.5, G.bomb.z)) { G.bomb.x = d.x; G.bomb.z = d.z; } G.bomb.y = G.floorAt(G.bomb.x, G.bomb.z, d.y + 0.6); dirty = true; return; }
+        if (slot === 'g') { // granada en la mano
+          const i = p.inv.g.indexOf(d.w); if (i < 0) return;
+          p.inv.g.splice(i, 1); p.inv.v++; spawnDrop(d.w, d.x, d.y, d.z, null, d.yaw, pitch, from); break;
+        }
         const w = slot === 'p' ? p.inv.p : slot === 's' ? p.inv.s : null; if (!w) return;
         p.inv[slot] = null; p.inv.v++;
-        spawnDrop(w, d.x, d.y, d.z, d.ammo, d.yaw);
+        spawnDrop(w, d.x, d.y, d.z, d.ammo, d.yaw, pitch, from);
         break;
       }
       case 'take': {
@@ -391,6 +414,13 @@ export function makeHost(G) {
         }
         const dr = G.drops.get(d.id); if (!dr) return;
         if (Math.hypot(p.x - dr.x, p.z - dr.z) > 2.2) return;
+        const age = (performance.now() - (dr.t0 || 0)) / 1000;
+        if (age < (dr.T || 0) || dr.by === from && age < (dr.T || 0) + 0.8 && !d.swap) return; // en el aire / recién tirada por él
+        if (WEAPONS[dr.w]?.cat === 'grenade') {
+          const g = p.inv.g, fam = x => x === 'incendiary' ? 'molotov' : x, same = g.filter(x => fam(x) === fam(dr.w)).length;
+          if (g.length >= 4 || same >= (dr.w === 'flash' ? 2 : 1)) return;
+          p.inv.g = g.concat(dr.w); p.inv.v++; G.drops.delete(dr.id); dirty = true; return;
+        }
         if (dr.w === 'defuser') { if (p.team !== 'CT' || p.inv.kit) return; p.inv.kit = true; p.inv.v++; G.drops.delete(dr.id); dirty = true; return; }
         const slot = slotOf(dr.w) === 1 ? 'p' : 's';
         if (p.inv[slot]) { if (!d.swap) return; spawnDrop(p.inv[slot], p.x, p.y, p.z, d.ammo, p.yaw); }

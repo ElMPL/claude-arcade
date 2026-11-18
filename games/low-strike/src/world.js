@@ -354,7 +354,26 @@ export function floorAt(W, x, z, y = 1e9) {
 }
 
 // Raycast contra el mapa. Devuelve { t, nx, ny, nz, cell, layer } o null.
-export function raycast(W, ox, oy, oz, dx, dy, dz, maxT = 200) {
+// Altura máxima dibujada por celda (con margen de 2 celdas). Las granadas usan esto para no chocar contra
+// colisión que el modelo no muestra (paredes del borde del mapa estiradas hasta el cielo = "techo invisible").
+export function buildVis(W, mesh) {
+  const n = W.n, c = W.cell, mx = new Float32Array(n * n).fill(-1e9), st = c * 0.85;
+  for (let a = 0; a + 8 < mesh.length; a += 9) {
+    const x0 = mesh[a] / 100, y0 = mesh[a + 1] / 100, z0 = mesh[a + 2] / 100, x1 = mesh[a + 3] / 100, y1 = mesh[a + 4] / 100, z1 = mesh[a + 5] / 100, x2 = mesh[a + 6] / 100, y2 = mesh[a + 7] / 100, z2 = mesh[a + 8] / 100;
+    const L = Math.max(Math.hypot(x1 - x0, z1 - z0), Math.hypot(x2 - x0, z2 - z0), Math.hypot(x2 - x1, z2 - z1)), s = Math.max(1, Math.ceil(L / st));
+    for (let u = 0; u <= s; u++) for (let v = 0; v <= s - u; v++) {
+      const w = s - u - v, x = (x0 * w + x1 * u + x2 * v) / s, z = (z0 * w + z1 * u + z2 * v) / s, y = (y0 * w + y1 * u + y2 * v) / s;
+      const gx = Math.floor(x / c), gz = Math.floor(z / c); if (gx < 0 || gz < 0 || gx >= n || gz >= n) continue;
+      const i = gz * n + gx; if (y > mx[i]) mx[i] = y;
+    }
+  }
+  const tmp = new Float32Array(n * n);
+  for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) { let m = -1e9; for (let d = -2; d <= 2; d++) { const xx = x + d; if (xx >= 0 && xx < n && mx[z * n + xx] > m) m = mx[z * n + xx]; } tmp[z * n + x] = m; }
+  for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) { let m = -1e9; for (let d = -2; d <= 2; d++) { const zz = z + d; if (zz >= 0 && zz < n && tmp[zz * n + x] > m) m = tmp[zz * n + x]; } mx[z * n + x] = m > -1e8 ? m + 0.3 : NaN; }
+  W.vis = mx;
+}
+export function raycast(W, ox, oy, oz, dx, dy, dz, maxT = 200, clip = false) {
+  const vis = clip ? W.vis : null;
   const cell = W.cell, n = W.n;
   let cx = Math.floor(ox / cell), cz = Math.floor(oz / cell);
   const sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
@@ -368,8 +387,9 @@ export function raycast(W, ox, oy, oz, dx, dy, dz, maxT = 200) {
     const i = cz * n + cx;
     const y0 = oy + dy * t0, y1 = oy + dy * t1;
     for (let l = 0; l < W.L; l++) {
-      const top = W.top[l][i]; if (isNaN(top)) continue;
+      let top = W.top[l][i]; if (isNaN(top)) continue;
       const bot = W.bot[l][i];
+      if (vis) { const v = vis[i]; if (v !== v) continue; if (top > v) { if (bot >= v) continue; top = v; } } // sin nada dibujado cerca: se atraviesa
       // entra por el costado
       if (y0 >= bot && y0 <= top && it > 0) {
         return { t: t0, nx: enterAxis === 0 ? -sx : 0, ny: 0, nz: enterAxis === 1 ? -sz : 0, cell: i, layer: l };

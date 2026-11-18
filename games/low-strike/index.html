@@ -69,13 +69,13 @@
   <section id="tabPlay" class="fn-tab">
     <div id="party" class="party"></div>
     <div class="teamPick">
-      <button data-pref="0" class="tp t">TERRORISTAS</button>
-      <button data-pref="-1" class="tp auto">AUTO</button>
-      <button data-pref="1" class="tp ct">CONTRATERRORISTAS</button>
+      <button data-pref="0" class="tp t"><b>T</b><small>Terroristas</small></button>
+      <button data-pref="-1" class="tp auto"><b>AUTO</b><small>Equilibrar</small></button>
+      <button data-pref="1" class="tp ct"><b>CT</b><small>Antiterroristas</small></button>
     </div>
     <div class="right">
       <div class="modeCard">
-        <canvas id="modeMap" width="320" height="180"></canvas>
+        <div class="mc-map"><canvas id="modeMap" width="340" height="190"></canvas><div id="modeMapName"></div></div>
         <div class="mc-txt"><div id="modeTitle">5 VS 5</div><div id="modeSub"></div></div>
         <button id="modeBtn">CAMBIAR MODO</button>
       </div>

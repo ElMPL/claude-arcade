@@ -31,7 +31,7 @@ export function stepNade(W, g, dt, out) {
         g.vy -= NADE.g * h;
         const sp = Math.hypot(g.vx, g.vy, g.vz), dist = sp * h;
         if (dist > 1e-5) {
-          const hit = raycast(W, g.x, g.y, g.z, g.vx / sp, g.vy / sp, g.vz / sp, dist + 0.04);
+          const hit = raycast(W, g.x, g.y, g.z, g.vx / sp, g.vy / sp, g.vz / sp, dist + 0.04, true);
           if (hit && hit.t <= dist + 0.04) {
             const t = Math.max(0, hit.t - 0.04);
             g.x += g.vx / sp * t; g.y += g.vy / sp * t; g.z += g.vz / sp * t;
