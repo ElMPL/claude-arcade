@@ -184,7 +184,7 @@ function readInput(dt) {
 function steerAngle(c, st, analog) {
   if (prefs.steer) return assistSteer(c, st, analog);
   const v = Math.max(0, c.vx);
-  return st * CAR.maxSteer / (1 + v / (analog ? 60 : 40));
+  return st * CAR.maxSteer / (1 + v / (analog ? 75 : 58)); // arcade: dobla más a alta velocidad
 }
 
 // ---------- Cámara ----------
@@ -840,7 +840,8 @@ function frame(now) {
     inp.dt = dt; inp.up = car === me && upPress; inp.down = car === me && downPress;
     if (!racing) { c.thr += (inp.thr - c.thr) * Math.min(1, dt * 10); c.rpm += ((4000 + c.thr * 7000) - c.rpm) * Math.min(1, dt * 8); continue; }
     car.drsAvail = false;
-    if (car === me) { c.gripX = admin('f1.grip') ? 1.45 : 1; c.dmgScale = admin('f1.god') ? 0 : 1; if (admin('f1.ghost')) car.ghost = Math.max(car.ghost, 0.15); }
+    c.gripX = car === me && admin('f1.grip') ? 1.75 : 1.3; c.arcade = !car.bot; // arcade: más agarre para todos, ayuda de derrape para los humanos
+    if (car === me) { c.dmgScale = admin('f1.god') ? 0 : 1; if (admin('f1.ghost')) car.ghost = Math.max(car.ghost, 0.15); }
     if (car.bot && car.brain) car.brain.slow = slowBots ? 0.72 : 1;
     if (car === me && admin('f1.drs') && car.finTime == null) { car.drsAvail = true; }
     else if (race.laps > 1 && (c.lap || 0) >= 2 && car.finTime == null) {

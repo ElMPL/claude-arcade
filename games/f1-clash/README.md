@@ -11,6 +11,7 @@ Carreras de fórmula en 3D (Three.js) con física realista, de 1 a 8 autos (los 
 - Superficies: asfalto, pianos, pasto y grava con distinto agarre y frenado.
 
 ## Ayudas
+- Manejo arcade: 30 % más de agarre para todos los autos y, en los autos de los jugadores, la dirección responde más rápido, dobla más a alta velocidad y el derrape lateral se frena solo (dobla ≈50 % más fuerte sin perder velocidad).
 - Dirección asistida: la tecla a fondo pide la curva más cerrada que permite el agarre y corrige sola si la cola se va.
 - Aviso de frenada: se prende "FRENÁ" en el tablero si llegás muy rápido (no frena por vos).
 - ABS por deslizamiento combinado: frenando en curva libera presión antes de que se bloqueen las ruedas.

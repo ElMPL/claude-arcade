@@ -65,7 +65,7 @@ function tire(c, i, w, vl, vs, Fz) {
 export function step(c, inp, dt) {
   const m = CAR.mass, v = c.vx;
   // dirección con velocidad de giro limitada
-  const ds = inp.steer - c.steer, rate = 3.2 * dt;
+  const ds = inp.steer - c.steer, rate = (c.arcade ? 5.5 : 3.2) * dt;
   c.steer += Math.max(-rate, Math.min(rate, ds));
   c.steer = Math.max(-CAR.maxSteer, Math.min(CAR.maxSteer, c.steer));
   c.thr += (inp.thr - c.thr) * Math.min(1, dt * 18);
@@ -172,6 +172,13 @@ export function step(c, inp, dt) {
   const ax = Fx / m, ay = Fy / m;
   c.vx += (ax + c.r * c.vy) * dt;
   c.vy += (ay - c.r * c.vx) * dt;
+  // modo arcade: el auto "se pega" al piso en curva (frena el derrape lateral y el trompo, sin tocar la velocidad)
+  if (c.arcade && Math.abs(c.vx) > 3) {
+    const k = Math.min(1, dt * 3.2), sp = Math.hypot(c.vx, c.vy), vy0 = c.vy;
+    c.vy -= vy0 * k;
+    c.vx = Math.sign(c.vx) * Math.sqrt(Math.max(0, sp * sp - c.vy * c.vy)) ;
+    c.r -= (c.r - c.vx * Math.tan(c.steer) / CAR.wb) * Math.min(1, dt * 1.2);
+  }
   c.r += Mz / CAR.Iz * dt;
   // amortiguación a muy baja velocidad (evita temblores parado)
   const sp = Math.hypot(c.vx, c.vy);
@@ -269,7 +276,7 @@ export function dmgTotal(c) { return c.dmg.reduce((a, b) => a + b, 0); }
 export function assistSteer(c, st, analog) {
   const v = Math.max(0.5, c.vx);
   const k = 0.5 * RHO * CAR.ClA / CAR.mass;
-  const aMax = 1.45 * (G + k * v * v);
+  const aMax = 1.45 * (c.gripX || 1) * (G + k * v * v);
   const rDes = st * Math.min(aMax / v, v / 6); // velocidad de giro objetivo
   let d = Math.atan(CAR.wb * rDes / v) + st * Math.min(0.07, 0.0009 * v) ;
   d += (rDes - c.r) * (v > 8 ? 0.09 : 0.03);
