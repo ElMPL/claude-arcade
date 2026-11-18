@@ -829,7 +829,7 @@ function vmHand(team, si, pose, left) {
   return (handCache[key] = handGeo(skinOf(team, si), P.curl, P.thumb, left));
 }
 const HMAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0 });
-const GMAT = [new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.36, metalness: 0.55 }), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.08 })];
+export const GMAT = [new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.36, metalness: 0.55 }), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.08 })];
 export function setViewGun(vm, id, team, si = 0, finish = 0) {
   const u = vm.userData, key = id + team + si + ':' + finish; if (u.key === key) return; u.key = key; u.id = id; u.team = team;
   u.gun.clear();

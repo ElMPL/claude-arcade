@@ -111,7 +111,7 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #556; border-bo
 #hud { --pan: linear-gradient(90deg, rgba(8, 10, 13, .62), rgba(8, 10, 13, .28)); --panR: linear-gradient(270deg, rgba(8, 10, 13, .62), rgba(8, 10, 13, .28)); }
 #hud svg { fill: currentColor; display: block; }
 #radarBox { position: absolute; left: 12px; top: 12px; width: 220px; }
-#radar { border-radius: 4px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08); }
+#radar { border-radius: 6px; background: rgba(10, 13, 18, .55); box-shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 4px 14px rgba(0, 0, 0, .35); }
 #zoneName { font-size: 13px; color: #c9cfd8; margin-top: 4px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
 #money { position: absolute; left: 12px; top: 258px; display: flex; align-items: center; gap: 6px; padding: 3px 12px 3px 8px; background: var(--pan); font-size: 24px; font-weight: 700; color: #9be29a; }
 #cartIco { width: 20px; height: 20px; color: rgba(255, 255, 255, .25); } #cartIco.on { color: #9be29a; }

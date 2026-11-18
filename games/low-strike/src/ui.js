@@ -9,29 +9,41 @@ const set = (el, v) => { if (el._v !== v) { el._v = v; el.textContent = v; } };
 export const WNAME = id => (WEAPONS[id] ? WEAPONS[id].name : id === 'c4' ? 'C4' : id === 'world' ? 'caída' : id);
 
 // ---------- radar ----------
-export function radarImage(W) {
+// radar estilo CS2: solo lo que se puede caminar (componente principal de la navegación), sombreado por altura,
+// borde claro en el contorno, sitios con su letra y fondo oscuro translúcido
+export function radarImage(W, nav) {
   const n = W.n, cv = document.createElement('canvas'); cv.width = n; cv.height = n;
   const x = cv.getContext('2d'), img = x.createImageData(n, n), d = img.data;
-  let hmin = 1e9, hmax = -1e9;
-  for (let i = 0; i < n * n; i++) if (W.cls[0][i] === 1 || W.cls[0][i] === 2) { const t = W.top[0][i]; if (t < hmin) hmin = t; if (t > hmax) hmax = t; }
-  const span = Math.max(3, Math.min(hmax - hmin, 14));
+  const H = new Float32Array(n * n).fill(NaN);
   for (let i = 0; i < n * n; i++) {
-    let r = 0, g = 0, b = 0, a = 0;
-    const c0 = W.cls[0][i], t0 = W.top[0][i];
-    if ((c0 === 1 || c0 === 2) && !isNaN(t0) && t0 - hmin < span + 1) {
-      const k = Math.max(0, Math.min(1, (t0 - hmin) / span)); r = 70 + k * 130; g = 78 + k * 118; b = 88 + k * 80; a = 235;
-      if (W.L > 1 && !isNaN(W.top[1][i])) { r *= 0.72; g *= 0.72; b *= 0.8; }
-    } else if (c0 === 3) {
-      let near = false; for (const d of [1, -1, n, -n]) { const j = i + d; if (j >= 0 && j < n * n && (W.cls[0][j] === 1)) near = true; }
-      if (near) { r = g = b = 22; a = 230; }
+    const cx = i % n, cz = (i - cx) / n;
+    let best = NaN;
+    if (nav && nav.main) {
+      const j = Math.floor(cz * W.cell / nav.c) * nav.m + Math.floor(cx * W.cell / nav.c);
+      for (let l = nav.L - 1; l >= 0; l--) { const h = nav.H[l] && nav.H[l][j]; if (isNaN(h) || !nav.main[l * nav.N + j]) continue;
+        for (let k = 0; k < W.L; k++) { const t = W.top[k][i]; if (!isNaN(t) && (W.cls[k][i] === 1 || W.cls[k][i] === 2) && Math.abs(t - h) < 0.7) { best = t; break; } }
+        if (!isNaN(best)) break; }
+    } else if (W.cls[0][i] === 1) best = W.top[0][i];
+    H[i] = best;
+  }
+  let hmin = 1e9, hmax = -1e9; for (let i = 0; i < n * n; i++) { const t = H[i]; if (t === t) { if (t < hmin) hmin = t; if (t > hmax) hmax = t; } }
+  const span = Math.max(3, hmax - hmin);
+  for (let i = 0; i < n * n; i++) {
+    const t = H[i]; let r = 12, g = 15, b = 20, a = 150;
+    if (t === t) {
+      const k = Math.max(0, Math.min(1, (t - hmin) / span));
+      r = 52 + k * 120; g = 62 + k * 118; b = 76 + k * 112; a = 245;
+      // contorno: vecino no caminable o con un escalón grande
+      for (const o of [1, -1, n, -n]) { const u = H[i + o]; if (!(u === u) || Math.abs(u - t) > 1.2) { r = 205; g = 214; b = 224; break; } }
+      const f = W.flags[i];
+      if (f & 12) { r = r * 0.7 + 70; g = g * 0.7 + 10; b *= 0.7; } // sitios
     }
-    const f = W.flags[i]; if ((f & 12) && a) { r = r * 0.6 + 120; g = g * 0.6 + 40; b *= 0.6; }
     d[i * 4] = r; d[i * 4 + 1] = g; d[i * 4 + 2] = b; d[i * 4 + 3] = a;
   }
   x.putImageData(img, 0, 0);
-  // letras de los sitios
-  const z = W.info.zones; x.font = 'bold 34px Rajdhani, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (const k of ['A', 'B']) { const b = z[k]; if (!b) continue; x.fillStyle = '#000'; x.fillText(k, (b[0] + b[2]) / 2 + 1, (b[1] + b[3]) / 2 + 1); x.fillStyle = '#ffd25a'; x.fillText(k, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2); }
+  const z = W.info.zones; x.font = `bold ${Math.round(n / 22)}px Rajdhani, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = n / 170;
+  for (const k of ['A', 'B']) { const q = z[k]; if (!q) continue; const cx = (q[0] + q[2]) / 2, cz = (q[1] + q[3]) / 2; x.strokeStyle = 'rgba(0,0,0,.85)'; x.strokeText(k, cx, cz); x.fillStyle = '#ff6a4d'; x.fillText(k, cx, cz); }
+  for (const [k, col] of [['T', '#f2c04a'], ['CT', '#7fa8ff']]) { const q = z[k]; if (!q) continue; const cx = (q[0] + q[2]) / 2, cz = (q[1] + q[3]) / 2; x.font = `bold ${Math.round(n / 34)}px Rajdhani, sans-serif`; x.strokeText(k, cx, cz); x.fillStyle = col; x.fillText(k, cx, cz); }
   return cv;
 }
 export function drawRadar(cv, img, W, view, list, bomb, meTeam) {

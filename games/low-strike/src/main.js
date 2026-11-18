@@ -18,9 +18,10 @@ import { inaccuracy, recoilStep, shotDir, traceShot, canSee } from './combat.js'
 import { segBlockedBySmoke } from './nades.js';
 import { makeNade, stepNade, NADE } from './nades.js';
 import { makeFx } from './fx.js';
-import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT } from './models.js';
+import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT, GMAT } from './models.js';
 import { loadAgents } from './agents.js';
 import { loadArms } from './vmarms.js';
+import { VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun } from './vmodels.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
@@ -246,7 +247,7 @@ function pick(slot, force) {
   if (!slotWeapon(slot)) return;
   if (slot === M.slot && !force) return;
   if (slot !== M.slot) M.lastSlot = M.slot;
-  M.slot = slot; M.inspect = 0; M.drawT = slot === 'k' ? 0.35 : 0.6; M.reloadT = 0; M.scope = 0; M.plantT = 0; M.nadeHold = 0;
+  M.slot = slot; M.inspect = 0; M.vmEv = { kind: 'draw' }; M.drawT = slot === 'k' ? 0.35 : 0.6; M.reloadT = 0; M.scope = 0; M.plantT = 0; M.nadeHold = 0;
   if (M.defusing) stopDefuse();
   A.sfxClick(null, 1400, 0.25); hud.showSlots();
 }
@@ -275,7 +276,7 @@ function reload() {
   const s = M.slot; if (s !== 'p' && s !== 's') return;
   const w = WEAPONS[curId()], a = M.ammo[s];
   if (!w.mag || a[0] >= w.mag || a[1] <= 0 || M.reloadT > 0 || M.drawT > 0) return;
-  M.reloadT = w.reload; M.scope = 0; M.inspect = 0; A.sfxReload(null);
+  M.reloadT = w.reload; M.scope = 0; M.inspect = 0; A.sfxReload(null); M.vmEv = { kind: 'reload', dur: w.reload };
 }
 function finishReload() {
   const s = M.slot, w = WEAPONS[curId()], a = M.ammo[s]; if (!a || !w.mag) return;
@@ -421,7 +422,7 @@ function fireLocal() {
   // devuelve en ~0,15 s; cada disparo le suma un poco de giro al azar y en ráfaga se va acumulando
   { const id = curId(), imp = w.cat === 'sniper' ? 20 : id === 'deagle' || id === 'r8' ? 17 : w.cat === 'pistol' ? 11 : w.cat === 'shotgun' ? 16 : w.cat === 'smg' ? 7 : w.cat === 'mg' ? 8 : 9;
     M.rkV += imp; M.rkR = (Math.random() - 0.5) * (w.cat === 'pistol' ? 0.5 : 0.3) + M.rkR * 0.3; M.rkY = (Math.random() - 0.5) * 0.25; }
-  M.fireT = 60 / w.rpm;
+  M.fireT = 60 / w.rpm; M.vmEv = { kind: 'shoot' };
   if (slot && !admin('ls.ammo')) M.ammo[slot][0]--;
   if (id === 'zeus') { req('drop', { s: 'zeus' }); }
   if ((id === 'awp' || id === 'ssg08') && M.scope) { M.rescope = M.scope; M.scope = 0; }
@@ -437,7 +438,7 @@ function knife(stab) {
   if (r.hit) { req('hit', { t: r.hit.id, w: 'knife', part: 'chest', d: r.hit.dmg }); fx.blood(r.hit.pos, d, false); A.sfxHit(false); }
   else if (r.impacts.length) { const im = r.impacts[0]; fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]]); A.sfxClick(im, 1800, 0.5); }
   else A.sfxThrow();
-  M.fireT = stab ? 1.0 : 0.45; M.kick = 1; M.knife2 = stab;
+  M.fireT = stab ? 1.0 : 0.45; M.kick = 1; M.knife2 = stab; M.vmEv = { kind: stab ? 'stab_hit' : 'stab_miss' };
   send('sh', { i: myId, w: 'knife', o: eye, e: [r.end], m: [], h: r.hit ? [[r.hit.id, r.hit.pos, 0]] : [] });
 }
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
@@ -812,8 +813,12 @@ function applyView() {
   camera.aspect = vmCam.aspect = asp; camera.updateProjectionMatrix();
   // viewmodel_fov: horizontal a 4:3 en Source; se escala desde el valor de siempre (60 ↔ 66° vertical acá)
   const t = Math.tan((S.vmFov || 60) * Math.PI / 360) / Math.tan(30 * Math.PI / 180);
-  vmCam.fov = 2 * Math.atan(Math.tan(33 * Math.PI / 180) * t) * 180 / Math.PI; vmCam.updateProjectionMatrix();
+  vmFovProc = 2 * Math.atan(Math.tan(33 * Math.PI / 180) * t) * 180 / Math.PI;
+  // modelos originales: viewmodel_fov es horizontal a 4:3 (como en Source)
+  vmFovSrc = 2 * Math.atan(Math.tan((S.vmFov || 60) * Math.PI / 360) * 0.75) * 180 / Math.PI;
+  vmCam.fov = vmFovProc; vmCam.updateProjectionMatrix();
 }
+let vmFovProc = 66, vmFovSrc = 46.8;
 function initRender() {
   renderer = new THREE.WebGLRenderer({ antialias: QUALITY > 1 && !isTouch, stencil: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5));
@@ -905,8 +910,7 @@ async function loadGame(id) {
   buildEnvironment(scene, W, id, QUALITY);
   renderer.shadowMap.needsUpdate = true;
   fx = makeFx(scene); fx.floorAt = (x, z, y) => floorAt(G.W, x, z, y + 0.2);
-  radarImg = radarImage(W);
-  labelRadar(radarImg, data.info);
+  radarImg = radarImage(W, G.nav);
   try { const c = document.createElement('canvas'); c.width = c.height = 320; c.getContext('2d').drawImage(radarImg, 0, 0, 320, 320); store.set('ls:ov:' + id, c.toDataURL('image/jpeg', 0.8)); } catch (e) { /* sin lugar: no pasa nada */ }
   clearInterval(showLoadInfo.t);
   for (const p of G.players.values()) { if (p.model) { p.model = null; p.tag = null; } }
@@ -1087,7 +1091,7 @@ function updateLocal(dt) {
     if (mouseL && mouseR && M.nadeHold) M.nadeHold = 0.5;
     if (M.nadeHold && !mouseL && !mouseR && M.drawT <= 0 && M.throwT <= 0) {
       if (G.phase === 'freeze') { hud.center('Esperá a que empiece la ronda', 1000); M.nadeHold = 0; }
-      else { M.throwT = 0.45; M.throwPow = M.nadeHold; M.nadeHold = 0; }
+      else { M.throwT = 0.45; M.throwPow = M.nadeHold; M.nadeHold = 0; M.vmEv = { kind: 'throw' }; }
     }
     if (M.throwT > 0) { const prev = M.throwT; M.throwT -= dt; if (prev > 0.35 && M.throwT <= 0.35) throwNade(M.throwPow ?? 1); }
   } else if (id === 'c4') {
@@ -1146,6 +1150,20 @@ function sendBots(dt) {
   if (arr.length) send('pb', arr, { volatile: true });
 }
 
+// ---------------- modelos de primera persona originales ----------------
+let srcCur = null; const srcVMs = {};
+function srcVM(wid, dt) {
+  const name = VMAP[wid]; if (!name) { srcCur = null; return null; }
+  const P = me(), fin = P ? finOf(P.fin, wid) : 0, key = wid + ':' + fin;
+  let V = srcVMs[key];
+  if (!V) { srcVMs[key] = 'loading'; loadVModel(name).then(def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; }); return null; }
+  if (typeof V === 'string') return null;
+  const unsil = wid === 'm4a4' || wid === 'p2000';
+  if (srcCur !== V) { if (srcCur) srcCur.holder.visible = false; srcCur = V; playSeq(V, 'draw', { unsil }); V.wid = wid; }
+  if (M.vmEv) { const e = M.vmEv; M.vmEv = null; if (playSeq(V, e.kind, { unsil, dur: e.dur }) === 0 && e.kind.startsWith('stab')) playSeq(V, 'shoot', { unsil }); }
+  updateVModel(V, dt, unsil);
+  return V;
+}
 // ---------------- cámara, arma en primera persona y HUD ----------------
 const tmpE = new THREE.Euler(0, 0, 0, 'YXZ');
 let specList = [];
@@ -1231,6 +1249,18 @@ function updateCamera(dt) {
     const r0 = u.rot || [0, 0, 0];
     u.hold.position.set(ox, oy, oz); u.hold.rotation.set(rx + r0[0], ry + r0[1], rz + r0[2]);
     updateViewArms(vm);
+    // modelo de primera persona original (brazos + arma + animaciones de CS) si existe para esta arma
+    const sv = srcVM(wid, dt);
+    if (sv) {
+      for (const c of vm.children) if (c !== sv.holder) c.visible = false;
+      if (sv.holder.parent !== vm) vm.add(sv.holder);
+      sv.holder.visible = vm.userData.gun.visible !== false || !(M.throwT > 0);
+      const S = settings.S, U = 0.0254;
+      // offsets de CS2 (x derecha, y adelante, z arriba) + bob, retroceso y recarga del código de siempre (más suaves)
+      sv.holder.position.set((S.vmX ?? 1) * U + (ox - b[0]) * 0.5, (S.vmZ ?? -1) * U + (oy - b[1]) * 0.5, -(S.vmY ?? 1) * U + (oz - b[2]) * 0.4);
+      sv.holder.rotation.set(rx * 0.35, ry * 0.35, rz * 0.2);
+    } else { for (const c of vm.children) if (c.name !== 'srcvm') c.visible = true; if (srcCur) srcCur.holder.visible = false; }
+    { const f = sv ? vmFovSrc : vmFovProc; if (Math.abs(vmCam.fov - f) > 0.01) { vmCam.fov = f; vmCam.updateProjectionMatrix(); } }
     vm.position.copy(camera.position); vm.quaternion.copy(camera.quaternion);
     vmCam.position.copy(camera.position); vmCam.quaternion.copy(camera.quaternion);
     if (window.__ls && window.__ls.vmView) { const c = window.__ls.vmView; vm.updateMatrixWorld(); vmCam.position.copy(vm.localToWorld(new THREE.Vector3(c[0], c[1], c[2]))); vmCam.up.copy(camera.up); vmCam.lookAt(vm.localToWorld(new THREE.Vector3(c[3], c[4], c[5]))); }
