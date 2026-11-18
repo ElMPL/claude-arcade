@@ -319,3 +319,22 @@ body.touch #top .sc, body.touch #clock { font-size: 20px; } body.touch .pips i {
 /* viñeta suave y un poco más de contraste y color (como el gradeo de CS2) */
 #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 9; background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, .28) 100%); }
 #view canvas { filter: contrast(1.06) saturate(1.1); }
+
+/* elegir equipo */
+#teamSel { position: fixed; inset: 0; z-index: 35; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: radial-gradient(ellipse at 50% 45%, rgba(10, 14, 20, .78), rgba(0, 0, 0, .92)); }
+#teamSel h2 { margin: 0; font: 400 46px 'Bebas Neue', 'Rajdhani', sans-serif; letter-spacing: 6px; color: #fff; }
+.ts-row { display: flex; gap: 22px; }
+.ts-card { width: min(360px, 42vw); min-height: 300px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 18px 20px; border-radius: 8px; cursor: pointer; text-align: left; color: #fff; border: 1px solid rgba(255, 255, 255, .15); transition: transform .12s, border-color .12s; }
+.ts-card.t { background: linear-gradient(180deg, rgba(150, 105, 30, .55), rgba(30, 22, 10, .85)); }
+.ts-card.ct { background: linear-gradient(180deg, rgba(50, 90, 170, .55), rgba(10, 18, 34, .85)); }
+.ts-card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, .6); }
+.ts-card.t:hover, .ts-card.t.mine { border-color: #f2c04a; } .ts-card.ct:hover, .ts-card.ct.mine { border-color: #6f9fef; }
+.ts-card b { font: 400 28px 'Bebas Neue', 'Rajdhani', sans-serif; letter-spacing: 3px; }
+.ts-card.t b { color: #f2c04a; } .ts-card.ct b { color: #8db4ff; }
+.ts-list { list-style: none; margin: 0; padding: 0; flex: 1; font-size: 16px; line-height: 1.6; }
+.ts-list li.b { color: #9aa4b2; }
+.ts-note { font-style: normal; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #cfd6e0; opacity: .85; }
+.ts-card.full { opacity: .45; cursor: not-allowed; }
+#teamSel small { color: #aab4c2; } #teamSel kbd { border: 1px solid #667; border-radius: 3px; padding: 0 5px; }
+#tsClose { background: transparent; border: 1px solid rgba(255, 255, 255, .3); color: #ddd; padding: 6px 18px; border-radius: 4px; cursor: pointer; font: 400 20px 'Bebas Neue', sans-serif; letter-spacing: 2px; }
+@media (max-width: 700px) { .ts-row { flex-direction: column; } .ts-card { width: 80vw; min-height: 150px; } }

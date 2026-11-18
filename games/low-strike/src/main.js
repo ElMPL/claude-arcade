@@ -19,6 +19,8 @@ import { segBlockedBySmoke } from './nades.js';
 import { makeNade, stepNade, NADE } from './nades.js';
 import { makeFx } from './fx.js';
 import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT } from './models.js';
+import { loadAgents } from './agents.js';
+import { loadArms } from './vmarms.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
@@ -59,13 +61,13 @@ function req(type, data) {
   if (isHost()) { if (H) H.handle(type, data, myId, { admin: Arcade.admin && Arcade.admin.active }); }
   else send(type, data, { to: ctx.hostId });
 }
-const HOSTMSG = ['hit', 'buy', 'drop', 'take', 'nade', 'plant', 'defst', 'defx', 'defok', 'adm', 'fall', 'timeout', 'vote', 'radio', 'ping'];
+const HOSTMSG = ['team', 'hit', 'buy', 'drop', 'take', 'nade', 'plant', 'defst', 'defx', 'defok', 'adm', 'fall', 'timeout', 'vote', 'radio', 'ping'];
 
 // ---------------- jugador local ----------------
 const M = {
   pl: null, slot: 's', throwT: 0, throwPow: 1, drawT: 0, fireT: 0, reloadT: 0, shots: 0, pp: 0, py: 0, scope: 0, ammo: { p: [0, 0], s: [0, 0] }, ammoW: { p: null, s: null },
   invV: -1, gsel: 0, plantT: 0, defT: 0, defusing: false, trig: false, trig2: false, nadeHold: 0, nadeCd: 0, stepT: 0, deadT: 0, spec: null,
-  blind: 0, blindMax: 0, shake: 0, bob: 0, kick: 0, lastSlot: 'k', zeus: false, sway: [0, 0], swayT: [0, 0], pickCd: 0, voidSent: false, lastMoney: null, rescope: 0, knife2: false,
+  blind: 0, blindMax: 0, shake: 0, bob: 0, kick: 0, rk: 0, rkV: 0, rkR: 0, rkY: 0, lastSlot: 'k', zeus: false, sway: [0, 0], swayT: [0, 0], pickCd: 0, voidSent: false, lastMoney: null, rescope: 0, knife2: false,
 };
 const me = () => G.players.get(myId);
 
@@ -132,14 +134,47 @@ function lockPointer() {
   try { const r = c.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(plain); else if (!r) { } } catch (e) { plain(); }
 }
 document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === renderer.domElement; if (locked) lockAt = performance.now(); updateClickPlay(); });
-function updateClickPlay() { $('clickPlay').hidden = locked || isTouch || G.phase === 'lobby' || buyOpen || !loaded || settings.isOpen(); }
+function updateClickPlay() { $('clickPlay').hidden = locked || isTouch || G.phase === 'lobby' || buyOpen || teamSelOpen || !loaded || settings.isOpen(); }
+// ---------------- elegir equipo (al entrar a la partida, y con M para cambiar) ----------------
+let teamSelOpen = false, teamSelForced = false;
+function openTeamSel(on, forced = false) {
+  teamSelOpen = on; teamSelForced = forced && on; $('teamSel').hidden = !on;
+  $('tsClose').hidden = teamSelForced;
+  if (on) { document.exitPointerLock && document.exitPointerLock(); renderTeamSel(); }
+  updateClickPlay();
+}
+function renderTeamSel() {
+  const P = me();
+  for (const side of ['T', 'CT']) {
+    const ps = [...G.players.values()].filter(p => p.team === side && !p.kicked);
+    const hum = ps.filter(p => !p.bot), bots = ps.filter(p => p.bot).length;
+    const full = G.cfg.bots ? !bots : false;
+    const el = document.querySelector(`#teamSel [data-side="${side}"]`);
+    el.classList.toggle('full', full && (!P || P.team !== side)); el.classList.toggle('mine', !!P && P.team === side);
+    el.querySelector('.ts-list').innerHTML = hum.map(p => `<li>${String(p.name).replace(/[<>&"]/g, '')}</li>`).join('') + (bots ? `<li class="b">${bots} bot${bots > 1 ? 's' : ''}</li>` : '');
+    el.querySelector('.ts-note').textContent = P && P.team === side ? 'Tu equipo' : full ? 'Lleno' : G.cfg.bots ? 'Reemplazás a un bot' : 'Entrás en la próxima ronda';
+  }
+}
+function syncTeamSel(P) {
+  if (G.phase === 'lobby') { if (teamSelOpen) openTeamSel(false); return; }
+  if (P.team === 'SPEC') { const at = store.get('ls:autoTeam', null); if (at && !M.autoTeamSent) { M.autoTeamSent = true; req('team', { s: at }); return; } if (!teamSelOpen) openTeamSel(true, true); else renderTeamSel(); } // ls:autoTeam: solo para pruebas
+  else if (teamSelForced) openTeamSel(false);
+  else if (teamSelOpen) renderTeamSel();
+}
+function pickTeam(side) {
+  const P = me(); if (!P) return;
+  if (P.team === side) { openTeamSel(false); return; }
+  req('team', { s: side }); store.set('ls:lastTeam', side);
+  openTeamSel(false); A.sfxClick && A.sfxClick(null, 600, 0.3);
+}
 
 function onKey(c) {
   const P = me(); if (!P) return;
   if (radioMenu) { const n = parseInt(c.replace('Digit', ''), 10); if (n >= 1 && n <= 9) { const m = RADIO[radioMenu][n - 1]; if (m) { if (m.act) m.act(); else req('radio', { m: m.t }); } } closeRadio(); return; }
   if ((c === 'KeyZ' || c === 'KeyX' || c === 'KeyC') && G.phase !== 'lobby' && !buyOpen) { openRadio(c === 'KeyZ' ? 'z' : c === 'KeyX' ? 'x' : 'c'); return; }
   if (c === 'KeyV' && !buyOpen) { doPing(); return; }
-  if (c === 'KeyB') { toggleBuy(); return; }
+  if (c === 'KeyB') { if (P.team !== 'SPEC') toggleBuy(); return; }
+  if (c === 'KeyM' && G.phase !== 'lobby' && !buyOpen) { openTeamSel(!teamSelOpen); return; }
   if (c === 'Tab') return;
   if (c === 'BracketLeft' || c === 'BracketRight') { CFG.sens = +Math.max(0.4, Math.min(8, CFG.sens * (c === 'BracketLeft' ? 0.92 : 1.08))).toFixed(2); store.set('ls:cfg', CFG); hud.center('Sensibilidad ' + CFG.sens.toFixed(2), 1200); return; }
   if (!P.alive) { if (c === 'Space') nextSpec(1); return; }
@@ -365,7 +400,10 @@ function fireLocal() {
   G.fireBullets(myId, id, eye, r => shotDir(p.yaw, p.pitch, pp, py, inacc, r));
   const [rp, ry] = recoilStep(w, M.shots, Math.random);
   M.pp = Math.min(w.kickCap || 12, M.pp + rp); M.py += ry; M.shots++;
-  M.kick = Math.min(1, M.kick + (w.cat === 'sniper' ? 1 : w.cat === 'pistol' ? 0.6 : 0.4));
+  // retroceso visual del arma en la mano (como en CS): golpe hacia atrás y la boca para arriba, con un resorte que la
+  // devuelve en ~0,15 s; cada disparo le suma un poco de giro al azar y en ráfaga se va acumulando
+  { const id = curId(), imp = w.cat === 'sniper' ? 20 : id === 'deagle' || id === 'r8' ? 17 : w.cat === 'pistol' ? 11 : w.cat === 'shotgun' ? 16 : w.cat === 'smg' ? 7 : w.cat === 'mg' ? 8 : 9;
+    M.rkV += imp; M.rkR = (Math.random() - 0.5) * (w.cat === 'pistol' ? 0.5 : 0.3) + M.rkR * 0.3; M.rkY = (Math.random() - 0.5) * 0.25; }
   M.fireT = 60 / w.rpm;
   if (slot && !admin('ls.ammo')) M.ammo[slot][0]--;
   if (id === 'zeus') { req('drop', { s: 'zeus' }); }
@@ -530,12 +568,13 @@ function roundStart(d) {
   for (const m of nadeMeshes.values()) scene.remove(m); nadeMeshes.clear(); G.nades.length = 0;
   planting.clear();
   hud.banner(null);
-  for (const p of G.players.values()) { p.deadT = 0; p.alive = true; }
+  for (const p of G.players.values()) { p.deadT = 0; p.alive = !!d.pos[p.id]; }
   const mine = d.pos[myId];
   if (mine) { M.pl = makePlayer(mine[0], mine[1], mine[2], mine[3]); }
+  else { const any = Object.values(d.pos)[0]; if (any) M.pl = makePlayer(any[0], any[1], any[2], any[3]); M.deadT = 99; } // mirando hasta elegir equipo
   if (isHost() && BOTS) { for (const p of G.players.values()) if (p.bot && d.pos[p.id]) BOTS.place(p, d.pos[p.id]); BOTS.roundStart(); }
   for (const [id, pos] of Object.entries(d.pos)) { const p = G.players.get(id); if (p) { p.x = p.nx = pos[0]; p.y = p.ny = pos[1]; p.z = p.nz = pos[2]; p.yaw = p.nyaw = pos[3]; p.pitch = 0; } }
-  Object.assign(M, { deadT: 0, spec: null, blind: 0, plantT: 0, defusing: false, defT: 0, scope: 0, reloadT: 0, drawT: 0.4, shots: 0, pp: 0, py: 0, voidSent: false, nadeHold: 0 });
+  Object.assign(M, { deadT: mine ? 0 : 99, spec: null, blind: 0, plantT: 0, defusing: false, defT: 0, scope: 0, reloadT: 0, drawT: 0.4, shots: 0, pp: 0, py: 0, voidSent: false, nadeHold: 0 });
   M.invV = -1; M.ammoW = { p: null, s: null };
   syncInv();
   M.throwT = 0;
@@ -613,7 +652,9 @@ function onEvent(e) {
     case 'boom': fx.explosion([e.x, e.y, e.z], true); A.sfxExplosion([e.x, e.y, e.z], true); shakeFrom([e.x, e.y, e.z], 60, 1.2); break;
     case 'bombdrop': if (P && P.team === 'T') hud.center('Se cayó la bomba', 1600); break;
     case 'bombpick': if (e.p === myId) { hud.center('Agarraste la bomba (5)', 1600); A.sfxPickup(); } break;
-    case 'deny': hud.center(e.why, 1500); A.sfxDeny(); break;
+    case 'deny': hud.center(e.why, 1500); A.sfxDeny(); if (P && P.team === 'SPEC') openTeamSel(true, true); break;
+    case 'gone': { const q = G.players.get(e.id); if (q) { if (q.model) scene.remove(q.model); G.players.delete(e.id); } if (M.spec === e.id) M.spec = null; break; }
+    case 'joined': hud.feedMsg ? hud.feedMsg(e.n + ' se unió a los ' + (e.team === 'T' ? 'Terroristas' : 'Antiterroristas')) : hud.center(e.n + ' se unió a los ' + (e.team === 'T' ? 'T' : 'CT'), 1800); if (e.id === myId) { M.deadT = M.pl && P && P.alive ? 0 : 99; } break;
     case 'resp': {
       const p = G.players.get(e.id); if (!p) break;
       p.alive = true; p.deadT = 0; p.x = p.nx = e.pos[0]; p.y = p.ny = e.pos[1]; p.z = p.nz = e.pos[2]; p.yaw = p.nyaw = e.pos[3];
@@ -883,7 +924,7 @@ function updateModels(dt) {
     const sp = Math.hypot(p.vx || 0, p.vz || 0);
     setModelGun(m, p.alive ? (p.wpn || 'knife') : null, finOf(p.fin, p.wpn || 'knife'));
     if (p.mflash && p.wpn) { const gi = gunInfo(p.wpn); p.mflash.position.set(0, gi.muzzle[1] * 1.12, -gi.muzzle[0] * 1.12 - 0.05); if (p.mflash.parent !== m.userData.gun) m.userData.gun.add(p.mflash); }
-    poseModel(m, { speed: p.alive ? sp : 0, duck: p.duck || 0, pitch: p.pitch || 0, onGround: p.onGround !== false, dead: p.alive ? 0 : p.deadT, deadDir: p.deadDir, deadSide: p.deadSide, fire: Math.max(0, p.flashT || 0), reload: p.alive && p.reloading }, dt);
+    poseModel(m, { speed: p.alive ? sp : 0, duck: p.duck || 0, pitch: p.pitch || 0, onGround: p.onGround !== false, dead: p.alive ? 0 : p.deadT, deadDir: p.deadDir, deadSide: p.deadSide, fire: Math.max(0, p.flashT || 0), reload: p.alive && p.reloading, fp }, dt);
     if (p.mflash) { p.flashT = (p.flashT || 0) - dt; p.mflash.visible = p.flashT > 0; if (p.mflash.visible) p.mflash.rotation.z = Math.random() * 3; }
     // nombres de compañeros
     if (P && p.team === P.team && !local && p.alive) { if (!p.tag) { p.tag = tagSprite(p.name, p.team); m.add(p.tag); } p.tag.visible = true; p.tag.position.y = 2.15 - (p.duck || 0) * 0.45; }
@@ -1123,9 +1164,12 @@ function updateCamera(dt) {
     M.sway[0] += (M.swayT[0] - M.sway[0]) * Math.min(1, dt * 10); M.sway[1] += (M.swayT[1] - M.sway[1]) * Math.min(1, dt * 10);
     M.swayT[0] *= Math.exp(-dt * 10); M.swayT[1] *= Math.exp(-dt * 10);
     M.kick = Math.max(0, M.kick - dt * 7);
+    { // resorte del retroceso visual (sub-pasos para que sea estable)
+      const n = Math.ceil(dt / 0.004), h = dt / n; for (let k = 0; k < n; k++) { const acc = -650 * M.rk - 38 * M.rkV; M.rkV += acc * h; M.rk += M.rkV * h; } }
     const bob = P.alive ? M.bob : G.time * 2, ba = P.alive ? Math.min(1, Math.hypot(M.pl.vx, M.pl.vz) / 5) : 0.3;
-    let ox = b[0] + Math.cos(bob) * 0.008 * ba + M.sway[0] * 0.02, oy = b[1] + Math.abs(Math.sin(bob)) * 0.01 * ba - M.sway[1] * 0.02, oz = b[2] + M.kick * 0.045;
+    let ox = b[0] + Math.cos(bob) * 0.008 * ba + M.sway[0] * 0.02, oy = b[1] + Math.abs(Math.sin(bob)) * 0.01 * ba - M.sway[1] * 0.02, oz = b[2] + (w && w.cat === 'knife' ? M.kick * 0.045 : 0);
     let rx = M.kick * 0.12, ry = 0, rz = 0;
+    if (P.alive && w && w.cat !== 'knife') { const r = M.rk; oz += r * 0.18; oy += r * 0.02; rx += r * 0.45; rz += r * M.rkR; ry += r * M.rkY * 0.4; }
     vm.userData.reloadK = 0;
     if (P.alive && M.reloadT > 0) {
       const rw = WEAPONS[curId()], k = 1 - M.reloadT / rw.reload, e = Math.sin(Math.min(1, k) * Math.PI);
@@ -1189,6 +1233,7 @@ function drawRadarNow(P) {
 }
 function updateHud(dt) {
   const P = me(); if (!P) return;
+  syncTeamSel(P);
   hurtFlash = Math.max(0, hurtFlash - dt * 1.4);
   hud.el.hurt.style.opacity = Math.max(hurtFlash, P.alive && P.hp <= 30 ? 0.22 + 0.14 * Math.sin(G.time * 4) : 0).toFixed(2);
   M.blind = Math.max(0, M.blind - dt);
@@ -1372,7 +1417,7 @@ function becomeHost() {
 // ---------------- arranque ----------------
 async function boot() {
   hud.init();
-  await loadGunModels();
+  await Promise.all([loadGunModels(), loadAgents(), loadArms()]);
   initRender();
   setupTouch();
   requestAnimationFrame(frame);
@@ -1400,6 +1445,8 @@ async function boot() {
   // el host local inicia 'start' con G.emit → también llega a onMsg; lo resolvemos acá
   const origEmit = G.emit;
   G.emit = (type, data) => { if (type === 'start') { send('start', data); startGame(data); return; } origEmit(type, data); };
+  for (const b of document.querySelectorAll('#teamSel [data-side]')) b.onclick = () => pickTeam(b.dataset.side);
+  $('tsClose').onclick = () => openTeamSel(false);
   menu = makeMenu({
     G, store, MAPS, LENGTHS, DIFF, MODES, mapThumb, ctx: () => ctx, myId: () => myId, isHost, pushCfg,
     openSettings: (cb) => settings.open(cb),
@@ -1412,4 +1459,4 @@ async function boot() {
 }
 boot();
 // para pruebas automáticas
-window.__ls = { G, M, me, req, get H() { return H; }, get BOTS() { return BOTS; }, get camera() { return camera; }, keys, look, onKey, traceShot, targets, shotDir, setMouse(l, r) { mouseL = l; mouseR = !!r; if (r) secondary(); } };
+window.__ls = { G, M, me, req, get H() { return H; }, get BOTS() { return BOTS; }, get camera() { return camera; }, get vm() { return vm; }, get scene() { return scene; }, keys, look, onKey, traceShot, targets, shotDir, setMouse(l, r) { mouseL = l; mouseR = !!r; if (r) secondary(); } };

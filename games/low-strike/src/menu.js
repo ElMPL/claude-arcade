@@ -40,7 +40,7 @@ export function makeMenu(o) {
   const holder = new THREE.Group(); scene.add(holder);
   let model = null, modelKey = '', spin = 0.4, drag = null, t0 = 0;
 
-  function myTeamPreview() { const p = look.t === 1 ? 'CT' : 'T'; return p; }
+  function myTeamPreview() { return store.get('ls:lastTeam', 'T') === 'CT' ? 'CT' : 'T'; }
   function rebuildModel() {
     const team = myTeamPreview(), w = team === 'T' ? 'ak47' : 'm4a4';
     if (team === modelKey) return; modelKey = team;
@@ -55,7 +55,7 @@ export function makeMenu(o) {
     holder.rotation.y = Math.PI + Math.sin(spin) * 0.6 + 0.35;
     if (model) poseModel(model, { speed: 0, duck: 0, pitch: Math.sin(t0 * 1.3) * 0.04 - 0.05, onGround: true, dead: 0 }, dt);
     { const a = dustG.attributes.position; for (let i = 0; i < dustN; i++) { let y = a.array[i * 3 + 1] + dt * 0.06; if (y > 3.2) y = 0; a.array[i * 3 + 1] = y; a.array[i * 3] += Math.sin(t0 * 0.4 + i) * dt * 0.02; } a.needsUpdate = true; }
-    { const tc = myTeamPreview() === 'CT' && look.t === 1 ? '#5b9bff' : look.t === -1 ? '#d8dee8' : '#f2c04a'; ringMat.color.set(tc); glowMat.color.set(tc); }
+    { const tc = myTeamPreview() === 'CT' ? '#5b9bff' : '#f2c04a'; ringMat.color.set(tc); glowMat.color.set(tc); }
     const asp = innerWidth / innerHeight;
     cam.aspect = asp; cam.fov = asp < 1 ? 46 : 30; cam.updateProjectionMatrix();
     cam.position.set(asp < 1 ? 0 : -0.05, 1.5, 7.2); cam.lookAt(asp < 1 ? 0 : -0.05, 0.62, 0);
@@ -123,12 +123,9 @@ export function makeMenu(o) {
     for (const b of document.querySelectorAll('[data-pref]')) b.classList.toggle('on', +b.dataset.pref === look.t);
     // equipo / grupo
     const people = (ctx.players || []).map(p => ({ ...p, pr: G.prefs[p.id] || {} }));
-    const cnt = [0, 0], team = {};
-    for (const p of people) { const t = p.pr.t ?? -1; if (t === 0 || t === 1) { team[p.id] = t; cnt[t]++; } }
-    for (const p of people.slice().sort((a, b) => a.slot - b.slot)) if (team[p.id] === undefined) { const g = cnt[0] <= cnt[1] ? 0 : 1; team[p.id] = g; cnt[g]++; }
-    const per = G.cfg.bots ? Math.max(cnt[0], cnt[1], G.cfg.size) : Math.max(cnt[0], cnt[1]);
-    $('party').innerHTML = `<h4>GRUPO</h4>` + people.map(p => `<div class="pm ${team[p.id] ? 'ct' : 't'} ${p.id === me ? 'me' : ''}"><i></i><span>${esc(p.name)}</span><small>${team[p.id] ? 'CT' : 'T'}${(p.pr.t ?? -1) === -1 ? ' · auto' : ''}${p.id === ctx.hostId ? ' · host' : ''}</small></div>`).join('')
-      + (G.cfg.bots ? `<div class="pm bot"><i></i><span>+ ${Math.max(0, per * 2 - people.length)} bots</span><small>${o.DIFF[G.cfg.diff].name}</small></div>` : '');
+    const per = G.cfg.bots ? Math.max(G.cfg.size, Math.ceil(people.length / 2)) : Math.ceil(people.length / 2);
+    $('party').innerHTML = `<h4>GRUPO</h4>` + people.map(p => `<div class="pm ${p.id === me ? 'me' : ''}"><i></i><span>${esc(p.name)}</span><small>${p.id === ctx.hostId ? 'host · ' : ''}elige equipo al entrar</small></div>`).join('')
+      + (G.cfg.bots ? `<div class="pm bot"><i></i><span>${per * 2} bots</span><small>${o.DIFF[G.cfg.diff].name} · cada jugador reemplaza a uno</small></div>` : '');
     // tarjeta de modo
     const map = o.MAPS.find(m => m.id === G.cfg.map) || o.MAPS[0];
     $('modeTitle').textContent = `${per} VS ${per}`; $('modeMapName').textContent = map.name;

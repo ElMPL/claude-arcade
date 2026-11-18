@@ -6,6 +6,8 @@ export const PM = {
   gravity: 800 * U, jump: 301.993 * U, accel: 5.5, airAccel: 12, friction: 5.2, stop: 80 * U,
   airCap: 30 * U, hStand: 72 * U, hCrouch: 54 * U, eyeStand: 64 * U, eyeCrouch: 46 * U,
   walk: 0.52, crouchMul: 0.34, r: 0.4,
+  // stamina de CS:GO (sv_staminamax 80, sv_staminajumpcost 0.08, sv_staminalandcost 0.05, sv_staminarecoveryrate 60)
+  stMax: 80, stJump: 0.08, stLand: 0.05, stRecover: 60,
 };
 
 export function makePlayer(x, y, z, yaw = 0) {
@@ -16,6 +18,8 @@ export const eyeH = p => PM.eyeStand + (PM.eyeCrouch - PM.eyeStand) * p.duck;
 // inp: { f, s (adelante/costado -1..1), jump, crouch, walk }, maxSpeed en m/s
 export function movePlayer(W, p, inp, dt, maxSpeed) {
   p.sinceLand = (p.sinceLand ?? 1) + dt;
+  p.st = Math.max(0, (p.st || 0) - PM.stRecover * dt); // stamina: se recupera 60 por segundo
+  const stK = 1 - p.st / 100;
   // agacharse (se para solo si hay lugar)
   const want = inp.crouch ? 1 : 0;
   if (want > p.duck) p.duck = Math.min(1, p.duck + dt * 8);
@@ -27,7 +31,7 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   p.h = PM.hStand + (PM.hCrouch - PM.hStand) * p.duck;
   if (!p.onGround && p.h < oldH) p.y += (oldH - p.h) * 0.5; // agacharse en el aire levanta las piernas
 
-  let speed = maxSpeed * (p.duck > 0.5 ? PM.crouchMul : inp.walk ? PM.walk : 1);
+  let speed = maxSpeed * (p.duck > 0.5 ? PM.crouchMul : inp.walk ? PM.walk : 1) * (p.onGround ? stK : 1);
   const sy = Math.sin(p.yaw), cy = Math.cos(p.yaw);
   // forward = (-sin yaw, -cos yaw) (cámara mira hacia -z con yaw 0); derecha = (cos yaw, -sin yaw)
   let wx = -sy * inp.f + cy * inp.s, wz = -cy * inp.f - sy * inp.s;
@@ -37,13 +41,14 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   if (p.onGround) {
     // salto (hay que soltar y volver a apretar)
     if (inp.jump && !p.jumpHeld && ceiling(W, p.x, p.z, p.y) > p.y + p.h + 0.05) {
-      // cansancio de CS:GO: saltar enseguida después de caer salta menos (limita el bunny hop)
-      p.vy = PM.jump * ((p.sinceLand || 1) < 0.4 ? 0.88 : 1); p.onGround = false; p.jumpHeld = true;
+      // stamina de CS:GO: con stamina gastada se salta más bajo; saltar suma 0.08 × la velocidad del salto
+      p.vy = PM.jump * stK; p.onGround = false; p.jumpHeld = true;
+      p.st = Math.min(PM.stMax, p.st + PM.stJump * p.vy / U);
     } else {
       // fricción
       const sp = Math.hypot(p.vx, p.vz);
       if (sp > 0.001) {
-        const drop = Math.max(sp, PM.stop) * PM.friction * dt * (p.landT > 0 ? 1.4 : 1);
+        const drop = Math.max(sp, PM.stop) * PM.friction * dt;
         const ns = Math.max(0, sp - drop) / sp; p.vx *= ns; p.vz *= ns;
       }
       accelerate(p, wx, wz, speed, PM.accel, dt);
@@ -79,8 +84,9 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
     const g2 = ground(W, p.x, p.z, p.y - p.vy * dt, PM.r - 0.02);
     if (p.vy <= 0 && p.y <= g2) {
       const fall = -p.vy; p.y = g2; p.vy = 0; p.onGround = true; p.landT = 0.12; p.sinceLand = 0;
-      // al caer se pierde velocidad (no se puede encadenar saltos sin frenar)
-      if (Math.hypot(p.vx, p.vz) > 4) { p.vx *= 0.78; p.vz *= 0.78; }
+      // al caer: la stamina sube 0.05 × la velocidad de caída y frena en proporción (el bunny hop pierde velocidad)
+      p.st = Math.min(PM.stMax, p.st + PM.stLand * fall / U);
+      const k = 1 - p.st / 100; p.vx *= k; p.vz *= k;
       return fall; // velocidad de caída (para daño)
     }
   }

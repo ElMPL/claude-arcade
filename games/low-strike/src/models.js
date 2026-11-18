@@ -1,6 +1,8 @@
 // Modelos de poligonado medio: armas (perfiles extruidos con biseles), personajes redondeados,
 // y brazos que agarran el arma con IK de dos huesos (en primera y en tercera persona).
 import * as THREE from 'three';
+import { makeAgent, poseAgent } from './agents.js';
+import { armsReady, makeArm, poseArm, aimFore } from './vmarms.js';
 import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { WEAPONS } from './weapons.js';
@@ -485,6 +487,7 @@ function importedGeo(id, finish) {
   for (let i = 0; i < m.nv; i++) {
     const hex = ((c[i * 3] << 16) | (c[i * 3 + 1] << 8) | c[i * 3 + 2]).toString(16).padStart(6, '0');
     tc.setRGB(c[i * 3] / 255, c[i * 3 + 1] / 255, c[i * 3 + 2] / 255, THREE.SRGBColorSpace);
+    if (id === 'deagle' && hex === '9ba1a9') tc.set('#4a4d53'); // la Deagle por defecto es pavonada, no plateada (se veía blanca)
     metal[i] = METAL_COLS.has(hex) || hex === '2c2e32' ? 1 : 0;
     // acabado (skin): el cuerpo toma el color principal y las piezas de color (madera, polímero) el secundario
     if (fb && id !== 'knife') { if (hex === '2c2e32' || !metal[i] && hex !== '1f2023') tc.copy(metal[i] ? fb : (fw || fb)); }
@@ -541,8 +544,8 @@ export function gunMesh(id, finish = 0) { return new THREE.Mesh(gunGeo(id, finis
 // Un solo modelo por bando, inspirado en los clásicos: T con pasamontañas, campera de cuero y chaleco de
 // cargadores (estilo Fénix); CT con casco, antiparras, máscara de gas y chaleco táctico (estilo SAS).
 export const SKINS = {
-  T: [{ name: 'Terrorista', shirt: '#4a3a2c', pants: '#3a3f46', vest: '#46402f', glove: '#232323', boots: '#2a241d', skin: '#b98a66', head: 'balaclava', hc: '#2c2c2a' }],
-  CT: [{ name: 'Contraterrorista', shirt: '#3a4036', pants: '#343a33', vest: '#4a5142', glove: '#1a1a1a', boots: '#1b1b1b', skin: '#c49670', head: 'sas', hc: '#4f5544' }],
+  T: [{ name: 'Terrorista', shirt: '#6a2a22', pants: '#2c2b29', vest: '#46402f', glove: '#1e1e1e', boots: '#2a241d', skin: '#9a7458', head: 'balaclava', hc: '#2c2c2a' }],
+  CT: [{ name: 'Contraterrorista', shirt: '#3d4352', pants: '#33373f', vest: '#4a5142', glove: '#141414', boots: '#1b1b1b', skin: '#c49670', head: 'sas', hc: '#4f5544' }],
 };
 export const skinOf = (team) => (SKINS[team] || SKINS.T)[0];
 const pcache = {};
@@ -607,6 +610,7 @@ function bodyGeos(team) {
 // modelo del jugador: mira hacia -z, pies en y=0. Los brazos se resuelven con IK hacia el arma.
 export function makePlayerModel(team, si = 0) {
   const G = bodyGeos(team);
+  const ag = makeAgent(team);
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const hips = new THREE.Group(); hips.position.y = 0.92; body.add(hips);
   const legs = [];
@@ -624,7 +628,11 @@ export function makePlayerModel(team, si = 0) {
   const gun = new THREE.Group(); gun.matrixAutoUpdate = true; chest.add(gun);
   const arms = [];
   for (let k = 0; k < 2; k++) { const u = new THREE.Mesh(G.upper, MAT), f = new THREE.Mesh(G.fore, MAT), h = new THREE.Mesh(G.hand, MAT); chest.add(u, f, h); arms.push({ u, f, h }); }
-  root.userData = { body, hips, legs, chest, neck, gun, arms, gunId: null, phase: 0, team, si };
+  root.userData = { body, hips, legs, chest, neck, gun, arms, gunId: null, phase: 0, team, si, ag, armT: [{ target: new THREE.Vector3(), pole: new THREE.Vector3() }, { target: new THREE.Vector3(), pole: new THREE.Vector3() }] };
+  if (ag) { // modelo de CS2 con esqueleto: el rig procedural queda invisible y solo lo maneja
+    root.add(ag.holder);
+    root.traverse(o => { if (o.isMesh && o !== ag.mesh && !isUnder(o, gun)) o.visible = false; });
+  }
   return root;
 }
 export function setModelGun(root, id, finish = 0) {
@@ -632,6 +640,7 @@ export function setModelGun(root, id, finish = 0) {
   u.gun.clear(); u.info = id ? gunInfo(id) : null; u.wid = id;
   if (id) { const m = gunMesh(id, finish); m.scale.setScalar(1.12); u.gun.add(m); if (id === 'dualies') { const m2 = gunMesh(id, finish); m2.scale.setScalar(1.12); m2.position.x = -0.24; u.gun.add(m2); } }
 }
+function isUnder(o, g) { for (let p = o; p; p = p.parent) if (p === g) return true; return false; }
 // IK de dos huesos: hombro S, objetivo T, largos a y b, polo → codo (out); devuelve el objetivo alcanzable
 const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), vD = new THREE.Vector3(), vE = new THREE.Vector3();
 function ik(S, T, a, b, pole, out) {
@@ -690,6 +699,7 @@ export function poseModel(root, o, dt) {
     }
     if (!target) target = tg.set(right ? 0.3 : -0.3, 0.02, -0.05 + sw * 0.15 * (right ? -1 : 1));
     pl.set(right ? 0.7 : -0.7, -0.5, 0.4);
+    u.armT[k].target.copy(target); u.armT[k].pole.copy(pl); u.armT[k].handQ = null;
     const T2 = ik(sh, target, 0.29, 0.27, pl, el);
     placeSeg(A.u, sh, el); placeSeg(A.f, el, T2);
     A.h.position.copy(T2); A.h.quaternion.copy(A.f.quaternion);
@@ -707,9 +717,10 @@ export function poseModel(root, o, dt) {
     L.hip.rotation.x = -0.25 * k * dir + side * 0.2; R.hip.rotation.x = 0.35 * k * dir; L.knee.rotation.x = 0.9 * k; R.knee.rotation.x = 0.25 * k;
     u.neck.rotation.x = -0.5 * k * dir; u.chest.rotation.x = 0.15 * k * dir;
     // brazos abiertos (se deja el arma)
-    for (let j = 0; j < 2; j++) { const A = u.arms[j], sgn = j === 0 ? 1 : -1; sh.set(sgn * 0.24, 0.46, 0); el.set(sgn * (0.24 + 0.28 * k), 0.46 - 0.12 * k, 0.12 * k * dir); tg.set(sgn * (0.3 + 0.45 * k), 0.38 - 0.1 * k, 0.3 * k * dir); placeSeg(A.u, sh, el); placeSeg(A.f, el, tg); A.h.position.copy(tg); }
+    for (let j = 0; j < 2; j++) { const A = u.arms[j], sgn = j === 0 ? 1 : -1; sh.set(sgn * 0.24, 0.46, 0); el.set(sgn * (0.24 + 0.28 * k), 0.46 - 0.12 * k, 0.12 * k * dir); tg.set(sgn * (0.3 + 0.45 * k), 0.38 - 0.1 * k, 0.3 * k * dir); placeSeg(A.u, sh, el); placeSeg(A.f, el, tg); A.h.position.copy(tg); u.armT[j].target.copy(tg); u.armT[j].pole.set(sgn * 0.6, 0.2, 0.5); }
     u.gun.visible = false;
   } else u.gun.visible = true;
+  if (u.ag) poseAgent(u.ag, u, u.armT, o.dead > 0 ? 0.2 : (info ? 1 : 0.4), !!o.fp);
 }
 
 // ---------------- primera persona ----------------
@@ -806,7 +817,10 @@ function vmParts(team, si) {
   const S = skinOf(team, si);
   const tube = (r0, r1, len, u, col) => { const g = new THREE.CylinderGeometry(r0, r1, len, 18); g.rotateX(Math.PI / 2); g.translate(0, 0, -u); return paint(g, col); };
   // antebrazo: manga con pliegues y el puño del guante (de 0 = codo a 1 = muñeca, se estira con placeSeg)
-  const forearm = mergeGeometries([tube(0.044, 0.034, 1, 0, S.shirt), tube(0.045, 0.043, 0.06, 0.05, S.shirt), tube(0.042, 0.04, 0.04, -0.15, S.shirt), tube(0.037, 0.036, 0.1, 0.43, S.vest), tube(0.033, 0.032, 0.03, 0.49, '#1d1e20')]);
+  // T (Leet): manga arremangada sobre el codo, antebrazo al aire y guante sin dedos; CT (SAS): manga gris azulada y guante
+  const forearm = team === 'T'
+    ? mergeGeometries([tube(0.04, 0.031, 1, 0, S.skin), tube(0.05, 0.047, 0.16, -0.1, S.shirt), tube(0.051, 0.05, 0.03, 0.0, '#4e1d17'), tube(0.034, 0.033, 0.07, 0.46, S.glove)])
+    : mergeGeometries([tube(0.044, 0.034, 1, 0, S.shirt), tube(0.045, 0.043, 0.06, 0.05, S.shirt), tube(0.042, 0.04, 0.04, -0.15, S.shirt), tube(0.037, 0.036, 0.1, 0.43, '#2b2f38'), tube(0.033, 0.032, 0.03, 0.49, '#1d1e20')]);
   return (armCache[key] = { forearm });
 }
 function vmHand(team, si, pose, left) {
@@ -829,7 +843,14 @@ export function setViewGun(vm, id, team, si = 0, finish = 0) {
   const P = vmParts(team, si);
   const nade = cat === 'grenade' || cat === 'c4' || id === 'defuser';
   u.poses = cat === 'knife' ? ['knife', null] : nade ? ['ball', null] : u.dual ? ['grip', 'grip'] : cat === 'pistol' || id === 'zeus' ? ['grip', 'cup'] : ['grip', 'fore'];
-  u.arms.forEach((a, k) => { a.f.geometry = P.forearm; a.f.material = HMAT; const pz = u.poses[k] || 'fore'; a.h.add(new THREE.Mesh(vmHand(team, si, pz, k === 1), HMAT)); });
+  const real = armsReady(team); u.rig = [null, null]; u.realT = real && team !== 'CT';
+  u.arms.forEach((a, k) => {
+    a.f.geometry = P.forearm; a.f.material = HMAT; const pz = u.poses[k] || 'fore';
+    if (real) { // modelo real con huesos (se reusa por equipo y lado)
+      u.rigs = u.rigs || {}; const key = team + k; let R = u.rigs[key]; if (!R) { R = u.rigs[key] = makeArm(team, k === 1); R.rig.scale.multiplyScalar(0.92); }
+      const PP = POSES[pz]; R.pose = null; poseArm(R, pz, PP.curl, PP.thumb); a.h.add(R.rig); u.rig[k] = R;
+    } else a.h.add(new THREE.Mesh(vmHand(team, si, pz, k === 1), HMAT));
+  });
   // cargador suelto (en la mano izquierda durante la recarga)
   const isMagGun = WEAPONS[id] && WEAPONS[id].mag > 1 && cat !== 'heavy' && cat !== 'sniper' || id === 'awp';
   u.mag = null;
@@ -840,7 +861,7 @@ export function setViewGun(vm, id, team, si = 0, finish = 0) {
   vm.traverse(o => { o.renderOrder = 10; o.frustumCulled = false; });
 }
 // ubica las manos (pegadas al arma según la pose) y los antebrazos desde abajo de la pantalla
-const vT = new THREE.Vector3(), vW = new THREE.Vector3(), vEl2 = new THREE.Vector3(), gm = new THREE.Matrix4(), gq = new THREE.Quaternion(), hq = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
+const hq2 = new THREE.Quaternion(), vT = new THREE.Vector3(), vW = new THREE.Vector3(), vEl2 = new THREE.Vector3(), gm = new THREE.Matrix4(), gq = new THREE.Quaternion(), hq = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
 export function updateViewArms(vm) {
   const u = vm.userData; if (!u.id) return;
   u.hold.updateMatrix(); u.gun.updateMatrix();
@@ -876,5 +897,11 @@ export function updateViewArms(vm) {
     vW.set(0, 0, 0.065).applyQuaternion(hq).add(vT);
     vEl2.set(right ? 0.24 : -0.26, -0.42, 0.12);
     placeSeg(A.f, vEl2, vW);
+    const R = u.rig && u.rig[k];
+    if (R) { // el antebrazo del modelo apunta al codo; el T trae su propia manga, el CT usa la procedural
+      if (R.pose !== pose && POSES[pose]) poseArm(R, pose, POSES[pose].curl, POSES[pose].thumb);
+      tmpS.subVectors(vEl2, vW).applyQuaternion(hq2.copy(hq).invert()); aimFore(R, tmpS);
+      if (u.realT) A.f.visible = false;
+    }
   }
 }

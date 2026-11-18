@@ -68,11 +68,7 @@
   </div>
   <section id="tabPlay" class="fn-tab">
     <div id="party" class="party"></div>
-    <div class="teamPick">
-      <button data-pref="0" class="tp t"><b>T</b><small>Terroristas</small></button>
-      <button data-pref="-1" class="tp auto"><b>AUTO</b><small>Equilibrar</small></button>
-      <button data-pref="1" class="tp ct"><b>CT</b><small>Antiterroristas</small></button>
-    </div>
+    
     <div class="right">
       <div class="modeCard">
         <div class="mc-map"><canvas id="modeMap" width="340" height="190"></canvas><div id="modeMapName"></div></div>
@@ -108,6 +104,15 @@
 </div>
 
 <div id="loading"><div class="logo">COUNTER<span>STRIKA</span></div><div id="loadMsg">Cargando…</div><div id="loadInfo"></div></div>
+<div id="teamSel" hidden>
+  <h2>ELEGÍ TU EQUIPO</h2>
+  <div class="ts-row">
+    <button class="ts-card t" data-side="T"><b>TERRORISTAS</b><ul class="ts-list"></ul><em class="ts-note"></em></button>
+    <button class="ts-card ct" data-side="CT"><b>ANTITERRORISTAS</b><ul class="ts-list"></ul><em class="ts-note"></em></button>
+  </div>
+  <small>Con <kbd>M</kbd> cambiás de equipo durante la partida</small>
+  <button id="tsClose">CERRAR</button>
+</div>
 <div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small><button id="cpSettings">CONFIGURACIÓN</button></div>
 <div id="touch" hidden>
   <div id="stick"><i></i></div>

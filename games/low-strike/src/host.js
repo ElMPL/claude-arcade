@@ -29,31 +29,26 @@ export function makeHost(G) {
   const mode = () => G.cfg.mode || 'comp';
   const respawnQ = new Map(); // id -> segundos hasta reaparecer (DM / Arms Race)
   let timeouts = [1, 1], timeoutNext = 0, votes = { 0: new Set(), 1: new Set() }; const kickVotes = new Map();
-  let dropSeq = 1;
+  let dropSeq = 1, botSeq = 0;
 
   // ---------- armado ----------
   H.setup = (humans) => {
     G.players.clear();
     const cfg = G.cfg;
-    // equipos: preferencia de cada uno; "auto" equilibra
-    const cnt = [0, 0];
+    // los humanos eligen equipo al entrar a la partida (cada uno reemplaza a un bot); hasta entonces miran
     const list = humans.slice().sort((a, b) => a.slot - b.slot);
-    for (const h of list) if (h.pref === 0 || h.pref === 1) cnt[h.pref]++;
-    for (const h of list) {
-      let g = h.pref;
-      if (g !== 0 && g !== 1) { g = cnt[0] <= cnt[1] ? 0 : 1; cnt[g]++; }
-      const P = mkP(h.id, h.name, false, g); P.skT = 0; P.skCT = 0; P.fin = 0; G.players.set(h.id, P);
-    }
-    const per = cfg.bots ? Math.max(cnt[0], cnt[1], cfg.size || 5) : 0;
+    for (const h of list) { const P = mkP(h.id, h.name, false, -1); P.skT = 0; P.skCT = 0; P.fin = 0; P.team = 'SPEC'; G.players.set(h.id, P); }
+    const per = cfg.bots ? (cfg.size || 5) : 0;
     let bi = 0;
-    for (let g = 0; g < 2; g++) for (let k = cnt[g]; k < per; k++) {
+    for (let g = 0; g < 2; g++) for (let k = 0; k < per; k++) {
       const id = 'bot' + (bi++);
       const P = mkP(id, BOTN[bi % BOTN.length] + ' (bot)', true, g); P.skT = 0; P.skCT = 0; P.fin = 0; G.players.set(id, P);
     }
+    botSeq = bi;
     G.round = 0; G.score = [0, 0]; G.half = 0; G.ot = 0; lossStreak = [1, 1]; ended = false; respawnQ.clear();
     timeouts = [mode() === 'comp' ? 3 : 1, mode() === 'comp' ? 3 : 1]; timeoutNext = 0; votes = { 0: new Set(), 1: new Set() };
     for (const p of G.players.values()) { p.money = mode() === 'casual' ? 1000 : mode() === 'practice' || RESPAWN(mode()) ? 16000 : ECON.start; p.arl = 0; }
-    for (const p of G.players.values()) p.team = sideOf(p.grp, 0);
+    for (const p of G.players.values()) p.team = p.grp < 0 ? 'SPEC' : sideOf(p.grp, 0);
     G.spawns = { T: spawnPoints('T'), CT: spawnPoints('CT') };
   };
   function mkP(id, name, bot, grp) {
@@ -100,7 +95,7 @@ export function makeHost(G) {
     return { pts: out.map(p => [p[0], p[1], p[2], yawFor(p)]), cx, cz };
   }
   H.adopt = () => { G.spawns = { T: spawnPoints('T'), CT: spawnPoints('CT') }; };
-  H.buyZone = (p) => { if (mode() === 'practice' || mode() === 'dm') return true; const s = G.spawns[p.team]; return Math.hypot(p.x - s.cx, p.z - s.cz) < 22 || (zoneAt(G.W, p.x, p.z) & (p.team === 'T' ? 16 : 32)); };
+  H.buyZone = (p) => { if (mode() === 'practice' || mode() === 'dm') return true; const s = G.spawns[p.team]; if (!s) return false; return Math.hypot(p.x - s.cx, p.z - s.cz) < 22 || (zoneAt(G.W, p.x, p.z) & (p.team === 'T' ? 16 : 32)); };
   H.liveTime = () => liveTime();
   H.canBuyTime = () => { const m = mode(); if (m === 'ar' || m === 'retake') return false; if (m === 'practice' || m === 'dm') return G.phase === 'freeze' || G.phase === 'live'; return G.phase === 'freeze' || (G.phase === 'live' && ROUND.live - G.timeLeft < ROUND.buy && G.bomb.state !== 'planted'); };
   const liveTime = () => { const m = mode(); return m === 'dm' ? 600 : m === 'ar' ? 900 : m === 'practice' ? 3600 : m === 'casual' ? 135 : m === 'retake' ? ROUND.bomb : ROUND.live; };
@@ -119,6 +114,7 @@ export function makeHost(G) {
     const spawnsUsed = { T: 0, CT: 0 }, pos = {};
     const plist = [...G.players.values()].sort(() => Math.random() - 0.5);
     for (const p of plist) {
+      if (p.grp < 0) { p.team = 'SPEC'; p.alive = false; continue; } // todavía eligiendo equipo
       p.team = sideOf(p.grp, G.half);
       if (!p.alive || first) { // murió o arranca: equipo base
         p.inv = { p: null, s: defPistol(p.team), g: [], c4: false, kit: false, zeus: false, v: (p.inv.v || 0) + 1, pa: null, sa: null };
@@ -133,7 +129,7 @@ export function makeHost(G) {
       const sp = G.spawns[p.team].pts, k = spawnsUsed[p.team]++ % sp.length;
       pos[p.id] = sp[k];
     }
-    const ts = plist.filter(p => p.team === 'T');
+    const ts = plist.filter(p => p.team === 'T' && p.alive);
     if (mode() === 'retake') retakeSetup(plist, pos);
     else if (!RESPAWN(mode()) && ts.length) { const c = ts[Math.floor(Math.random() * ts.length)]; c.inv.c4 = true; G.bomb.carrier = c.id; }
     dirty = true;
@@ -378,9 +374,42 @@ export function makeHost(G) {
     dirty = true;
   }
 
+  // ---------- elegir equipo: el jugador toma el lugar de un bot de ese equipo (su posición, vida y armas) ----------
+  function joinTeam(p, side) {
+    const g = sideOf(0, G.half) === side ? 0 : 1;
+    if (p.grp === g) return;
+    const bots = [...G.players.values()].filter(q => q.bot && q.grp === g && !q.kicked);
+    const humansIn = q => [...G.players.values()].filter(x => !x.bot && x.grp === q).length;
+    const take = bots.sort((a, b) => (b.alive - a.alive))[0] || null;
+    if (!take && (G.cfg.bots || humansIn(g) > humansIn(1 - g))) { G.emitTo(p.id, 'ev', { t: 'deny', why: 'Ese equipo está lleno' }); return; }
+    // si ya estaba en un equipo, un bot nuevo ocupa su lugar
+    if (p.grp >= 0) {
+      if (G.cfg.bots) {
+        const id = 'bot' + (botSeq++), b = mkP(id, BOTN[botSeq % BOTN.length] + ' (bot)', true, p.grp);
+        Object.assign(b, { team: p.team, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pl: null, hp: p.hp, ar: p.ar, helm: p.helm, alive: p.alive, money: p.money, inv: { ...p.inv, g: p.inv.g.slice(), v: (p.inv.v || 0) + 1 }, skT: 0, skCT: 0, fin: 0, dmgBy: {} });
+        G.players.set(id, b);
+        if (G.bomb.carrier === p.id) G.bomb.carrier = id;
+        if (b.alive) G.emit('ev', { t: 'resp', id, pos: [b.x, b.y, b.z, b.yaw] });
+      } else if (G.bomb.carrier === p.id) { G.bomb.carrier = null; }
+      p.alive = false;
+    }
+    p.grp = g; p.team = side;
+    if (take) {
+      const tp = take.pl || take; // los bots se mueven con su propio estado (p.pl)
+      Object.assign(p, { x: tp.x, y: tp.y, z: tp.z, yaw: tp.yaw, hp: take.hp, ar: take.ar, helm: take.helm, alive: take.alive, money: take.money, inv: { ...take.inv, g: take.inv.g.slice(), v: (take.inv.v || 0) + (p.inv.v || 0) + 1 }, dmgBy: {} });
+      if (G.bomb.carrier === take.id) G.bomb.carrier = p.id;
+      G.emit('ev', { t: 'gone', id: take.id });
+      G.players.delete(take.id);
+    } else { p.alive = false; p.money = mode() === 'practice' || RESPAWN(mode()) ? 16000 : ECON.start; if (RESPAWN(mode())) respawnQ.set(p.id, 2); }
+    G.emit('ev', { t: 'joined', id: p.id, n: p.name, team: side });
+    if (p.alive) G.emit('ev', { t: 'resp', id: p.id, pos: [p.x, p.y, p.z, p.yaw] });
+    dirty = true; G.emit('st', H.snapshot());
+  }
+
   // ---------- pedidos de los jugadores ----------
   H.handle = (type, d, from, meta = {}) => {
     const p = G.players.get(from); if (!p) return;
+    if (p.grp < 0 && type !== 'team') return; // todavía no eligió equipo
     switch (type) {
       case 'hit': {
         if (!p.alive && G.phase !== 'post') return;
@@ -390,6 +419,7 @@ export function makeHost(G) {
         break;
       }
       case 'buy': buy(p, d.i); break;
+      case 'team': joinTeam(p, d.s === 'CT' ? 'CT' : 'T'); break;
       case 'drop': {
         if (!p.alive) return;
         const slot = d.s, pitch = Math.max(-1.4, Math.min(1.4, +d.pitch || 0));
