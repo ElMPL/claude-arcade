@@ -30,7 +30,8 @@ const me = {
   coyote: 0, jumpBuf: 0, jumpCut: false, mantleCd: 0, stunT: 0, invulnT: 0, dashT: 0, dashCd: 0, lastLandVy: 0, airT: 0,
   kart: { speed: 0, steer: 0, drifting: false, driftDir: 0, driftT: 0, boostT: 0, spinT: 0, spinVis: 0, starT: 0 },
 };
-let round = null, totals = {}, tiePts = {}, podiumData = null, spectate = null; // totals = coronas
+let round = null, totals = {}, tiePts = {}, podiumData = null, spectate = null; // totals = estrellas
+const STARS = [3, 2, 1]; // estrellas por minijuego: 1º, 2º y 3º
 const H = { started: false, ready: new Set(), t0: performance.now(), order: [], idx: -1, cur: null, nextAt: 0, endAt: 0 };
 
 const isHost = () => Arcade.isHost();
@@ -92,7 +93,7 @@ function renderPlayers() {
   const ids = [...players.keys()].sort(byScore);
   $('players').innerHTML = ids.map(id => {
     const out = round && round.alive && round.ids && round.ids.includes(id) && !round.alive.has(id) && round.phase !== 'podium';
-    return `<div class="pr${id === myId ? ' me' : ''}${out ? ' out' : ''}"><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span>${esc(nameOf(id))}</span><b><em>👑</em>${totals[id] || 0}</b></div>`;
+    return `<div class="pr${id === myId ? ' me' : ''}${out ? ' out' : ''}"><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span>${esc(nameOf(id))}</span><b><em>⭐</em>${totals[id] || 0}</b></div>`;
   }).join('');
 }
 
@@ -273,7 +274,7 @@ function applyRoundEnd(d) {
   const medal = ['🥇', '🥈', '🥉'];
   let rows = '', n = 0;
   d.groups.forEach((g, gi) => g.forEach(id => {
-    rows += `<div class="rr${id === myId ? ' me' : ''}" style="animation-delay:${0.15 + n++ * 0.12}s"><span class="pl">${medal[gi] || gi + 1 + 'º'}</span><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span class="nm">${esc(nameOf(id))}</span><span class="pts">${gi === 0 ? '+1 👑' : ''}</span><span class="tot">👑 ${totals[id] || 0}</span></div>`;
+    rows += `<div class="rr${id === myId ? ' me' : ''}" style="animation-delay:${0.15 + n++ * 0.12}s"><span class="pl">${medal[gi] || gi + 1 + 'º'}</span><i style="--c:${CSS_COLORS[slotOf(id) % 8]}">${esc(nameOf(id).charAt(0).toUpperCase())}</i><span class="nm">${esc(nameOf(id))}</span><span class="pts">${STARS[gi] ? '+' + STARS[gi] + ' ⭐' : ''}</span><span class="tot">⭐ ${totals[id] || 0}</span></div>`;
   }));
   $('results').innerHTML = `<h2>${round.def.emoji} ${esc(round.def.name)}</h2><div class="rlist">${rows}</div><small>${d.last ? '¡Vamos al podio!' : 'Siguiente minijuego…'}</small>`;
   $('results').hidden = false;
@@ -305,7 +306,7 @@ function hostEndRound() {
   round.phase = 'end';
   const groups = round.mg.hostRank().map(g => g.filter(id => players.has(id))).filter(g => g.length);
   groups.forEach((g, gi) => g.forEach(id => {
-    if (gi === 0) totals[id] = (totals[id] || 0) + 1; // una corona por minijuego ganado
+    totals[id] = (totals[id] || 0) + (STARS[gi] || 0); // estrellas: 3 al 1º, 2 al 2º, 1 al 3º
     tiePts[id] = (tiePts[id] || 0) + (ROUND_POINTS[gi] || 0); // desempate (no se muestra)
   }));
   const d = { i: round.i, groups, totals: { ...totals }, tie: { ...tiePts }, last: H.idx >= H.order.length - 1 };
@@ -380,7 +381,7 @@ function showPodium(d) {
   podium = { placed: buildPodium(d.list), t: 0, fw: 0 };
   const winners = (d.winners || []).map(id => (d.list.find(p => p.id === id) || {}).name).filter(Boolean);
   $('podiumUI').innerHTML = `<h1>${esc(winners.join(' y '))} ${winners.length > 1 ? 'ganan' : 'gana'}</h1><div class="rlist">` +
-    d.list.map((p, i) => `<div class="rr${p.id === myId ? ' me' : ''}" style="animation-delay:${0.6 + i * 0.12}s"><span class="pl">${['🥇', '🥈', '🥉'][i] || i + 1 + 'º'}</span><i style="--c:${CSS_COLORS[p.slot % 8]}">${esc(p.name.charAt(0).toUpperCase())}</i><span class="nm">${esc(p.name)}</span><span class="tot">👑 ${p.pts}</span></div>`).join('') +
+    d.list.map((p, i) => `<div class="rr${p.id === myId ? ' me' : ''}" style="animation-delay:${0.6 + i * 0.12}s"><span class="pl">${['🥇', '🥈', '🥉'][i] || i + 1 + 'º'}</span><i style="--c:${CSS_COLORS[p.slot % 8]}">${esc(p.name.charAt(0).toUpperCase())}</i><span class="nm">${esc(p.name)}</span><span class="tot">⭐ ${p.pts}</span></div>`).join('') +
     `</div><div class="back">Volviendo al menú en <b id="backCount">${d.dur || PODIUM}</b></div>`;
   $('podiumUI').hidden = false;
   const endAt = performance.now() + (d.dur || PODIUM) * 1000;

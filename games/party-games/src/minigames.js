@@ -465,6 +465,8 @@ function createBomba(G) {
   });
   // seto perimetral
   [[0, HALF, HALF * 2 + 1, 1], [0, -HALF, HALF * 2 + 1, 1], [HALF, 0, 1, HALF * 2 + 1], [-HALF, 0, 1, HALF * 2 + 1]].forEach(([x, z, w, d]) => G.box(x, z, w, d, 1.4, 1.4, hedge, { edgeColor: 0x2f9e44 }));
+  // barrera invisible sobre el seto: no se puede saltar al vacío desde las cajas o el techo
+  [[0, HALF + 0.3, HALF * 2 + 2, 1.6], [0, -HALF - 0.3, HALF * 2 + 2, 1.6], [HALF + 0.3, 0, 1.6, HALF * 2 + 2], [-HALF - 0.3, 0, 1.6, HALF * 2 + 2]].forEach(([x, z, w, d]) => G.colBox(x, z, w, d, 40, 41));
   for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2; G.addTree(Math.cos(a) * 28, 0, Math.sin(a) * 28, 1.4 + (i % 3) * 0.3); }
   [[-19, -19], [19, 19], [-19, 15], [18, -8], [-8, 19]].forEach(([x, z]) => { G.addTree(x, 0, z, 1.3); G.colCyl(x, z, 0.5, 4, 4); });
   for (let i = 0; i < 40; i++) { const x = (Math.random() - 0.5) * 42, z = (Math.random() - 0.5) * 42; if (Math.abs(x) > 8 || Math.abs(z) > 6) G.addFlower(x, 0, z); }
