@@ -7,7 +7,9 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
 ## Qué tiene
 - **Mapas:** Dust II y Mirage, importados de modelos 3D de los mapas originales (ver *Mapas*).
 - **Armas:** todas las de CS2, con su precio, premio por baja, daño, penetración de blindaje, cadencia y cargador. El retroceso sigue un patrón y las balas atraviesan paredes finas.
-- **Menú de compra:** se abre con **B**. Por defecto es la rueda de CS:GO (6 categorías: Pistolas, Pesadas, Subfusiles, Rifles, Equipo y Granadas). En la configuración se puede cambiar a las 5 columnas de CS2. Se compra con los números o con el mouse; Esc o 0 vuelven atrás.
+- **Menú de compra:** como el de CS2, en 5 columnas (Equipo, Pistolas, Intermedias, Rifles, Granadas); se abre con **B**. Cada bando tiene el loadout más usado en partidas profesionales y solo se puede comprar lo que está en él:
+  - T: Glock-18, Dual Berettas, P250, Tec-9, Desert Eagle · MAC-10, UMP-45, XM1014, Nova, P90 · Galil AR, AK-47, SSG 08, SG 553, AWP.
+  - CT: USP-S, Dual Berettas, P250, Five-SeveN, Desert Eagle · MP9, UMP-45, XM1014, Nova, P90 · FAMAS, M4A1-S, M4A4, SSG 08, AWP.
 - **Economía de CS2:**
   - Arrancás con $800 y el máximo es $16000.
   - Ganar una ronda paga $3250, o $3500 si fue por bomba o desactivación.
@@ -53,6 +55,8 @@ En el juego la malla se pinta con texturas generadas por código al estilo de Du
 
 ## Gráficos
 - Texturas generadas por código en 512 px con relieve (normal maps): arenisca en bloques, revoque con partes descascaradas, arena con piedritas, baldosas irregulares, madera, tejas, chapa. Materiales PBR con luz de entorno.
+- **Primera persona:** manos con guante y dedos articulados (3 falanges por dedo y pulgar) en poses distintas para empuñadura, guardamanos, pistola a dos manos, cuchillo y granadas; antebrazos que entran desde abajo de la pantalla. AK-47, M4A4/M4A1-S y pistolas rehechas con proporciones de las reales (cargador curvo, guardamanos, freno de boca, correderas redondeadas) y partes metálicas con brillo.
+- **HUD estilo CS2:** paneles finos, íconos propios en SVG (vida, chaleco, chaleco + casco, kit, bomba, carrito de compra) y ficha corta de cada arma en el menú de compra.
 - Personajes y armas de poligonado medio: cuerpos redondeados, cascos y cabezas esféricas, piernas y brazos cilíndricos, armas con biseles y cilindros suaves.
 - El sol proyecta sombras (se pueden bajar o sacar en la configuración). Cada jugador tiene además una sombra suave debajo.
 - **Props:** barriles, pallets, gomas, garrafas, macetas, bolsas de arena, carros, cajas y puestos de fruta repartidos por cada mapa (también tapan balas y bloquean el paso).

@@ -49,42 +49,51 @@ const clamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 
 const GEN = {
-  // arenisca en hiladas: bloques de tamaño variable, juntas hundidas, bordes gastados, vetas
+  // arenisca en hiladas: bloques de tamaño variable con color propio, aristas gastadas y redondeadas,
+  // esquinas saltadas, vetas horizontales de sedimento, juntas de mortero hundidas
   blocks() {
-    const N = makeNoise(11), N2 = makeNoise(12), R = rng(5);
-    const rows = 6, rowOff = [], cuts = [];
-    for (let j = 0; j < rows; j++) { const c = [0]; let x = 0; while (x < 1) { x += 0.22 + R() * 0.2; c.push(Math.min(1, x)); } if (1 - c[c.length - 2] < 0.12) c.splice(c.length - 2, 1); cuts.push(c); rowOff.push(R()); }
+    const N = makeNoise(11), N2 = makeNoise(12), N3 = makeNoise(13), R = rng(5);
+    const rows = 6, rowOff = [], cuts = [], btint = [];
+    for (let j = 0; j < rows; j++) { const c = [0]; let x = 0; while (x < 1) { x += 0.2 + R() * 0.22; c.push(Math.min(1, x)); } if (1 - c[c.length - 2] < 0.12) c.splice(c.length - 2, 1); cuts.push(c); rowOff.push(R()); btint.push(c.map(() => [0.84 + R() * 0.2, (R() - 0.5) * 0.05, R(), R()])); }
     return build((u, v) => {
       const j = Math.floor(v * rows), fv = v * rows - j, c = cuts[j];
       const uu = (u + rowOff[j]) % 1; let k = 0; while (k < c.length - 2 && uu > c[k + 1]) k++;
-      const a = c[k], b = c[k + 1], fu = (uu - a) / (b - a);
+      const a = c[k], b = c[k + 1], fu = (uu - a) / (b - a), [tl, hue, cx, cy] = btint[j][k];
       const ex = Math.min(fu * (b - a) * 9, (1 - fu) * (b - a) * 9), ey = Math.min(fv, 1 - fv) * 1.5;
-      const edge = Math.min(ex, ey) + (N(u, v, 32, 3) - 0.5) * 0.06; // borde irregular
-      const tint = 0.9 + ((j * 7 + k * 13) % 11) / 11 * 0.12;
-      const grain = N(u, v, 16, 5), streak = N2(u * 0.3, v * 3, 8, 3);
-      let lum = tint * (0.86 + grain * 0.16) + (streak - 0.5) * 0.06;
-      let hgt = 0.6 + grain * 0.35;
-      if (edge < 0.035) { lum *= 0.62; hgt = 0.05; } else if (edge < 0.08) { const t = (edge - 0.035) / 0.045; lum *= lerp(0.8, 1, t); hgt = lerp(0.25, hgt, t); }
-      const pit = N2(u, v, 64, 2); if (pit > 0.78) { lum *= 0.85; hgt -= 0.2; }
-      return [clamp(lum * 1.0), clamp(lum * 0.97), clamp(lum * 0.92), hgt];
-    }, 3.2);
+      const wob = (N(u, v, 32, 3) - 0.5) * 0.07;
+      // esquina saltada: un trozo cerca de una de las 4 esquinas del bloque
+      const cxp = cx < 0.5 ? fu : 1 - fu, cyp = cy < 0.5 ? fv : 1 - fv, chip = cx > 0.55 && (cxp * (b - a) * 9 + cyp * 1.5) < 0.22 + N3(u, v, 24, 2) * 0.1;
+      const edge = Math.min(ex, ey) + wob;
+      const grain = N(u, v, 16, 5), strata = N2(u * 0.25, v * 6, 4, 3), fine = N3(u, v, 96, 2);
+      let lum = tl * (0.86 + grain * 0.14) + (strata - 0.5) * 0.09 + (fine - 0.5) * 0.04;
+      let hgt = 0.62 + grain * 0.28 + (strata - 0.5) * 0.15;
+      if (chip) { lum *= 0.84; hgt = 0.3 + fine * 0.1; }
+      if (edge < 0.03) { lum *= 0.58; hgt = 0.02; } // junta
+      else if (edge < 0.11) { const t = (edge - 0.03) / 0.08, e2 = t * t * (3 - 2 * t); lum *= lerp(0.76, 1, e2); hgt = lerp(0.2, hgt, e2); } // arista redondeada
+      const pit = N2(u, v, 64, 2); if (pit > 0.76) { lum *= 0.86; hgt -= 0.18; }
+      return [clamp(lum * (1.0 + hue)), clamp(lum * 0.965), clamp(lum * (0.9 - hue)), hgt];
+    }, 3.6);
   },
-  // revoque: ondulado suave, manchas, grietas finas y partes descascaradas con ladrillo
+  // revoque: ondulado de llana, manchones grandes, chorreaduras verticales de suciedad,
+  // grietas finas y pocos parches grandes donde se cayó el revoque y se ve el ladrillo
   plaster() {
-    const N = makeNoise(21), N2 = makeNoise(22), N3 = makeNoise(23);
+    const N = makeNoise(21), N2 = makeNoise(22), N3 = makeNoise(23), N4 = makeNoise(24);
     return build((u, v) => {
-      const big = N(u, v, 3, 4), fine = N2(u, v, 48, 3);
-      let lum = 0.88 + (big - 0.5) * 0.14 + (fine - 0.5) * 0.06, hgt = big * 0.4 + fine * 0.12;
-      const cr = Math.abs(N3(u, v, 5, 5) - 0.5); if (cr < 0.004 && N(u * 2, v * 2, 3, 2) > 0.55) { lum *= 0.82; hgt -= 0.1; }
-      const stain = N3(u + 0.37, v * 0.5, 4, 3); if (stain > 0.6) lum *= 1 - (stain - 0.6) * 0.25;
-      const chip = N(u + 0.5, v + 0.3, 5, 4);
-      if (chip > 0.79) { // revoque caído: se ven ladrillos
-        const bx = (u * 16 + (Math.floor(v * 32) % 2) * 0.5) % 1, by = (v * 32) % 1;
-        const mort = bx < 0.08 || by < 0.16; lum = mort ? 0.7 : 0.78 + fine * 0.1; hgt = mort ? -0.2 : 0.05;
-        return [clamp(lum * 1.02), clamp(lum * 0.86), clamp(lum * 0.74), hgt];
+      const big = N(u, v, 2, 4), mid = N4(u, v, 8, 3), fine = N2(u, v, 64, 3), trowel = N2(u * 1.6 + v * 0.4, v * 0.8, 12, 2);
+      let lum = 0.86 + (big - 0.5) * 0.22 + (mid - 0.5) * 0.12 + (fine - 0.5) * 0.08 + (trowel - 0.5) * 0.07;
+      let hgt = big * 0.25 + trowel * 0.25 + fine * 0.12;
+      const drip = N3(u * 1.0, v * 0.12, 6, 3); if (drip > 0.55) lum *= 1 - (drip - 0.55) * 0.6 * (0.4 + v * 0.6);
+      const cr = Math.abs(N3(u, v, 5, 5) - 0.5); if (cr < 0.003 && N(u * 2, v * 2, 3, 2) > 0.62) { lum *= 0.9; hgt -= 0.08; }
+      const patch = N(u + 0.5, v + 0.3, 2, 4) + (N4(u, v, 16, 2) - 0.5) * 0.08;
+      if (patch > 0.7) { // revoque caído: borde levantado y ladrillo atrás
+        if (patch < 0.712) { lum *= 0.82; hgt = 0.55; return [clamp(lum), clamp(lum * 0.97), clamp(lum * 0.93), hgt]; }
+        const bx = (u * 14 + (Math.floor(v * 28) % 2) * 0.5) % 1, by = (v * 28) % 1;
+        const mort = bx < 0.07 || by < 0.14, bt = 0.72 + N4(Math.floor(u * 14) / 14, Math.floor(v * 28) / 28, 64, 1) * 0.16;
+        lum = mort ? 0.66 : bt + fine * 0.06; hgt = mort ? -0.25 : -0.05;
+        return [clamp(lum * 1.0), clamp(lum * 0.8), clamp(lum * 0.66), hgt];
       }
-      return [clamp(lum), clamp(lum * 0.985), clamp(lum * 0.95), hgt];
-    }, 2.2);
+      return [clamp(lum), clamp(lum * 0.98), clamp(lum * 0.94), hgt];
+    }, 2.4);
   },
   // arena con piedritas y ondas
   sand() {

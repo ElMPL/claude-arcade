@@ -68,10 +68,10 @@ const PROPS = {
     return { wood: w, plant: f, hw: 0.72, hd: 0.38, h: 0.68 };
   },
 };
-const SETS = { dust2: ['barrel', 'barrels2', 'pallet', 'tires', 'gas', 'sandbags', 'cart', 'crates', 'pot'], mirage: ['pot', 'pot', 'fruit', 'cart', 'pallet', 'barrel', 'gas', 'sandbags', 'crates'] };
+const SETS = { dust2: ['barrel', 'barrels2', 'pallet', 'tires', 'gas', 'cart', 'crates', 'pot'], mirage: ['pot', 'pot', 'fruit', 'crates', 'barrel', 'pallet'] };
 
 // Elige lugares y sube los props al mundo. Devuelve la lista para dibujarlos.
-export function placeProps(W, nav, mapId, count = 46) {
+export function placeProps(W, nav, mapId, count = 24) {
   const kinds = SETS[mapId] || SETS.dust2, r = rng(mapId.length * 7919 + 13);
   const out = [], { m, N, H } = nav;
   const spawnC = [16, 32].map(f => { let x = 0, z = 0, n = 0; for (let i = 0; i < W.n * W.n; i += 7) if (W.flags[i] & f) { x += i % W.n; z += Math.floor(i / W.n); n++; } return n ? [x / n * W.cell, z / n * W.cell] : [-99, -99]; });
@@ -81,13 +81,16 @@ export function placeProps(W, nav, mapId, count = 46) {
     const i = z * m + x; let l = -1;
     for (let q = 0; q < nav.L; q++) if (nav.main[q * N + i]) { l = q; break; }
     if (l < 0) continue;
-    const h = H[l][i]; let wall = null, open = 0, tot = 0;
-    for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
-      const j = (z + dz) * m + x + dx, hh = H[l][j]; tot++;
-      if (!isNaN(hh) && Math.abs(hh - h) < 0.3) open++;
-      else if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1 && (dx || dz) && !wall) wall = [dx, dz];
-    }
-    if (!wall || open / tot < 0.62) continue;
+    // solo en esquinas (pared a un costado y atrás) y en lugares amplios, para no achicar pasillos ni puertas
+    const h = H[l][i], same = (dx, dz) => { const hh = H[l][(z + dz) * m + x + dx]; return !isNaN(hh) && Math.abs(hh - h) < 0.3; };
+    let open = 0, tot = 0;
+    for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) { if (z + dz < 0 || z + dz >= m || x + dx < 0 || x + dx >= m) continue; tot++; if (same(dx, dz)) open++; }
+    const wx = !same(1, 0) ? 1 : !same(-1, 0) ? -1 : 0, wz = !same(0, 1) ? 1 : !same(0, -1) ? -1 : 0;
+    if (!wx || !wz || open / tot < 0.42) continue;
+    // el lado opuesto a la esquina tiene que estar libre varios nodos (no es un pasillo angosto)
+    let clear = true; for (let k = 1; k <= 4 && clear; k++) if (!same(-wx * k, 0) || !same(0, -wz * k) || !same(-wx * k, -wz * k)) clear = false;
+    if (!clear) continue;
+    const wall = [wx, wz];
     const px = (x + 0.5) * nav.c, pz = (z + 0.5) * nav.c;
     if (spawnC.some(s => Math.hypot(s[0] - px, s[1] - pz) < 7)) continue;
     cand.push([px, h, pz, Math.atan2(wall[0], wall[1])]);
@@ -95,10 +98,10 @@ export function placeProps(W, nav, mapId, count = 46) {
   for (let k = cand.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); [cand[k], cand[j]] = [cand[j], cand[k]]; }
   for (const c of cand) {
     if (out.length >= count) break;
-    if (out.some(o => Math.hypot(o.x - c[0], o.z - c[2]) < 9)) continue;
+    if (out.some(o => Math.hypot(o.x - c[0], o.z - c[2]) < 12)) continue;
     const kind = kinds[Math.floor(r() * kinds.length)], P = PROPS[kind]();
     // de espaldas a la pared: se corre un poco hacia la pared
-    const ry = c[3] + (r() - 0.5) * 0.3, back = 0.25;
+    const ry = c[3] + (r() - 0.5) * 0.3, back = 0;
     const x = c[0] + Math.sin(c[3]) * back, z = c[2] + Math.cos(c[3]) * back;
     // colisión: todas las celdas bajo el prop rotado
     const cells = [], cs = Math.cos(ry), sn = Math.sin(ry);

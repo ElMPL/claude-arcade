@@ -4,7 +4,7 @@ const KEY = 'ls:cfg';
 export const DEF = {
   sens: 2.1, invert: false, // sensibilidad (x1000 rad/px)
   xStatic: false, xColor: '#5dff6a', xSize: 8, xGap: 4, xThick: 2, xDot: false, xOutline: true,
-  vol: 0.8, quality: 2, buyWheel: true, // 0 sin sombras · 1 sombras bajas · 2 sombras altas
+  vol: 0.8, quality: 2, // 0 sin sombras · 1 sombras bajas · 2 sombras altas
 };
 const COLORS = ['#5dff6a', '#00e5ff', '#ffe14a', '#ff4a4a', '#ff4af0', '#ffffff'];
 
@@ -32,7 +32,6 @@ export function makeSettings(store, onChange) {
           ${row('Sensibilidad', slider('sens', 0.4, 8, 0.05, FMT.sens))}
           ${row('Invertir eje Y', toggle('invert', 'Sí', 'No'))}
           <h3>COMPRA</h3>
-          ${row('Menú de compra', `<div class="seg" data-t="buyWheel"><button data-v="1" class="${S.buyWheel ? 'on' : ''}">Rueda (CS:GO)</button><button data-v="0" class="${S.buyWheel ? '' : 'on'}">Columnas (CS2)</button></div>`)}
           <h3>SONIDO</h3>
           ${row('Volumen', slider('vol', 0, 1, 0.05, FMT.vol))}
           <h3>GRÁFICOS</h3>

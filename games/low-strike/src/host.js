@@ -1,5 +1,5 @@
 // Reglas del juego (las corre el host): rondas, economía de CS2, daño, muertes, bomba, compras y armas tiradas.
-import { WEAPONS, ECON, applyDamage, slotOf } from './weapons.js';
+import { WEAPONS, ECON, BUY, applyDamage, slotOf } from './weapons.js';
 import { zoneNodes, findPath } from './nav.js';
 import { NADE, inFire } from './nades.js';
 import { zoneAt, lineOfSight } from './world.js';
@@ -205,7 +205,7 @@ export function makeHost(G) {
       setTimeout(() => {
         if (ended) return; ended = true;
         const winners = [...G.players.values()].filter(p => !p.bot && (wg < 0 || p.grp === wg)).map(p => p.id);
-        const txt = wg < 0 ? 'Empate ' + G.score.join(' – ') : '👑 Ganan ' + nameOfGroup(wg) + ' ' + Math.max(...G.score) + ' – ' + Math.min(...G.score);
+        const txt = wg < 0 ? 'Empate ' + G.score.join(' – ') : 'Ganan ' + nameOfGroup(wg) + ' ' + Math.max(...G.score) + ' – ' + Math.min(...G.score);
         G.end(winners, txt);
       }, ROUND.over * 1000);
     }
@@ -225,7 +225,7 @@ export function makeHost(G) {
     if (!nodes.length) return;
     const bn = G.nav.pos(nodes[Math.floor(nodes.length / 2 + (Math.random() - 0.5) * nodes.length * 0.4)]);
     Object.assign(G.bomb, { state: 'planted', carrier: null, x: bn[0], y: bn[1], z: bn[2], t: ROUND.bomb, site });
-    const kits = [['ak47', 'deagle'], ['galil', 'p250'], ['awp', 'glock'], ['mp9', 'tec9'], ['ak47', 'glock']], ckits = [['m4a4', 'usp'], ['famas', 'fiveseven'], ['awp', 'usp'], ['mp9', 'p250'], ['m4a1s', 'deagle']];
+    const kits = [['ak47', 'deagle'], ['galil', 'p250'], ['awp', 'glock'], ['mac10', 'tec9'], ['ak47', 'glock']], ckits = [['m4a4', 'usp'], ['famas', 'fiveseven'], ['awp', 'usp'], ['mp9', 'p250'], ['m4a1s', 'deagle']];
     for (const p of plist) {
       const k = (p.team === 'T' ? kits : ckits)[Math.floor(Math.random() * 5)];
       p.inv.p = k[0]; p.inv.s = k[1]; p.inv.g = Math.random() < 0.6 ? [['smoke', 'flash', 'he', p.team === 'T' ? 'molotov' : 'incendiary'][Math.floor(Math.random() * 4)]] : [];
@@ -490,6 +490,7 @@ export function makeHost(G) {
     if (!H.canBuyTime()) return deny('Se terminó el tiempo de compra');
     if (!H.buyZone(p)) return deny('Tenés que estar en tu zona de compra');
     if (it.side !== 'both' && it.side !== p.team) return deny('No disponible para tu equipo');
+    if (!BUY.some(c => c.items[p.team].includes(id))) return deny('No está en el loadout de tu equipo');
     let price = it.price;
     const inv = p.inv;
     if (id === 'vest') { if (p.ar >= 100) return deny('Ya tenés chaleco'); }

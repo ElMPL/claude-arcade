@@ -15,16 +15,17 @@
 <!-- HUD -->
 <div id="hud" hidden>
   <div id="radarBox"><canvas id="radar" width="220" height="220"></canvas><div id="zoneName"></div></div>
-  <div id="money"><span class="cur">$</span><span id="moneyV">800</span><div id="moneyAdd"></div></div>
+  <div id="money"><i id="cartIco"></i><span class="cur">$</span><span id="moneyV">800</span><div id="moneyAdd"></div></div>
   <div id="top">
     <div class="side t"><div class="pips" id="pipsT"></div><div class="sc" id="scT">0</div></div>
-    <div id="clock"><div id="clockV">1:55</div><div id="bombIco" hidden>💣</div></div>
+    <div id="clock"><div id="clockV">1:55</div><div id="bombIco" hidden></div></div>
     <div class="side ct"><div class="sc" id="scCT">0</div><div class="pips" id="pipsCT"></div></div>
   </div>
   <div id="feed"></div>
   <div id="vitals">
-    <div class="vit hp"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><span id="hpV">100</span><div class="bar"><i id="hpB"></i></div></div>
-    <div class="vit ar"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5z"/></svg><span id="arV">0</span><i id="helmV" hidden>+ casco</i><div class="bar"><i id="arB"></i></div></div>
+    <div class="vit hp"><i class="ico" id="hpIco"></i><span id="hpV">100</span><div class="bar"><i id="hpB"></i></div></div>
+    <div class="vit ar"><i class="ico" id="arIco"></i><span id="arV">0</span><div class="bar"><i id="arB"></i></div></div>
+    <div class="vit kit" id="kitV" hidden><i class="ico" id="kitIco"></i></div>
   </div>
   <div id="ammo"><div class="nums"><span id="magV">20</span><span class="sep">|</span><small id="resV">120</small></div><div id="wname"></div></div>
   <div id="slots"></div>
@@ -39,7 +40,7 @@
   <div id="hurt"></div>
   <div id="spec" hidden></div>
   <div id="banner" hidden><div class="b1" id="ban1"></div><div class="b2" id="ban2"></div></div>
-  <div id="buyHint" hidden>B · Comprar</div>
+  <div id="buyHint" hidden><b>B</b> COMPRAR</div>
 </div>
 
 <!-- MENÚ DE COMPRA (como CS2) -->
@@ -47,7 +48,7 @@
   <div class="buy-head"><div class="bm">$<span id="buyMoney">0</span></div><div class="btime">Tiempo de compra <b id="buyTime">0:20</b></div></div>
   <div id="buyCols"></div>
   <div class="buy-foot"><span>[ESC] VOLVER</span><span>[B] CERRAR</span><span>1-5 CATEGORÍA · 1-5 ARMA</span></div>
-  <div id="buyInfo" hidden><b id="biName"></b><ul id="biList"></ul><div id="biStats"></div></div>
+  <div id="buyInfo" hidden><div class="bi-top"><b id="biName"></b><span id="biPrice"></span></div><div id="biLine"></div><div id="biStats"></div></div>
 </div>
 
 <!-- TABLA (Tab) -->
@@ -105,10 +106,10 @@
 </div>
 
 <div id="loading"><div class="logo">COUNTER<span>STRIKA</span></div><div id="loadMsg">Cargando…</div></div>
-<div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small><button id="cpSettings">⚙ CONFIGURACIÓN</button></div>
+<div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small><button id="cpSettings">CONFIGURACIÓN</button></div>
 <div id="touch" hidden>
   <div id="stick"><i></i></div>
-  <button id="tFire">🔫</button><button id="tJump">⤒</button><button id="tDuck">⤓</button><button id="tReload">R</button><button id="tSwitch">⇄</button><button id="tBuy">$</button><button id="tUse">E</button><button id="tScope">◎</button>
+  <button id="tFire">FUEGO</button><button id="tJump">⤒</button><button id="tDuck">⤓</button><button id="tReload">R</button><button id="tSwitch">⇄</button><button id="tBuy">$</button><button id="tUse">E</button><button id="tScope">◎</button>
 </div>
 
 <script src="/sdk/arcade-sdk.js"></script>

@@ -78,8 +78,35 @@ function design(id) {
   const pistolGrip = (col, ang = 0.28, len = 0.11, wdt = 0.032) => add(prof([[0.03, 0.02], [-0.02, 0.02], [-0.02 - Math.sin(ang) * len, 0.02 - len], [0.03 - Math.sin(ang) * len, 0.02 - len]], wdt, col), 'w');
   switch (id) {
     // ---------- rifles ----------
-    case 'ak47': case 'galil': case 'sg553': {
-      const wood = id === 'ak47' ? WOOD : id === 'galil' ? '#4b4635' : '#55543f', body = id === 'ak47' ? '#2c2d2f' : id === 'galil' ? '#3a3830' : '#4a4a3e';
+    case 'ak47': {
+      // AK-47 de CS: madera rojiza, receptor estampado con tapa redondeada, cargador curvo y freno de boca inclinado
+      const W1 = '#8c4a22', W2 = '#6e3519', ST = '#2a2b2d', BK = '#1a1b1d';
+      add(prof([[-0.07, 0.022], [0.27, 0.022], [0.27, 0.088], [-0.07, 0.088], [-0.08, 0.06]], 0.044, ST), 'b'); // receptor
+      add(cyl(0.022, -0.06, 0.26, 0.085, '#2f3033', 10)); // tapa del cerrojo (arriba redondeada)
+      add(box(0.03, 0.012, 0.03, 0.255, 0.112, BK)); add(prof([[0.24, 0.098], [0.28, 0.098], [0.28, 0.122], [0.25, 0.118]], 0.03, BK), 'm'); // base del alza
+      // culata: baja y se ensancha hacia atrás, con cantonera
+      add(prof([[-0.07, 0.085], [-0.18, 0.07], [-0.44, 0.045], [-0.46, -0.075], [-0.4, -0.08], [-0.2, -0.02], [-0.07, 0.022]], 0.04, W1), 'w');
+      add(prof([[-0.44, 0.045], [-0.47, 0.045], [-0.475, -0.08], [-0.46, -0.08]], 0.043, BK), 'm');
+      // guardamanos inferior con ranuras para los dedos y superior sobre el tubo de gases
+      add(prof([[0.27, 0.024], [0.3, 0.02], [0.52, 0.026], [0.53, 0.07], [0.27, 0.07]], 0.05, W1), 'w');
+      for (let i = 0; i < 3; i++) add(box(0.052, 0.006, 0.014, 0.33 + i * 0.06, 0.03, W2));
+      add(cyl(0.019, 0.29, 0.47, 0.105, W1, 10)); add(cyl(0.012, 0.47, 0.56, 0.105, '#2a2b2d', 8));
+      add(box(0.05, 0.016, 0.02, 0.28, 0.08, BK)); add(box(0.05, 0.016, 0.02, 0.525, 0.06, BK)); // abrazaderas
+      add(cyl(0.011, 0.5, 0.72, 0.066, '#1c1d1f', 8)); // caño
+      add(prof([[0.66, 0.076], [0.675, 0.13], [0.685, 0.13], [0.695, 0.076]], 0.01, BK), 'm'); // mira delantera
+      add(cyl(0.016, 0.7, 0.76, 0.066, BK, 8, 0, 0.014)); // freno de boca
+      // cargador curvo
+      const mag = []; for (let i = 0; i <= 8; i++) { const t = i / 8, a = t * 0.55; mag.push([0.09 + Math.sin(a) * 0.38 * t * 0.5 + t * 0.06, 0.022 - t * 0.2]); }
+      const back = mag.map(([x, y], i) => [x + 0.078 - (i / 8) * 0.01, y]).reverse();
+      add(prof([...mag, ...back], 0.03, '#2e2416'), 'w');
+      for (let i = 1; i < 5; i++) add(box(0.033, 0.005, 0.006, mag[i * 2][0] + 0.03, mag[i * 2][1], '#1c1712'));
+      pistolGrip(W2, 0.3, 0.1, 0.03);
+      add(box(0.008, 0.012, 0.03, 0.08, 0.06, '#151617', 0.026)); // selector
+      fore = [0.4, 0.03]; muzzle = [0.76, 0.066];
+      break;
+    }
+    case 'galil': case 'sg553': {
+      const wood = id === 'galil' ? '#4b4635' : '#55543f', body = id === 'galil' ? '#3a3830' : '#4a4a3e';
       add(prof([[-0.07, 0.02], [0.27, 0.02], [0.27, 0.095], [-0.07, 0.095]], 0.046, body), 'b');
       add(prof([[-0.07, 0.09], [-0.44, 0.07], [-0.46, -0.06], [-0.41, -0.07], [-0.2, 0.0], [-0.07, 0.02]], 0.038, wood), 'w');
       add(prof([[0.27, 0.025], [0.5, 0.035], [0.5, 0.09], [0.27, 0.095]], 0.05, wood), 'w');
@@ -89,8 +116,8 @@ function design(id) {
       add(cyl(0.016, 0.69, 0.75, 0.065, '#1c1d1f', 6));
       add(box(0.02, 0.025, 0.04, 0.2, 0.105, '#1c1d1f'));
       if (id === 'sg553') add(cyl(0.02, -0.02, 0.14, 0.14, '#1d1d1d', 8));
-      pistolGrip(id === 'ak47' ? WOOD2 : '#2a2a2a');
-      add(prof([[0.09, 0.02], [0.17, 0.02], [0.27, -0.17], [0.19, -0.19]], 0.032, id === 'ak47' ? '#7a4f2a' : '#2b2b2b'), 'w');
+      pistolGrip('#2a2a2a');
+      add(prof([[0.09, 0.02], [0.17, 0.02], [0.27, -0.17], [0.19, -0.19]], 0.032, '#2b2b2b'), 'w');
       add(prof([[0.04, 0.02], [0.08, 0.02], [0.08, -0.025], [0.04, -0.03]], 0.008, '#1c1d1f'), 'm');
       fore = [0.38, 0.03]; muzzle = [0.75, 0.065];
       break;
@@ -107,18 +134,23 @@ function design(id) {
         add(prof([[0.12, 0.0], [0.17, 0.0], [0.15, -0.09], [0.11, -0.09]], 0.03, body), 'b');
         fore = [0.14, -0.03]; muzzle = [0.52, 0.05];
       } else {
-        const body = '#2f3236';
-        add(prof([[-0.06, 0.02], [0.24, 0.02], [0.24, 0.1], [-0.06, 0.1]], 0.046, body), 'b');
-        add(prof([[-0.06, 0.1], [0.24, 0.1], [0.24, 0.12], [-0.06, 0.12]], 0.028, '#1f2124'), 'm');
-        add(cyl(0.012, -0.32, -0.06, 0.075, '#25272a', 6));
-        add(prof([[-0.2, 0.1], [-0.38, 0.1], [-0.38, -0.02], [-0.3, -0.02], [-0.2, 0.05]], 0.036, '#222428'), 'w');
-        add(prof([[0.24, 0.025], [0.5, 0.03], [0.5, 0.105], [0.24, 0.105]], 0.05, '#2a2c30'), 'b');
-        add(box(0.012, 0.045, 0.012, 0.5, 0.13, '#1c1d1f'));
-        add(box(0.03, 0.02, 0.03, 0.0, 0.135, '#1c1d1f'));
-        if (id === 'm4a1s') { add(cyl(0.011, 0.5, 0.55, 0.065, '#1c1d1f')); add(cyl(0.022, 0.55, 0.82, 0.065, '#1a1b1d', 10)); muzzle = [0.82, 0.065]; }
-        else { add(cyl(0.011, 0.5, 0.7, 0.065, '#1c1d1f')); add(cyl(0.015, 0.66, 0.72, 0.065, '#1c1d1f', 6)); muzzle = [0.72, 0.065]; }
-        pistolGrip('#232427', 0.3);
-        add(prof([[0.09, 0.02], [0.155, 0.02], [0.18, -0.15], [0.115, -0.155]], 0.03, '#26272a'), 'w');
+        // M4: receptor superior con riel, inferior con brocal, guardamanos redondo ventilado, culata retráctil
+        const UP = '#2c2f33', LO = '#33363a', PL = '#202225', BK = '#151617';
+        add(prof([[-0.07, 0.06], [0.25, 0.06], [0.25, 0.108], [-0.07, 0.108]], 0.044, UP), 'b'); // superior
+        add(prof([[-0.07, 0.062], [0.2, 0.062], [0.19, 0.02], [-0.05, 0.016], [-0.08, 0.036]], 0.042, LO), 'b'); // inferior
+        add(prof([[0.03, 0.022], [0.17, 0.022], [0.17, -0.005], [0.03, -0.005]], 0.046, LO), 'b'); // brocal
+        add(box(0.026, 0.012, 0.32, 0.09, 0.115, '#1d1f22')); // riel
+        add(cyl(0.027, 0.25, 0.5, 0.075, PL, 12)); // guardamanos
+        add(cyl(0.031, 0.245, 0.27, 0.075, BK, 12)); // anillo
+        add(cyl(0.012, -0.36, -0.07, 0.075, '#25272a', 10)); // tubo de la culata
+        add(prof([[-0.22, 0.1], [-0.38, 0.098], [-0.39, -0.03], [-0.33, -0.032], [-0.3, 0.04], [-0.22, 0.055]], 0.04, PL), 'w');
+        add(prof([[0.48, 0.09], [0.495, 0.165], [0.51, 0.165], [0.52, 0.09]], 0.012, BK), 'm'); // mira delantera
+        add(box(0.032, 0.03, 0.03, -0.04, 0.135, BK)); // mira trasera plegable
+        // cargador (levemente curvo)
+        add(prof([[0.05, 0.0], [0.145, 0.0], [0.16, -0.08], [0.18, -0.15], [0.115, -0.158], [0.095, -0.08]], 0.028, '#2b2c2e'), 'w');
+        pistolGrip(PL, 0.32, 0.1, 0.032);
+        if (id === 'm4a1s') { add(cyl(0.011, 0.5, 0.54, 0.075, '#1c1d1f')); add(cyl(0.021, 0.54, 0.8, 0.075, '#1a1b1d', 12)); add(cyl(0.023, 0.54, 0.56, 0.075, '#232427', 12)); muzzle = [0.8, 0.075]; }
+        else { add(cyl(0.011, 0.5, 0.66, 0.075, '#1c1d1f')); add(cyl(0.015, 0.63, 0.7, 0.075, BK, 6)); muzzle = [0.7, 0.075]; }
         fore = [0.38, 0.03];
       }
       break;
@@ -232,21 +264,23 @@ function design(id) {
     case 'molotov': add(cyl(0.03, -0.06, 0.04, 0, '#5d7a3a', 8)); add(cyl(0.012, 0.04, 0.1, 0, '#4d6a2a', 6)); add(cyl(0.016, 0.1, 0.13, 0, '#e8d6b0', 5)); break;
     case 'c4': add(box(0.2, 0.06, 0.13, 0, 0, '#b8a27a')); add(box(0.07, 0.03, 0.05, 0.01, 0.04, '#1d1d1d', 0.03)); add(box(0.05, 0.012, 0.03, 0.01, 0.058, '#5bdc6d', 0.03)); add(box(0.18, 0.02, 0.02, -0.04, 0.035, '#a33')); break;
     case 'defuser': add(box(0.16, 0.05, 0.1, 0, 0, '#2d3a55')); add(box(0.04, 0.04, 0.12, 0, 0.03, '#d4b13a', 0.05)); break;
-    default: { // pistolas comunes
-      const col = id === 'dualies' ? '#9aa0a8' : id === 'fiveseven' ? '#4b4f55' : id === 'tec9' ? '#2d2f33' : '#34373c';
-      const L = id === 'tec9' ? 0.22 : 0.18;
-      add(prof([[-0.04, 0.032], [L, 0.032], [L, 0.075], [-0.03, 0.075], [-0.045, 0.06]], 0.028, col), 'b');
-      add(prof([[-0.035, 0.0], [L - 0.02, 0.0], [L - 0.02, 0.032], [-0.035, 0.032]], 0.026, '#222428'), 'm');
-      pistolGrip(id === 'cz75' ? '#3a2a1a' : '#202124', 0.22, 0.1, 0.03);
+    default: { // pistolas comunes: corredera y armazón redondeados, empuñadura inclinada
+      const col = id === 'dualies' ? '#9aa0a8' : id === 'fiveseven' ? '#4b4f55' : id === 'tec9' ? '#2d2f33' : id === 'p250' ? '#3a3d42' : '#2e3034';
+      const L = id === 'tec9' ? 0.22 : id === 'glock' ? 0.18 : 0.185, fr = id === 'usp' || id === 'p2000' ? '#26272a' : '#1f2023';
+      add(rbox(0.03, 0.04, L + 0.04, (L - 0.04) / 2, 0.055, col, 0, 0.008), 'b'); // corredera
+      add(rbox(0.026, 0.026, L - 0.01, (L - 0.04) / 2, 0.025, fr, 0, 0.006), 'm'); // armazón
+      add(prof([[0.035, 0.02], [-0.03, 0.02], [-0.06, -0.085], [-0.055, -0.1], [0.005, -0.1], [0.012, -0.03], [0.035, 0.0]], 0.031, fr), 'w'); // empuñadura
+      for (let i = 0; i < 4; i++) add(box(0.033, 0.004, 0.006, -0.02 - i * 0.008, -0.02 - i * 0.02, '#151617')); // textura de la empuñadura
       if (id === 'tec9') add(prof([[0.06, 0.0], [0.1, 0.0], [0.1, -0.16], [0.06, -0.16]], 0.024, '#202124'), 'w');
-      if (id === 'usp') { add(cyl(0.017, L, L + 0.15, 0.055, '#1a1b1d', 10)); muzzle = [L + 0.15, 0.055]; }
+      add(cyl(0.006, L - 0.02, L + 0.002, 0.055, '#0b0b0c', 8)); // boca
+      if (id === 'usp') { add(cyl(0.017, L, L + 0.15, 0.052, '#1a1b1d', 12)); muzzle = [L + 0.15, 0.052]; }
       else muzzle = [L, 0.055];
-      add(box(0.008, 0.012, 0.008, L - 0.01, 0.082, '#111'));
+      add(box(0.006, 0.012, 0.008, L - 0.012, 0.08, '#111')); // mira delantera
     }
   }
   // ---------- detalles finos por arma ----------
   const rib = (x0, x1, y, n, w, col = '#141516', h = 0.006, d = 0.006) => { for (let i = 0; i < n; i++) add(box(w, h, d, x0 + (x1 - x0) * (n > 1 ? i / (n - 1) : 0), y, col)); };
-  if (id === 'ak47' || id === 'galil' || id === 'sg553') {
+  if (id === 'galil' || id === 'sg553') {
     add(cyl(0.012, 0.27, 0.5, 0.13, '#2a2b2d', 8)); // tubo de gases
     add(box(0.05, 0.03, 0.03, 0.26, 0.122, '#1c1d1f')); // alza
     add(box(0.008, 0.012, 0.03, 0.08, 0.06, '#151617', 0.026)); // palanca selectora
@@ -255,13 +289,12 @@ function design(id) {
     add(box(0.05, 0.016, 0.02, 0.48, 0.03, '#1c1d1f')); // abrazadera
   }
   if (id === 'm4a4' || id === 'm4a1s') {
-    for (let i = 0; i < 12; i++) add(box(0.03, 0.008, 0.006, -0.05 + i * 0.026, 0.126, '#121314')); // riel picatinny
-    for (let i = 0; i < 4; i++) for (const sd of [-0.026, 0.026]) add(box(0.004, 0.012, 0.022, 0.29 + i * 0.05, 0.065, '#121314', sd)); // ventilaciones del guardamanos
-    add(prof([[0.48, 0.105], [0.5, 0.17], [0.505, 0.17], [0.52, 0.105]], 0.012, '#1c1d1f'), 'm'); // mira delantera
+    for (let i = 0; i < 12; i++) add(box(0.03, 0.006, 0.006, -0.05 + i * 0.026, 0.123, '#121314')); // riel picatinny
+    for (let i = 0; i < 5; i++) for (const sd of [-0.025, 0.025]) add(box(0.005, 0.01, 0.026, 0.29 + i * 0.045, 0.075, '#0f1011', sd)); // ventilaciones del guardamanos
     add(box(0.03, 0.012, 0.03, -0.07, 0.112, '#1c1d1f')); // manija de carga
     add(cyl(0.008, 0.12, 0.15, 0.08, '#1c1d1f', 6, 0.03)); // asistente de cierre
     for (let i = 0; i < 4; i++) add(box(0.04, 0.006, 0.005, -0.33 + i * 0.07, 0.065, '#121314', 0.016)); // posiciones de la culata
-    for (let i = 0; i < 3; i++) add(box(0.032, 0.005, 0.005, 0.13 + i * 0.03, -0.05 - i * 0.03, '#1b1c1e')); // nervios del cargador
+
   }
   if (id === 'famas' || id === 'aug') { rib(-0.2, 0.2, 0.114, 8, 0.012, '#1a1b1c', 0.005, 0.03); add(box(0.02, 0.03, 0.06, 0.25, 0.06, '#1a1b1c')); }
   if (id === 'awp' || id === 'ssg08' || id === 'scar20' || id === 'g3sg1') {
@@ -273,7 +306,7 @@ function design(id) {
     if (id === 'awp') { add(box(0.012, 0.03, 0.02, 0.36, 0.03, '#1c1d1f')); rib(0.43, 0.6, 0.065, 4, 0.012, '#121314', 0.032, 0.03); } // base del bípode y freno
   }
   if (id === 'deagle' || ['glock', 'usp', 'p2000', 'p250', 'fiveseven', 'cz75', 'dualies', 'tec9'].includes(id)) {
-    const top = id === 'deagle' ? 0.092 : 0.075, rear = id === 'deagle' ? -0.045 : -0.035;
+    const top = id === 'deagle' ? 0.092 : 0.078, rear = id === 'deagle' ? -0.045 : -0.055;
     for (let i = 0; i < 5; i++) for (const sd of [-0.017, 0.017]) add(box(0.004, 0.03, 0.004, rear + 0.006 + i * 0.009, top - 0.02, '#0f1011', sd * (id === 'deagle' ? 1.05 : 0.95))); // estrías de la corredera
     add(box(0.012, 0.016, 0.01, rear - 0.004, top - 0.004, '#111')); // martillo / mira trasera
   }
@@ -305,7 +338,10 @@ export function gunGeo(id, finish = 0) {
     for (let i = 0; i < col.length / 3; i++) { const k = 0.8 + nor[i * 3 + 1] * 0.2 + nor[i * 3] * 0.06; col[i * 3] = c.r * k; col[i * 3 + 1] = c.g * k; col[i * 3 + 2] = c.b * k; }
     return g2;
   });
-  const g = mergeGeometries(geos);
+  // metal primero (grupo 0) y el resto (grupo 1): en primera persona cada grupo tiene su material
+  const order = d.parts.map((pr, i) => i).sort((a, b) => (d.parts[a][1] === 'm' ? 0 : 1) - (d.parts[b][1] === 'm' ? 0 : 1));
+  const g = mergeGeometries(order.map(i => geos[i]), true);
+  g.groups.forEach((gr, k) => { gr.materialIndex = d.parts[order[k]][1] === 'm' ? 0 : 1; });
   gcache.set(key, g); if (!icache.has(id)) icache.set(id, { fore: d.fore, muzzle: d.muzzle });
   return g;
 }
@@ -475,85 +511,157 @@ export function poseModel(root, o, dt) {
 }
 
 // ---------------- primera persona ----------------
+// Mano articulada: palma, 4 dedos de 3 falanges y pulgar de 2, con guante. Cada pose dobla los dedos
+// (ángulos por articulación) y dice cómo se apoya la mano respecto del arma.
+// Ejes de la mano: x a lo ancho de los nudillos, y = dorso, -z = hacia donde apuntan los dedos estirados.
+const FING = [ // [x del nudillo (mano derecha), largo de las 3 falanges, radio]
+  [-0.031, [0.044, 0.027, 0.021], 0.0098], [-0.0105, [0.048, 0.03, 0.022], 0.0102], [0.0105, [0.045, 0.028, 0.021], 0.0097], [0.03, [0.036, 0.022, 0.019], 0.0088],
+];
+const UPY = new THREE.Vector3(0, 1, 0), qq = new THREE.Quaternion();
+function seg(a, b, r, col) {
+  const d = new THREE.Vector3().subVectors(b, a), len = d.length();
+  const g = new THREE.CapsuleGeometry(r, Math.max(0.001, len), 3, 10);
+  qq.setFromUnitVectors(UPY, d.normalize()); g.applyQuaternion(qq); g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  return paint(g, col);
+}
+// curl: [[c1,c2,c3] x4 dedos], thumb: [abre, dobla]; spread: separación de los dedos
+function handGeo(S, curl, thumb, mirror, spread = 0.06) {
+  const glove = S.glove, cuff = '#1d1e20', knuckle = '#2c2d30', out = [];
+  // palma con nudillos y puño del guante
+  out.push(rbox(0.082, 0.03, 0.088, 0, 0, glove, 0, 0.0145));
+  out.push(rbox(0.06, 0.006, 0.05, 0.0, 0.0145, knuckle, 0, 0.003)); // refuerzo del dorso
+  FING.forEach(([x, , r]) => out.push(ell(r * 1.15, r * 1.05, r * 1.1, 0.04, 0.004, knuckle, x))); // nudillos
+  out.push(seg(new THREE.Vector3(0, 0, 0.035), new THREE.Vector3(0, 0, 0.06), 0.031, glove));
+  FING.forEach(([x, L, r], i) => {
+    const c = curl[i] || [0, 0, 0];
+    let p = new THREE.Vector3(x, 0.002, -0.044), ang = 0, yaw = (i - 1.5) * spread * 0.5;
+    for (let k = 0; k < 3; k++) {
+      ang += c[k];
+      const d = new THREE.Vector3(Math.sin(yaw) * Math.cos(ang), -Math.sin(ang), -Math.cos(yaw) * Math.cos(ang));
+      const q = p.clone().addScaledVector(d, L[k]);
+      out.push(seg(p, q, r * (1 - k * 0.07), glove)); p = q;
+    }
+  });
+  // pulgar: sale del costado de la palma (cerca de la muñeca) en la dirección de la pose y se va doblando
+  {
+    let p = new THREE.Vector3(-0.036, -0.01, 0.018), dir = new THREE.Vector3(thumb[0], thumb[1], thumb[2]).normalize();
+    const bend = thumb[3] || 0, L = [0.038, 0.03, 0.024], ax = new THREE.Vector3(0, 1, 0).cross(dir).normalize();
+    for (let k = 0; k < 3; k++) {
+      const q = p.clone().addScaledVector(dir, L[k]); out.push(seg(p, q, 0.0118 - k * 0.0009, glove)); p = q;
+      dir.applyAxisAngle(ax, -bend).normalize();
+    }
+  }
+  let g = mergeGeometries(out); g.scale(0.88, 0.88, 0.88);
+  if (mirror) { g.scale(-1, 1, 1); const idx = g.index; if (!idx) { const pos = g.attributes.position.array, col = g.attributes.color.array, nor = g.attributes.normal.array; for (let i = 0; i < pos.length; i += 9) for (const A of [pos, col, nor]) for (let j = 0; j < 3; j++) { const t = A[i + 3 + j]; A[i + 3 + j] = A[i + 6 + j]; A[i + 6 + j] = t; } } g.computeVertexNormals(); }
+  return g;
+}
+// poses: dedos y ubicación (en coordenadas del arma: x derecha, y arriba, -z adelante)
+const C = (a, b, c) => [a, b, c];
+const POSES = {
+  // mano derecha en la empuñadura: palma del lado derecho, dedos rodean el frente, índice en el gatillo
+  grip: { curl: [C(0.35, 0.55, 0.35), C(1.35, 1.45, 0.9), C(1.4, 1.5, 0.9), C(1.45, 1.5, 0.9)], thumb: [0.35, -0.75, -0.55, 0.25], basis: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], tilt: 0.3, pos: [0.034, -0.045, 0.006] },
+  // mano izquierda debajo del guardamanos: palma arriba, dedos suben por el costado derecho
+  fore: { curl: [C(0.5, 1.0, 0.6), C(0.55, 1.05, 0.6), C(0.6, 1.1, 0.6), C(0.65, 1.1, 0.6)], thumb: [-0.85, -0.45, 0.25, 0.1], basis: [[0, 0, -1], [0, -1, 0], [-1, 0, 0]], tilt: 0, pos: [-0.048, -0.04, 0] },
+  // mano izquierda abrazando la derecha en las pistolas
+  cup: { curl: [C(1.0, 1.0, 0.6), C(1.1, 1.1, 0.6), C(1.2, 1.1, 0.6), C(1.3, 1.1, 0.6)], thumb: [0.15, -0.3, -0.9, 0.05], basis: [[0, 1, 0], [-1, 0, 0], [0, 0, 1]], tilt: 0.3, pos: [-0.046, -0.06, -0.012] },
+  // cuchillo: mano cerrada sobre el mango horizontal
+  knife: { curl: [C(1.25, 1.35, 0.9), C(1.35, 1.45, 0.9), C(1.4, 1.5, 0.9), C(1.45, 1.5, 0.9)], thumb: [-0.25, -0.6, -0.7, 0.2], basis: [[0, 0, 1], [1, 0, 0], [0, 1, 0]], tilt: 0, pos: [0.03, 0.04, 0.065] },
+  // granadas y C4: mano que sostiene algo redondo
+  ball: { curl: [C(0.8, 0.8, 0.5), C(0.85, 0.85, 0.5), C(0.9, 0.85, 0.5), C(0.95, 0.85, 0.5)], thumb: [0.3, -0.7, -0.6, 0.2], basis: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], tilt: 0.2, pos: [0.05, -0.01, 0.01] },
+};
+const PQ = {};
+function poseQuat(name) {
+  if (PQ[name]) return PQ[name];
+  const P = POSES[name], m = new THREE.Matrix4();
+  const [x, y, z] = P.basis.map(v => new THREE.Vector3(...v));
+  m.makeBasis(x, y, z);
+  const q = new THREE.Quaternion().setFromRotationMatrix(m);
+  if (P.tilt) q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -P.tilt));
+  return (PQ[name] = q);
+}
 export function makeViewModel() {
   const g = new THREE.Group();
   const hold = new THREE.Group(); g.add(hold);
   const gun = new THREE.Group(); hold.add(gun);
   const arms = [];
-  for (let k = 0; k < 2; k++) { const u = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1), MAT_VM), f = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 1), MAT_VM), h = new THREE.Group(); g.add(u, f, h); arms.push({ u, f, h }); }
+  for (let k = 0; k < 2; k++) { const u = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1), MAT_VM), f = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 1), MAT_VM), h = new THREE.Group(); u.visible = false; g.add(u, f, h); arms.push({ u, f, h }); }
   g.userData = { hold, gun, arms, id: null, team: null };
   return g;
 }
-const armCache = {};
+const armCache = {}, handCache = {};
 function vmParts(team, si) {
   const key = team + si; if (armCache[key]) return armCache[key];
   const S = skinOf(team, si);
-  const tube = (r0, r1, len, u, col) => { const g = new THREE.CylinderGeometry(r0, r1, len, 16); g.rotateX(Math.PI / 2); g.translate(0, 0, -u); return paint(g, col); };
-  const sleeve = mergeGeometries([tube(0.04, 0.036, 1, 0, S.shirt), tube(0.042, 0.042, 0.06, -0.45, '#1c1c1c')]);
-  const forearm = mergeGeometries([tube(0.033, 0.029, 1, 0, S.shirt), tube(0.038, 0.037, 0.16, 0.42, S.vest), tube(0.031, 0.031, 0.05, 0.49, S.glove)]);
-  // mano cerrada sobre la empuñadura: palma, nudillos, dedos y pulgar
-  const hand = mergeGeometries([rbox(0.05, 0.065, 0.075, 0, -0.01, S.glove, 0, 0.018), rbox(0.056, 0.026, 0.045, 0.012, -0.038, S.glove, 0, 0.011),
-    cyl(0.011, -0.012, 0.04, 0.026, S.glove, 8, 0.026), ...[0, 1, 2, 3].map(i => cyl(0.0085, 0.0, 0.03, -0.045, S.glove, 6, -0.02 + i * 0.013))]);
-  return (armCache[key] = { sleeve, forearm, hand });
+  const tube = (r0, r1, len, u, col) => { const g = new THREE.CylinderGeometry(r0, r1, len, 18); g.rotateX(Math.PI / 2); g.translate(0, 0, -u); return paint(g, col); };
+  // antebrazo: manga con pliegues y el puño del guante (de 0 = codo a 1 = muñeca, se estira con placeSeg)
+  const forearm = mergeGeometries([tube(0.044, 0.034, 1, 0, S.shirt), tube(0.045, 0.043, 0.06, 0.05, S.shirt), tube(0.042, 0.04, 0.04, -0.15, S.shirt), tube(0.037, 0.036, 0.1, 0.43, S.vest), tube(0.033, 0.032, 0.03, 0.49, '#1d1e20')]);
+  return (armCache[key] = { forearm });
 }
+function vmHand(team, si, pose, left) {
+  const key = team + si + pose + (left ? 'L' : 'R'); if (handCache[key]) return handCache[key];
+  const P = POSES[pose];
+  return (handCache[key] = handGeo(skinOf(team, si), P.curl, P.thumb, left));
+}
+const HMAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0 });
+const GMAT = [new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.36, metalness: 0.55 }), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.08 })];
 export function setViewGun(vm, id, team, si = 0, finish = 0) {
   const u = vm.userData, key = id + team + si + ':' + finish; if (u.key === key) return; u.key = key; u.id = id; u.team = team;
   u.gun.clear();
   for (const a of u.arms) a.h.clear();
   if (!id) return;
   const cat = WEAPONS[id]?.cat || id;
-  const m = new THREE.Mesh(gunGeo(id, finish), MAT_VM); u.gun.add(m);
+  const m = new THREE.Mesh(gunGeo(id, finish), GMAT); u.gun.add(m);
   u.dual = id === 'dualies';
-  if (u.dual) { const m2 = new THREE.Mesh(gunGeo(id, finish), MAT_VM); m2.position.set(-0.21, 0.0, 0.02); m2.rotation.y = -0.08; u.gun.add(m2); }
+  if (u.dual) { const m2 = new THREE.Mesh(gunGeo(id, finish), GMAT); m2.position.set(-0.21, 0.0, 0.02); m2.rotation.y = -0.08; u.gun.add(m2); }
   u.info = gunInfo(id); u.cat = cat;
   const P = vmParts(team, si);
-  for (const a of u.arms) { a.u.geometry = P.sleeve; a.f.geometry = P.forearm; a.h.add(new THREE.Mesh(P.hand, MAT_VM)); }
+  const nade = cat === 'grenade' || cat === 'c4' || id === 'defuser';
+  u.poses = cat === 'knife' ? ['knife', null] : nade ? ['ball', null] : u.dual ? ['grip', 'grip'] : cat === 'pistol' || id === 'zeus' ? ['grip', 'cup'] : ['grip', 'fore'];
+  u.arms.forEach((a, k) => { a.f.geometry = P.forearm; a.f.material = HMAT; const pz = u.poses[k] || 'fore'; a.h.add(new THREE.Mesh(vmHand(team, si, pz, k === 1), HMAT)); });
   // cargador suelto (en la mano izquierda durante la recarga)
   const isMagGun = WEAPONS[id] && WEAPONS[id].mag > 1 && cat !== 'heavy' && cat !== 'sniper' || id === 'awp';
   u.mag = null;
-  if (isMagGun) { const mg = new THREE.Mesh(new RoundedBoxGeometry(0.026, cat === 'pistol' ? 0.09 : 0.13, 0.05, 2, 0.006), new THREE.MeshStandardMaterial({ color: '#2a2b2d', roughness: 0.5, metalness: 0.4 })); mg.position.set(0, -0.05, -0.01); mg.rotation.x = 0.15; mg.visible = false; u.arms[1].h.add(mg); u.mag = mg; }
+  if (isMagGun) { const mg = new THREE.Mesh(new RoundedBoxGeometry(0.026, cat === 'pistol' ? 0.09 : 0.13, 0.05, 2, 0.006), new THREE.MeshStandardMaterial({ color: '#2a2b2d', roughness: 0.5, metalness: 0.4 })); mg.position.set(0, -0.06, -0.03); mg.visible = false; u.arms[1].h.add(mg); u.mag = mg; }
   // dónde se sostiene respecto de la cámara
-  u.base = id === 'dualies' ? [0.12, -0.15, -0.48] : cat === 'pistol' || id === 'zeus' ? [0.15, -0.125, -0.44] : cat === 'knife' ? [0.17, -0.18, -0.4] : cat === 'grenade' || cat === 'c4' || id === 'defuser' ? [0.16, -0.17, -0.38] : cat === 'sniper' ? [0.19, -0.22, -0.55] : [0.19, -0.2, -0.43];
-  u.rot = cat === 'knife' ? [0.35, 0.55, -0.25] : cat === 'grenade' || cat === 'c4' ? [0.1, 0.2, 0] : [0.03, 0.07, 0];
+  u.base = id === 'dualies' ? [0.12, -0.13, -0.44] : cat === 'pistol' || id === 'zeus' ? [0.125, -0.12, -0.42] : cat === 'knife' ? [0.15, -0.15, -0.34] : nade ? [0.14, -0.14, -0.32] : cat === 'sniper' ? [0.15, -0.17, -0.44] : [0.15, -0.165, -0.37];
+  u.rot = cat === 'knife' ? [0.35, 0.55, -0.25] : nade ? [0.1, 0.2, 0] : [0.03, 0.06, 0];
   vm.traverse(o => { o.renderOrder = 10; o.frustumCulled = false; });
 }
-// ubica los brazos (cada cuadro, después de mover hold)
-const vS = new THREE.Vector3(), vT = new THREE.Vector3(), vEl = new THREE.Vector3(), vP = new THREE.Vector3(), gm = new THREE.Matrix4();
+// ubica las manos (pegadas al arma según la pose) y los antebrazos desde abajo de la pantalla
+const vT = new THREE.Vector3(), vW = new THREE.Vector3(), vEl2 = new THREE.Vector3(), gm = new THREE.Matrix4(), gq = new THREE.Quaternion(), hq = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
 export function updateViewArms(vm) {
   const u = vm.userData; if (!u.id) return;
   u.hold.updateMatrix(); u.gun.updateMatrix();
-  gm.multiplyMatrices(u.hold.matrix, u.gun.matrix);
+  gm.multiplyMatrices(u.hold.matrix, u.gun.matrix); gm.decompose(tmpP, gq, tmpS);
   const info = u.info || {}, cat = u.cat;
   for (let k = 0; k < 2; k++) {
-    const A = u.arms[k], right = k === 0;
-    vS.set(right ? 0.2 : -0.22, -0.3, 0.12);
-    let T = null;
-    if (right) T = vT.set(0.004, -0.012, cat === 'knife' ? 0.065 : 0).applyMatrix4(gm);
-    else if (info.fore && cat !== 'knife') T = vT.set(-0.004, info.fore[1] - 0.03, -info.fore[0]).applyMatrix4(gm);
-    // recarga: la mano izquierda saca el cargador, baja, trae uno nuevo y lo mete
-    const rk = u.reloadK || 0;
-    if (!right && rk > 0.08 && rk < 0.94 && cat !== 'knife' && cat !== 'grenade' && !u.dual) {
-      const s2 = (rk - 0.08) / 0.86, magW = cat === 'pistol' ? [0, -0.11, 0.02] : [0, -0.12, -0.14], low = [0.05, -0.55, 0.12];
-      const base = T ? [T.x, T.y, T.z] : null;
-      const mw = vP.set(...magW).applyMatrix4(gm).clone(), lw = vEl.set(...low).applyMatrix4(gm).clone();
-      const lerp3 = (a, b, k) => vT.set(a[0] + (b.x - a[0]) * k, a[1] + (b.y - a[1]) * k, a[2] + (b.z - a[2]) * k);
-      const sm = k => k * k * (3 - 2 * k);
-      if (s2 < 0.22) T = base ? lerp3(base, mw, sm(s2 / 0.22)) : vT.copy(mw);
-      else if (s2 < 0.48) T = lerp3([mw.x, mw.y, mw.z], lw, sm((s2 - 0.22) / 0.26));
-      else if (s2 < 0.74) T = lerp3([lw.x, lw.y, lw.z], mw, sm((s2 - 0.48) / 0.26));
-      else T = base ? lerp3([mw.x, mw.y, mw.z], { x: base[0], y: base[1], z: base[2] }, sm((s2 - 0.74) / 0.26)) : vT.copy(mw);
-      if (u.mag) u.mag.visible = s2 > 0.22 && s2 < 0.76;
-    } else if (!right && u.mag) u.mag.visible = false;
-    else if (u.dual) T = vT.set(-0.206, -0.012, 0.02).applyMatrix4(gm);
-    else if (cat === 'pistol' || u.id === 'zeus') T = vT.set(-0.035, -0.065, 0.025).applyMatrix4(gm);
-    const vis = !!T;
-    A.u.visible = A.f.visible = A.h.visible = vis;
-    if (!vis) continue;
-    vP.set(right ? 0.6 : -0.65, -0.7, 0.3);
-    const T2 = ik(vS, T, 0.4, 0.4, vP, vEl);
-    placeSeg(A.u, vS, vEl); placeSeg(A.f, vEl, T2);
-    A.h.position.copy(T2);
-    A.h.quaternion.setFromRotationMatrix(gm);
-    if (!right && !u.dual) A.h.rotateZ(0.35);
+    const A = u.arms[k], right = k === 0, pose = u.poses[k];
+    let ok = !!pose;
+    if (ok) {
+      const P = POSES[pose];
+      let pos = P.pos.slice();
+      if (!right && pose === 'fore') pos = [-0.022, (info.fore ? info.fore[1] : 0) - 0.032, -(info.fore ? info.fore[0] : 0.3)];
+      if (right && cat === 'pistol') pos = [0.033, -0.032, 0.026];
+      if (!right && pose === 'cup') pos = [-0.042, -0.05, 0.012];
+      if (!right && u.dual) pos = [-0.21 + 0.033, -0.05, 0.048];
+      vT.set(...pos).applyMatrix4(gm);
+      hq.copy(gq).multiply(poseQuat(pose));
+      // recarga: la mano izquierda va al cargador, baja, vuelve con otro y lo mete
+      const rk = u.reloadK || 0;
+      if (!right && rk > 0.08 && rk < 0.94 && cat !== 'knife' && !u.dual) {
+        const s2 = (rk - 0.08) / 0.86, sm = t => t * t * (3 - 2 * t);
+        const mw = new THREE.Vector3(...(cat === 'pistol' ? [-0.01, -0.13, 0.02] : [-0.01, -0.12, -0.14])).applyMatrix4(gm), lw = new THREE.Vector3(0.05, -0.55, 0.12).applyMatrix4(gm), base = vT.clone();
+        if (s2 < 0.22) vT.lerpVectors(base, mw, sm(s2 / 0.22)); else if (s2 < 0.48) vT.lerpVectors(mw, lw, sm((s2 - 0.22) / 0.26)); else if (s2 < 0.74) vT.lerpVectors(lw, mw, sm((s2 - 0.48) / 0.26)); else vT.lerpVectors(mw, base, sm((s2 - 0.74) / 0.26));
+        hq.copy(gq).multiply(poseQuat('ball'));
+        if (u.mag) u.mag.visible = s2 > 0.22 && s2 < 0.76;
+      } else if (!right && u.mag) u.mag.visible = false;
+    }
+    A.f.visible = A.h.visible = ok;
+    if (!ok) continue;
+    A.h.position.copy(vT); A.h.quaternion.copy(hq);
+    // muñeca = atrás de la palma; el codo queda fuera de la pantalla, abajo y al costado
+    vW.set(0, 0, 0.065).applyQuaternion(hq).add(vT);
+    vEl2.set(right ? 0.24 : -0.26, -0.42, 0.12);
+    placeSeg(A.f, vEl2, vW);
   }
 }

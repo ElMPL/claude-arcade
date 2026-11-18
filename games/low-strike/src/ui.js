@@ -1,6 +1,7 @@
 // HUD estilo CS2: radar, plata, reloj y marcador, vida/blindaje, munición, killfeed, tabla y menú de compra.
 import { styleCrosshair } from './settings.js';
-import { WEAPONS, BUY, DESC, WHEEL } from './weapons.js';
+import { WEAPONS, BUY, DESC } from './weapons.js';
+import { ICON } from './hudicons.js';
 import { iconURL } from './icons.js';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -51,10 +52,10 @@ export function drawRadar(cv, img, W, view, list, bomb, meTeam) {
 // ---------- HUD ----------
 export const hud = {
   el: {},
-  init() { for (const id of ['hud', 'moneyV', 'moneyAdd', 'scT', 'scCT', 'pipsT', 'pipsCT', 'clock', 'clockV', 'bombIco', 'feed', 'hpV', 'arV', 'helmV', 'hpB', 'arB', 'ammo', 'wname', 'magV', 'resV', 'slots', 'xhair', 'hitmark', 'centerMsg', 'prog', 'progL', 'progB', 'hint', 'dmgDir', 'scope', 'flash', 'hurt', 'spec', 'banner', 'ban1', 'ban2', 'buyHint', 'zoneName', 'board']) this.el[id] = $(id); },
+  init() { for (const [id, ic] of [['hpIco', 'hp'], ['arIco', 'armor'], ['kitIco', 'kit'], ['cartIco', 'cart'], ['bombIco', 'bomb']]) { const e = $(id); if (e) e.innerHTML = ICON[ic]; } for (const id of ['hud', 'moneyV', 'moneyAdd', 'scT', 'scCT', 'pipsT', 'pipsCT', 'clock', 'clockV', 'bombIco', 'feed', 'hpV', 'arV', 'arIco', 'kitV', 'hpB', 'arB', 'cartIco', 'ammo', 'wname', 'magV', 'resV', 'slots', 'xhair', 'hitmark', 'centerMsg', 'prog', 'progL', 'progB', 'hint', 'dmgDir', 'scope', 'flash', 'hurt', 'spec', 'banner', 'ban1', 'ban2', 'buyHint', 'zoneName', 'board']) this.el[id] = $(id); },
   money(v) { set(this.el.moneyV, String(v)); },
   moneyDelta(v, why) { if (!v) return; const d = document.createElement('div'); d.className = v < 0 ? 'neg' : ''; d.textContent = (v > 0 ? '+$' : '-$') + Math.abs(v) + (why ? '  ' + why : ''); this.el.moneyAdd.appendChild(d); setTimeout(() => d.remove(), 2300); },
-  vitals(hp, ar, helm) { set(this.el.hpV, String(hp)); set(this.el.arV, String(ar)); this.el.helmV.hidden = !helm; this.el.hpV.parentElement.classList.toggle('low', hp <= 25); this.el.hpB.style.width = hp + '%'; this.el.arB.style.width = ar + '%'; },
+  vitals(hp, ar, helm, kit) { set(this.el.hpV, String(hp)); set(this.el.arV, String(ar)); const hk = helm && ar > 0 ? 'h' : 'a'; if (this.el.arIco._k !== hk) { this.el.arIco._k = hk; this.el.arIco.innerHTML = hk === 'h' ? ICON.helmet : ICON.armor; } this.el.arV.parentElement.classList.toggle('none', ar <= 0); this.el.kitV.hidden = !kit; this.el.hpV.parentElement.classList.toggle('low', hp <= 25); this.el.hpB.style.width = hp + '%'; this.el.arB.style.width = ar + '%'; },
   ammo(name, mag, res, show) { set(this.el.wname, name); this.el.ammo.querySelector('.nums').style.visibility = show ? '' : 'hidden'; set(this.el.magV, String(mag)); set(this.el.resV, String(res)); this.el.ammo.classList.toggle('low', show && mag <= 5); },
   clock(t, red, bomb) {
     const s = Math.max(0, Math.ceil(t)); set(this.el.clockV, bomb ? '' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
@@ -113,7 +114,7 @@ export const hud = {
 export function renderBoard(G, meId) {
   const ps = [...G.players.values()];
   const myTeam = G.players.get(meId)?.team;
-  const row = p => `<tr class="${p.team} ${p.alive ? '' : 'dead'} ${p.id === meId ? 'me' : ''}"><td>${esc(p.name)}${p.inv && p.inv.c4 && myTeam === 'T' ? ' 💣' : ''}${p.inv && p.inv.kit && myTeam === 'CT' && p.team === 'CT' ? ' ✂' : ''}</td><td>${p.team === myTeam ? '$' + p.money : ''}</td><td>${p.k}</td><td>${p.a}</td><td>${p.d}</td><td>${p.k ? Math.round((p.hsK || 0) / p.k * 100) + '%' : '—'}</td><td>${Math.round((p.dmgT || 0) / Math.max(1, p.rounds || 1))}</td><td>${p.mvp ? '★' + p.mvp : ''}</td><td>${p.bot ? 'BOT' : (p.ping || '—')}</td></tr>`;
+  const row = p => `<tr class="${p.team} ${p.alive ? '' : 'dead'} ${p.id === meId ? 'me' : ''}"><td>${esc(p.name)}${p.inv && p.inv.c4 && myTeam === 'T' ? ' <i class="bico">' + ICON.bomb + '</i>' : ''}${p.inv && p.inv.kit && myTeam === 'CT' && p.team === 'CT' ? ' <i class="bico">' + ICON.kit + '</i>' : ''}</td><td>${p.team === myTeam ? '$' + p.money : ''}</td><td>${p.k}</td><td>${p.a}</td><td>${p.d}</td><td>${p.k ? Math.round((p.hsK || 0) / p.k * 100) + '%' : '—'}</td><td>${Math.round((p.dmgT || 0) / Math.max(1, p.rounds || 1))}</td><td>${p.mvp ? '★' + p.mvp : ''}</td><td>${p.bot ? 'BOT' : (p.ping || '—')}</td></tr>`;
   const tbl = (team) => {
     const l = ps.filter(p => p.team === team).sort((a, b) => b.k - a.k || a.d - b.d);
     const cash = l.reduce((a, p) => a + (p.money || 0), 0);
@@ -124,13 +125,9 @@ export function renderBoard(G, meId) {
 }
 
 // ---------- menú de compra (como CS2: 5 columnas, teclas 1-5 y después 1-5) ----------
-let wheel = null;
-export const buyCats = () => (wheel ? WHEEL : BUY);
-export function buildBuy(team, icon, onBuy, onHover, style = 'grid', onCat = null) {
+export const buyCats = () => BUY;
+export function buildBuy(team, icon, onBuy, onHover) {
   const cols = $('buyCols'); cols.innerHTML = '';
-  wheel = style === 'wheel' ? { team, onBuy, onHover, onCat } : null;
-  $('buy').classList.toggle('wheel', !!wheel);
-  if (wheel) { buildWheel(); return; }
   BUY.forEach((cat, ci) => {
     const col = document.createElement('div'); col.className = 'bcol'; col.dataset.c = ci;
     col.innerHTML = `<h5><b>${ci + 1}</b>${cat.name}</h5>`;
@@ -143,40 +140,8 @@ export function buildBuy(team, icon, onBuy, onHover, style = 'grid', onCat = nul
     cols.appendChild(col);
   });
 }
-// rueda: anillo de categorías y, adentro, las armas de la categoría elegida
-function buildWheel() {
-  const cols = $('buyCols'), R = 230, r0 = 70, n = WHEEL.length;
-  const arc = (a0, a1, ri, ro) => { const p = (a, rr) => [R + Math.cos(a) * rr, R + Math.sin(a) * rr]; const [x0, y0] = p(a0, ro), [x1, y1] = p(a1, ro), [x2, y2] = p(a1, ri), [x3, y3] = p(a0, ri); return `M${x0},${y0} A${ro},${ro} 0 0 1 ${x1},${y1} L${x2},${y2} A${ri},${ri} 0 0 0 ${x3},${y3} Z`; };
-  let svg = `<svg class="wsvg" viewBox="0 0 ${R * 2} ${R * 2}">`;
-  for (let i = 0; i < n; i++) {
-    const a0 = -Math.PI / 2 + (i - 0.5) * 2 * Math.PI / n + 0.02, a1 = a0 + 2 * Math.PI / n - 0.04, am = (a0 + a1) / 2;
-    svg += `<path class="wsec" data-c="${i}" d="${arc(a0, a1, 160, 226)}"/><text x="${R + Math.cos(am) * 193}" y="${R + Math.sin(am) * 193 + 6}" class="wlab"><tspan class="wk">${i + 1}</tspan> ${WHEEL[i].name}</text>`;
-  }
-  svg += `<circle cx="${R}" cy="${R}" r="${r0}" class="wmid"/></svg><div id="wItems"></div><div id="wMid"></div>`;
-  cols.innerHTML = `<div class="wheel">${svg}</div>`;
-  for (const el of cols.querySelectorAll('.wsec')) { el.onclick = () => wheel.onCat(+el.dataset.c); el.onmouseenter = () => wheel.onCat(+el.dataset.c, true); }
-}
-function refreshWheel(P, sel) {
-  for (const el of document.querySelectorAll('.wsec')) el.classList.toggle('sel', +el.dataset.c === sel);
-  const box = $('wItems'); if (!box) return;
-  const key = sel + '|' + wheel.team; if (box._k !== key) {
-    box._k = key; box.innerHTML = '';
-    if (sel >= 0) {
-      const list = WHEEL[sel].items[wheel.team], n = list.length;
-      list.forEach((id, i) => {
-        const a = -Math.PI / 2 + i * 2 * Math.PI / n, w = WEAPONS[id], it = document.createElement('div'); it.className = 'bit wit'; it.dataset.id = id;
-        it.style.left = (50 + Math.cos(a) * 24) + '%'; it.style.top = (50 + Math.sin(a) * 24) + '%';
-        it.innerHTML = `<span class="k">${i + 1}</span><img src="${iconURL(id, 160, 52)}"><span class="n">${esc(w.name)}</span><span class="p">$${w.price}</span>`;
-        it.onclick = () => wheel.onBuy(id); it.onmouseenter = () => wheel.onHover(id); it.onmouseleave = () => wheel.onHover(null);
-        box.appendChild(it);
-      });
-    }
-  }
-  $('wMid').innerHTML = `<b>$${P.money}</b><small>${sel >= 0 ? WHEEL[sel].name : 'Elegí una categoría'}</small>`;
-}
 export function refreshBuy(P, sel) {
   $('buyMoney').textContent = P.money;
-  if (wheel) refreshWheel(P, sel);
   for (const it of document.querySelectorAll('#buyCols .bit')) {
     const id = it.dataset.id, w = WEAPONS[id];
     let price = w.price;
@@ -190,11 +155,12 @@ export function refreshBuy(P, sel) {
 export function showWeaponInfo(id) {
   const box = $('buyInfo'); if (!id) { box.hidden = true; return; }
   const w = WEAPONS[id]; if (!w) return;
-  box.hidden = false; $('biName').textContent = w.name;
-  $('biList').innerHTML = (DESC[id] || []).map(t => `<li>${esc(t)}</li>`).join('') + (w.reward ? `<li>Premio por baja: $${w.reward}</li>` : '');
+  box.hidden = false; $('biName').textContent = w.name; $('biPrice').textContent = '$' + w.price;
+  // una sola línea corta (lo que distingue al arma) y, si es arma, 4 barras
+  $('biLine').textContent = (DESC[id] || [])[0] || '';
   if (w.dmg && w.cat !== 'knife') {
-    const bar = (v, max) => `<i style="width:${Math.min(100, v / max * 100).toFixed(0)}%"></i>`;
-    $('biStats').innerHTML = `<span>Daño</span>${bar(w.dmg * w.pellets, 120)}<span>Cadencia</span>${bar(w.rpm, 900)}<span>Blindaje</span>${bar(w.ap * 100, 100)}<span>Movilidad</span>${bar(w.speed, 250)}<span>Cargador</span><span>${w.mag} / ${w.reserve}</span>`;
+    const bar = (l, v, max) => `<span>${l}</span><i><b style="width:${Math.min(100, v / max * 100).toFixed(0)}%"></b></i>`;
+    $('biStats').innerHTML = bar('Daño', w.dmg * w.pellets, 120) + bar('Cadencia', w.rpm, 900) + bar('Movilidad', w.speed, 250) + `<span>Cargador</span><em>${w.mag} / ${w.reserve}</em>` + (w.reward ? `<span>Premio</span><em>$${w.reward}</em>` : '');
   } else $('biStats').innerHTML = '';
 }
 export function weaponInfo(id) { return WEAPONS[id] ? WEAPONS[id].name : ''; }

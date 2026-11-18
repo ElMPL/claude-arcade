@@ -59,19 +59,21 @@ export const WEAPONS = {
 };
 for (const [id, w] of Object.entries(WEAPONS)) w.id = id;
 
-// Menú de compra como el de CS2 (loadout por defecto): 5 columnas de hasta 5 cosas
+// Menú de compra como el de CS2. En CS2 cada bando lleva un loadout de 5 pistolas, 5 intermedias y 5 rifles;
+// este es el más usado en partidas profesionales (pistola inicial + 4, subfusil del bando + UMP, escopetas y P90,
+// rifles baratos y caros, Scout y AWP). Solo se puede comprar lo que está acá.
 export const BUY = [
   { name: 'Equipo', items: { T: ['vest', 'vesthelm', 'zeus'], CT: ['vest', 'vesthelm', 'zeus', 'defuser'] } },
-  { name: 'Pistolas', items: { T: ['glock', 'p250', 'dualies', 'tec9', 'deagle'], CT: ['usp', 'p250', 'dualies', 'fiveseven', 'deagle'] } },
-  { name: 'Intermedias', items: { T: ['mac10', 'mp7', 'nova', 'xm1014', 'p90'], CT: ['mp9', 'mp7', 'nova', 'xm1014', 'p90'] } },
-  { name: 'Rifles', items: { T: ['galil', 'ak47', 'sg553', 'ssg08', 'awp'], CT: ['famas', 'm4a4', 'aug', 'ssg08', 'awp'] } },
+  { name: 'Pistolas', items: { T: ['glock', 'dualies', 'p250', 'tec9', 'deagle'], CT: ['usp', 'dualies', 'p250', 'fiveseven', 'deagle'] } },
+  { name: 'Intermedias', items: { T: ['mac10', 'ump', 'xm1014', 'nova', 'p90'], CT: ['mp9', 'ump', 'xm1014', 'nova', 'p90'] } },
+  { name: 'Rifles', items: { T: ['galil', 'ak47', 'ssg08', 'sg553', 'awp'], CT: ['famas', 'm4a1s', 'm4a4', 'ssg08', 'awp'] } },
   { name: 'Granadas', items: { T: ['flash', 'smoke', 'he', 'molotov', 'decoy'], CT: ['flash', 'smoke', 'he', 'incendiary', 'decoy'] } },
 ];
 export const DESC = {
   vest: ['Protege el cuerpo', 'Reduce el daño de las balas'], vesthelm: ['Chaleco y casco', 'Te salva de muchos tiros a la cabeza'], zeus: ['Descarga eléctrica de un solo uso', 'Mata de cerca'], defuser: ['Desactivás la bomba en 5 segundos'],
   glock: ['Pistola básica de los T', 'Buena moviéndose'], usp: ['Pistola básica de los CT', 'Con silenciador, muy precisa'], p250: ['Barata y fuerte', 'Atraviesa chalecos'], dualies: ['Dos pistolas', 'Cargador grande'], tec9: ['Automática liviana', 'Muy fuerte de cerca'], fiveseven: ['Precisa y rápida', 'Buena contra chalecos'], deagle: ['Un tiro a la cabeza alcanza', 'Mucho retroceso'],
-  mac10: ['Subfusil barato', 'Premio por baja $600'], mp9: ['Subfusil de los CT', 'Premio por baja $600'], mp7: ['Subfusil equilibrado', 'Buena precisión'], nova: ['Escopeta de bombeo', 'Letal de cerca'], xm1014: ['Escopeta automática', 'Mucho daño en poco tiempo'], p90: ['Cargador de 50', 'Ideal para correr'],
-  galil: ['Rifle barato de los T'], famas: ['Rifle barato de los CT'], ak47: ['Un tiro a la cabeza mata', 'El rifle de los T'], m4a4: ['Rifle preciso de los CT'], sg553: ['Rifle con mira'], aug: ['Rifle con mira'], ssg08: ['Francotirador liviano', 'Se mueve rápido'], awp: ['Mata de un tiro al cuerpo', 'Lento al moverse'],
+  mac10: ['Subfusil barato', 'Premio por baja $600'], mp9: ['Subfusil de los CT', 'Premio por baja $600'], mp7: ['Subfusil equilibrado', 'Buena precisión'], nova: ['Escopeta de bombeo', 'Letal de cerca'], xm1014: ['Escopeta automática', 'Mucho daño en poco tiempo'], p90: ['Cargador de 50', 'Ideal para correr'], ump: ['Subfusil pesado', 'Premio por baja $600'],
+  galil: ['Rifle barato de los T'], famas: ['Rifle barato de los CT'], ak47: ['Un tiro a la cabeza mata', 'El rifle de los T'], m4a4: ['Rifle preciso de los CT', 'Cargador de 30'], m4a1s: ['Rifle con silenciador', 'Muy preciso, cargador de 20'], sg553: ['Rifle con mira'], aug: ['Rifle con mira'], ssg08: ['Francotirador liviano', 'Se mueve rápido'], awp: ['Mata de un tiro al cuerpo', 'Lento al moverse'],
   flash: ['Ciega a los que la miran'], smoke: ['Tapa la vista 18 segundos', 'Apaga el fuego'], he: ['Explota y hace daño'], molotov: ['Fuego en el piso por 7 segundos'], incendiary: ['Fuego en el piso por 7 segundos'], decoy: ['Hace ruido de disparos'],
 };
 
@@ -99,13 +101,3 @@ export function applyDamage(dmg, ap, part, armor, helmet, hsMul = 4) {
   }
   return { hp: Math.max(1, Math.round(d)), armor: Math.round(armorDmg) };
 }
-
-// Menú de compra circular de CS:GO: 6 categorías, hasta 6 cosas cada una
-export const WHEEL = [
-  { name: 'Pistolas', items: { T: ['glock', 'dualies', 'p250', 'tec9', 'deagle', 'cz75'], CT: ['usp', 'dualies', 'p250', 'fiveseven', 'deagle', 'cz75'] } },
-  { name: 'Pesadas', items: { T: ['nova', 'xm1014', 'sawedoff', 'm249', 'negev'], CT: ['nova', 'xm1014', 'mag7', 'm249', 'negev'] } },
-  { name: 'Subfusiles', items: { T: ['mac10', 'mp7', 'ump', 'p90', 'bizon', 'mp5'], CT: ['mp9', 'mp7', 'ump', 'p90', 'bizon', 'mp5'] } },
-  { name: 'Rifles', items: { T: ['galil', 'ak47', 'ssg08', 'sg553', 'awp', 'g3sg1'], CT: ['famas', 'm4a4', 'ssg08', 'aug', 'awp', 'scar20'] } },
-  { name: 'Equipo', items: { T: ['vest', 'vesthelm', 'zeus'], CT: ['vest', 'vesthelm', 'zeus', 'defuser'] } },
-  { name: 'Granadas', items: { T: ['molotov', 'decoy', 'flash', 'he', 'smoke'], CT: ['incendiary', 'decoy', 'flash', 'he', 'smoke'] } },
-];

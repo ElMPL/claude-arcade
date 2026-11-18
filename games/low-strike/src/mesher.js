@@ -520,7 +520,7 @@ const MCOL = {
     metal: [[0.42, 0.44, 0.47], 'metal', 1.5], dark: [[0.16, 0.14, 0.12], null, 1], ceiling: [[0.66, 0.5, 0.34], 'wood', 2], roof: [[0.86, 0.74, 0.56], 'blocks', 2.6], base: [[0.8, 0.68, 0.52], 'stone', 1.6],
   },
   mirage: {
-    floor: [[0.9, 0.82, 0.68], 'slabs', 4.0], wall: [[0.96, 0.89, 0.76], 'plaster', 3.0], base: [[0.78, 0.7, 0.6], 'stone', 1.6], ceiling: [[0.66, 0.47, 0.32], 'wood', 2], roof: [[0.8, 0.44, 0.3], 'roof', 2.0],
+    floor: [[0.9, 0.82, 0.68], 'slabs', 4.0], wall: [[0.9, 0.8, 0.64], 'plaster', 3.4], base: [[0.78, 0.7, 0.6], 'stone', 1.6], ceiling: [[0.66, 0.47, 0.32], 'wood', 2], roof: [[0.8, 0.44, 0.3], 'roof', 2.0],
   },
 };
 export function buildFromModel(W, mesh, info, mapId, nav) {

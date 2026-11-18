@@ -634,7 +634,7 @@ function addPing(e) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true, sizeAttenuation: false }));
   s.scale.set(0.04, 0.04, 1); s.renderOrder = 30; s.position.set(e.x, e.y + 0.4, e.z); scene.add(s);
   pings.push({ s, t: G.time + 5, x: e.x, z: e.z }); A.sfxPing([e.x, e.y, e.z]);
-  const p = G.players.get(e.p); if (p) hud.radio(p, '📍 marcó un lugar');
+  const p = G.players.get(e.p); if (p) hud.radio(p, 'marcó un lugar');
 }
 // modo práctica: trayectoria de la granada mientras la tenés apretada
 let trajLine = null;
@@ -673,7 +673,7 @@ function toggleBuy(force) {
   if (open) {
     if (!P.alive) return;
     if (!canBuyNow()) { hud.center(G.phase === 'live' ? 'Se terminó el tiempo de compra' : 'No podés comprar ahora', 1400); return; }
-    const style = CFG.buyWheel ? 'wheel' : 'grid';
+    const style = 'grid';
     if (builtFor !== P.team + style) { builtFor = P.team + style; buildBuy(P.team, iconOf, id => req('buy', { i: id }), id => showWeaponInfo(id), style, (c) => { buySel = c; refreshBuy(me(), buySel); }); }
     buySel = -1; refreshBuy(P, buySel);
     buyOpen = true; $('buy').hidden = false; document.exitPointerLock && document.exitPointerLock();
@@ -693,13 +693,13 @@ function canBuyNow() {
 }
 function buyKey(e) {
   if (e.code === 'KeyB') { toggleBuy(false); return; }
-  if (e.code === 'Escape' || e.code === 'Digit0') { if (buySel >= 0 && CFG.buyWheel) { buySel = -1; refreshBuy(me(), buySel); } else toggleBuy(false); return; }
+  if (e.code === 'Escape' || e.code === 'Digit0') { toggleBuy(false); return; }
   const n = parseInt(e.key, 10);
   if (!(n >= 1 && n <= 9)) return;
   const P = me();
   const cats = buyCats();
   if (buySel < 0) { if (n <= cats.length) buySel = n - 1; }
-  else { const list = cats[buySel].items[P.team]; if (list[n - 1]) req('buy', { i: list[n - 1] }); if (!CFG.buyWheel) buySel = -1; }
+  else { const list = cats[buySel].items[P.team]; if (list[n - 1]) req('buy', { i: list[n - 1] }); buySel = -1; }
   refreshBuy(P, buySel);
 }
 $('buy').addEventListener('mousedown', e => e.stopPropagation());
@@ -1026,6 +1026,7 @@ function updateCamera(dt) {
     updateViewArms(vm);
     vm.position.copy(camera.position); vm.quaternion.copy(camera.quaternion);
     vmCam.position.copy(camera.position); vmCam.quaternion.copy(camera.quaternion);
+    if (window.__ls && window.__ls.vmView) { const c = window.__ls.vmView; vm.updateMatrixWorld(); vmCam.position.copy(vm.localToWorld(new THREE.Vector3(c[0], c[1], c[2]))); vmCam.up.copy(camera.up); vmCam.lookAt(vm.localToWorld(new THREE.Vector3(c[3], c[4], c[5]))); }
     const fl = u.flash; M.flashT = (M.flashT || 0) - dt;
     const gi = gunInfo(wid);
     if (fl) { fl.visible = M.flashT > 0 && w && !w.silent && w.cat !== 'knife'; if (fl.visible) { fl.position.set(0, gi.muzzle[1], -gi.muzzle[0] - 0.05).applyMatrix4(u.hold.matrix); fl.quaternion.setFromEuler(u.hold.rotation); fl.rotateZ(Math.random() * 3); } }
@@ -1050,7 +1051,7 @@ function updateHud(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.05;
   const S = M.spec && !P.alive ? G.players.get(M.spec) : P;
   hud.money(P.money);
-  hud.vitals(S ? S.hp : 0, S ? S.ar : 0, S && S.helm);
+  hud.vitals(S ? S.hp : 0, S ? S.ar : 0, S && S.helm, S && S.team === 'CT' && S.inv && S.inv.kit);
   const id = P.alive ? curId() : S && S.wpn, w = WEAPONS[id];
   const slot = M.slot, a = (slot === 'p' || slot === 's') ? M.ammo[slot] : null;
   hud.ammo(id ? WNAME(id) : '', a ? a[0] : 0, a ? a[1] : 0, P.alive && !!a && !!w && !!w.mag);
@@ -1072,7 +1073,7 @@ function updateHud(dt) {
   for (const p of G.players.values()) { if (p.team === 'T') { nT++; if (p.alive) aT++; } else { nC++; if (p.alive) aC++; } }
   const ls = t => [...G.players.values()].filter(p => p.team === t).map(p => ({ n: p.name, a: p.alive }));
   hud.score(sT, sCT, ls('T'), ls('CT'));
-  hud.el.buyHint.hidden = !(canBuyNow() && !buyOpen);
+  { const cb = canBuyNow(); hud.el.buyHint.hidden = !(cb && !buyOpen); hud.el.cartIco.classList.toggle('on', cb); }
   if (buyOpen) { if (!canBuyNow()) toggleBuy(false); else { const el = $('buyTime'); const md = G.cfg.mode || 'comp'; const bt = md === 'dm' || md === 'practice' ? 0 : G.phase === 'freeze' ? Math.ceil(G.timeLeft + ROUND.buy) : Math.max(0, Math.ceil(ROUND.buy - ((md === 'casual' ? 135 : ROUND.live) - G.timeLeft))); el.textContent = bt ? '0:' + String(bt).padStart(2, '0') : '∞'; } }
   // espectador
   const specEl = hud.el.spec;

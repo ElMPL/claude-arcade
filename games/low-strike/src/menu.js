@@ -115,7 +115,7 @@ export function makeMenu(o) {
     for (const p of people) { const t = p.pr.t ?? -1; if (t === 0 || t === 1) { team[p.id] = t; cnt[t]++; } }
     for (const p of people.slice().sort((a, b) => a.slot - b.slot)) if (team[p.id] === undefined) { const g = cnt[0] <= cnt[1] ? 0 : 1; team[p.id] = g; cnt[g]++; }
     const per = G.cfg.bots ? Math.max(cnt[0], cnt[1], G.cfg.size) : Math.max(cnt[0], cnt[1]);
-    $('party').innerHTML = `<h4>GRUPO</h4>` + people.map(p => `<div class="pm ${team[p.id] ? 'ct' : 't'} ${p.id === me ? 'me' : ''}"><i></i><span>${esc(p.name)}</span><small>${team[p.id] ? 'CT' : 'T'}${(p.pr.t ?? -1) === -1 ? ' · auto' : ''}${p.id === ctx.hostId ? ' · 👑 host' : ''}</small></div>`).join('')
+    $('party').innerHTML = `<h4>GRUPO</h4>` + people.map(p => `<div class="pm ${team[p.id] ? 'ct' : 't'} ${p.id === me ? 'me' : ''}"><i></i><span>${esc(p.name)}</span><small>${team[p.id] ? 'CT' : 'T'}${(p.pr.t ?? -1) === -1 ? ' · auto' : ''}${p.id === ctx.hostId ? ' · host' : ''}</small></div>`).join('')
       + (G.cfg.bots ? `<div class="pm bot"><i></i><span>+ ${Math.max(0, per * 2 - people.length)} bots</span><small>${o.DIFF[G.cfg.diff].name}</small></div>` : '');
     // tarjeta de modo
     const map = o.MAPS.find(m => m.id === G.cfg.map) || o.MAPS[0];
