@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadMap } from './mapdata.js';
 import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked, refineSites, buildVis } from './world.js';
-import { buildMeshes, buildFromModel, buildEnvironment, themeOf } from './mesher.js';
+import { buildMeshes, buildFromModel, buildFromBsp, buildEnvironment, themeOf } from './mesher.js';
 import { buildNav, sealTraps, okSpot } from './nav.js';
 import { buildDecor } from './decor.js';
 import { applyFixes } from './fixes.js';
@@ -846,10 +846,10 @@ async function loadGame(id) {
     const L2 = data.layers.map(l => ({ ...l, cls: l.cls.slice(), top: l.top ? l.top.slice() : l.top, bot: l.bot ? l.bot.slice() : l.bot, h: l.h ? l.h.slice() : l.h }));
     if (data.layers.flags) L2.flags = data.layers.flags.slice();
     const W2 = buildWorld(data.info, L2);
-    applyFixes(W2, id);
+    if (!data.bsp) applyFixes(W2, id); // los arreglos eran para los mapas anteriores
     refineSites(W2);
     if (data.mesh) buildVis(W2, data.mesh);
-    const props = data.mesh ? placeProps(W2, buildNav(W2), id) : [];
+    const props = data.mesh && !data.bsp ? placeProps(W2, buildNav(W2), id) : []; // los .bsp ya traen todo
     if (W2.vis) for (let l = 0; l < W2.L; l++) { const T = W2.top[l], Cc = W2.cls[l], V = W2.vis; for (let i = 0; i < T.length; i++) if (Cc[i] === 2 && !(V[i] >= T[i])) V[i] = T[i] + 0.05; } // props: sí chocan
     if (data.mesh) sealTraps(W2, buildNav(W2));
     return { W: W2, props };
@@ -867,10 +867,10 @@ async function loadGame(id) {
   while (scene.children.length) scene.remove(scene.children[0]);
   trajLine = null; pings.length = 0;
   if (mapMesh) mapMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-  const built = data.mesh ? buildFromModel(W, data.mesh, data.info, id, G.nav) : buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
+  const built = data.bsp ? buildFromBsp(data.bsp, data.info) : data.mesh ? buildFromModel(W, data.mesh, data.info, id, G.nav) : buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
   if (wing && wing.cells.length) mapMesh.add(wingmanMesh(W, wing.cells));
   if (G.props && G.props.length) scene.add(propsMesh(G.props));
-  if (data.mesh) { try { scene.add(buildDecor(W, G.nav, id, data.info)); } catch (e) { console.warn('decor', e); } }
+  if (data.mesh && !data.bsp) { try { scene.add(buildDecor(W, G.nav, id, data.info)); } catch (e) { console.warn('decor', e); } }
   buildEnvironment(scene, W, id, QUALITY);
   renderer.shadowMap.needsUpdate = true;
   fx = makeFx(scene); fx.floorAt = (x, z, y) => floorAt(G.W, x, z, y + 0.2);

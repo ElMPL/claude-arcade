@@ -619,3 +619,59 @@ function floorAt(W, x, z, y) {
   for (let l = 0; l < W.L; l++) { const t = W.top[l][i]; if (!isNaN(t) && t <= y && t > g) g = t; }
   return g;
 }
+
+// ---------------- mapas .bsp de CS 1.6 (texturas y lightmaps originales) ----------------
+// Cada vértice trae la uv de su textura (en repeticiones) y el rectángulo de esa textura dentro del atlas:
+// el shader repite dentro del rectángulo (fract) y usa textureGrad para que el mipmap no se rompa en el borde.
+const BSP_VS = `
+attribute vec2 uvT; attribute vec4 tileR; attribute vec2 uvL;
+varying vec2 vUv; varying vec4 vTile; varying vec2 vLm;
+#include <common>
+#include <fog_pars_vertex>
+#include <logdepthbuf_pars_vertex>
+void main() {
+  vUv = uvT; vTile = tileR; vLm = uvL;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <logdepthbuf_vertex>
+  #include <fog_vertex>
+}`;
+const BSP_FS = `
+uniform sampler2D map; uniform sampler2D lmap; uniform float bright; uniform float alphaTest;
+varying vec2 vUv; varying vec4 vTile; varying vec2 vLm;
+#include <common>
+#include <fog_pars_fragment>
+#include <logdepthbuf_pars_fragment>
+void main() {
+  #include <logdepthbuf_fragment>
+  vec2 g = vUv * vTile.zw;
+  vec4 tx = textureGrad(map, vTile.xy + fract(vUv) * vTile.zw, dFdx(g), dFdy(g));
+  if (tx.a < alphaTest) discard;
+  vec3 lm = texture2D(lmap, vLm).rgb;
+  gl_FragColor = vec4(tx.rgb * pow(lm, vec3(0.85)) * bright, 1.0);
+  #include <fog_fragment>
+}`;
+export function buildFromBsp(bsp, info) {
+  const tl = new THREE.TextureLoader(), A = info.atlas, group = new THREE.Group();
+  const map = tl.load(bsp.base + A.tex); map.flipY = false; map.generateMipmaps = true; map.minFilter = THREE.LinearMipmapLinearFilter; map.magFilter = THREE.LinearFilter; map.anisotropy = 4;
+  const lmap = tl.load(bsp.base + A.lm); lmap.flipY = false; lmap.minFilter = THREE.LinearFilter; lmap.magFilter = THREE.LinearFilter; lmap.generateMipmaps = false;
+  const tiles = A.tiles.map(t => [t[0] / A.w, t[1] / A.h, t[2] / A.w, t[3] / A.h]);
+  let tris = 0;
+  for (const p of bsp.parts) {
+    const n = p.n, pos = new Float32Array(n * 3), tr = new Float32Array(n * 4), uvL = new Float32Array(n * 2);
+    for (let i = 0; i < n * 3; i++) pos[i] = p.pos[i] / 100;
+    for (let i = 0; i < n; i++) { const t = tiles[p.tile[i]]; tr[i * 4] = t[0]; tr[i * 4 + 1] = t[1]; tr[i * 4 + 2] = t[2]; tr[i * 4 + 3] = t[3]; uvL[i * 2] = p.lm[i * 2] / 65535; uvL[i * 2 + 1] = p.lm[i * 2 + 1] / 65535; }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uvT', new THREE.BufferAttribute(p.uv, 2));
+    g.setAttribute('tileR', new THREE.BufferAttribute(tr, 4)); g.setAttribute('uvL', new THREE.BufferAttribute(uvL, 2));
+    g.computeBoundingSphere();
+    const mat = new THREE.ShaderMaterial({ vertexShader: BSP_VS, fragmentShader: BSP_FS, fog: true, side: THREE.DoubleSide,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, lmap: { value: null }, bright: { value: 1.45 }, alphaTest: { value: p.kind === 'alpha' ? 0.5 : -1 } }]) });
+    mat.uniforms.map.value = map; mat.uniforms.lmap.value = lmap;
+    if (p.kind === 'water') { mat.transparent = true; }
+    const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; m.receiveShadow = false; m.castShadow = p.kind !== 'water';
+    group.add(m); tris += n / 3;
+  }
+  group.matrixAutoUpdate = false;
+  return { mesh: group, tris, theme: themeOf(info.id) };
+}

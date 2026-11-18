@@ -55,7 +55,12 @@ def cat_mirage(nrm):
   return 'wall'
 
 # ---------- carga y transformación a metros (y arriba, x este, z sur) ----------
-if mid == 'dust2':
+BSPMODE = sys.argv[2].endswith('.npz')
+if BSPMODE:
+  # mapa de Half-Life/CS 1.6 ya convertido por import_bsp.py: triángulos sólidos (metros) y zonas de las entidades
+  d = np.load(sys.argv[2]); T_col = d['col']; T_all = np.zeros((0, 3, 3)); cats = np.array([], dtype=object)
+  BSPZ = json.load(open(sys.argv[2].replace('.npz', '_ents.json')))
+elif mid == 'dust2':
   parts = load_dust2(sys.argv[2])
   U = 0.0254
   def tr(v): return np.stack([v[:, 0] * U, v[:, 2] * U, -v[:, 1] * U], 1)
@@ -68,7 +73,7 @@ if mid == 'dust2':
     cats += [cat_dust2(mn, nr[i]) for i in range(len(F))]
   T_all = np.concatenate(tris); cats = np.array(cats)
   T_col = T_all
-else:
+if not BSPMODE and mid != 'dust2':
   d = np.load(sys.argv[2]); V = d['v']; F = d['f']
   T_all = V[F]
   nr = np.cross(T_all[:, 1] - T_all[:, 0], T_all[:, 2] - T_all[:, 0]); nr /= (np.linalg.norm(nr, axis=1, keepdims=True) + 1e-9)
@@ -97,7 +102,7 @@ T_col = T_col + off; T_all = T_all + off
 print(mid, 'size', size, 'cell', cell, 'tris col', len(T_col), 'render', len(T_all))
 
 # ---------- puertas abiertas: hojas de puerta (bloques en diagonal dentro del marco) que tapaban el paso ----------
-_Z = json.load(open(f'zones_{mid}.json')) if __import__('os').path.exists(f'zones_{mid}.json') else {}
+_Z = {} if BSPMODE else json.load(open(f'zones_{mid}.json')) if __import__('os').path.exists(f'zones_{mid}.json') else {}
 def open_doors(T, extra=None):
   if not _Z.get('open'): return T, extra
   gx = T[:, :, 0] / cell; gz = T[:, :, 2] / cell
@@ -125,7 +130,7 @@ xs, ys, zs, kinds = [], [], [], []
 nrc = np.cross(T_col[:, 1] - T_col[:, 0], T_col[:, 2] - T_col[:, 0]); area = np.linalg.norm(nrc, axis=1); nrc /= (area[:, None] + 1e-9)
 kind = np.where(nrc[:, 1] > 0.5, 0, np.where(nrc[:, 1] < -0.5, 1, 2))  # 0 arriba, 1 abajo, 2 empinado
 edge = np.maximum.reduce([np.linalg.norm(T_col[:, 1] - T_col[:, 0], axis=1), np.linalg.norm(T_col[:, 2] - T_col[:, 1], axis=1), np.linalg.norm(T_col[:, 0] - T_col[:, 2], axis=1)])
-Ns = np.clip(np.ceil(edge / step).astype(int), 1, 400)
+Ns = np.clip(np.ceil(edge / step).astype(int), 1, 3000)
 for n_ in np.unique(Ns):
   idx = np.where(Ns == n_)[0]
   i, j = np.mgrid[0:n_ + 1, 0:n_ + 1]; m = (i + j) <= n_
@@ -236,6 +241,8 @@ print('grietas rellenadas:', crack)
 # ---------- zonas (en coordenadas de esta grilla) ----------
 ZONES = json.load(open(f'zones_{mid}.json')) if __import__('os').path.exists(f'zones_{mid}.json') else {}
 ZONES = {k: [int(round(v * ZS)) for v in r] for k, r in ZONES.items() if k in ('A', 'B', 'T', 'CT')}
+if BSPMODE:  # zonas de las entidades (func_bomb_target / func_buyzone), en metros → celdas
+  ZONES = {k: [int((r[0] + off[0]) / cell), int((r[1] + off[2]) / cell), int((r[2] + off[0]) / cell), int((r[3] + off[2]) / cell)] for k, r in BSPZ['zones'].items()}
 flags = np.zeros(N * N, np.uint8)
 for key, bit in (('A', 4), ('B', 8), ('T', 16), ('CT', 32)):
   if key in ZONES:
@@ -252,8 +259,13 @@ for l in range(L):
   img[(2 * l + 1) * N:(2 * l + 2) * N, :, 0] = (flags if l == 0 else np.zeros_like(flags)).reshape(N, N); img[(2 * l + 1) * N:(2 * l + 2) * N, :, 1] = (bc >> 8).reshape(N, N); img[(2 * l + 1) * N:(2 * l + 2) * N, :, 2] = (bc & 255).reshape(N, N)
 Image.fromarray(img, 'RGB').save(f'{OUT}/{mid}.png', optimize=True)
 info = {'id': mid, 'n': N, 'cell': cell, 'layers': L, 'format': 'spans', 'zones': ZONES, 'mesh': f'{mid}.bin', 'origin': [float(off[0]), float(off[1]), float(off[2])]}
+if BSPMODE:
+  info['spawns'] = {k: [[float(p[0] + off[0]), float(p[1] + off[1]), float(p[2] + off[2]), float(p[3])] for p in v] for k, v in BSPZ['spawns'].items()}
+  info['zonesM'] = {k: [float(r[0] + off[0]), float(r[1] + off[2]), float(r[2] + off[0]), float(r[3] + off[2])] for k, r in BSPZ['zones'].items()}
 
 # ---------- malla de render ----------
+if BSPMODE:
+  json.dump(info, open(f'{OUT}/{mid}.json', 'w')); print('ok (colisión)', info['layers']); sys.exit(0)
 CATS = ['floor', 'road', 'wall', 'trim', 'crate', 'door', 'concrete', 'rock', 'metal', 'dark', 'ceiling']
 q = np.clip(np.round(T_all * 100), 0, 65535).astype(np.uint16)
 chunks, meta = [], []

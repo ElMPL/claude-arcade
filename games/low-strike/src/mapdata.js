@@ -39,6 +39,20 @@ export async function loadMap(id, base = 'maps/') {
   const x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0);
   const data = x.getImageData(0, 0, img.width, img.height).data;
   const out = { info, layers: decodeMap(info, data, img.width) };
+  if (info.render === 'bsp') { // mapa de CS 1.6 con sus texturas y lightmaps (tools/import_bsp.py)
+    const buf = await (await fetch(base + info.mesh)).arrayBuffer(); let o = 0; const parts = [], allPos = [];
+    for (const p of info.parts) {
+      const n = p.verts;
+      const pos = new Uint16Array(buf, o, n * 3); o += n * 6; o += (4 - o % 4) % 4 === 0 ? 0 : 0;
+      const uvB = buf.slice(o, o + n * 8); o += n * 8; const uv = new Float32Array(uvB);
+      const tile = new Uint16Array(buf.slice(o, o + n * 2)); o += n * 2;
+      const lm = new Uint16Array(buf.slice(o, o + n * 4)); o += n * 4;
+      parts.push({ kind: p.kind, n, pos, uv, tile, lm }); allPos.push(pos);
+    }
+    const tot = allPos.reduce((a, b) => a + b.length, 0), mesh = new Uint16Array(tot); let k = 0; for (const a of allPos) { mesh.set(a, k); k += a.length; }
+    out.bsp = { parts, base }; out.mesh = mesh;
+    return out;
+  }
   if (info.mesh) out.mesh = new Uint16Array(await (await fetch(base + info.mesh)).arrayBuffer());
   return out;
 }

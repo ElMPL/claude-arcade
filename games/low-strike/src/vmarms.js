@@ -85,5 +85,5 @@ export function aimFore(A, dirLocal) {
   va.copy(dirLocal); if (A.left) va.x = -va.x; const d = va.length(); va.normalize();
   A.bones[i].quaternion.setFromUnitVectors(Z, va);
   // la manga del modelo es más corta que la distancia al codo: se estira para que no se vea el final
-  const len = (A.zmax - A.B[i].t[2]) * Math.abs(A.rig.scale.y); A.bones[i].scale.set(1, 1, Math.max(1, d * 1.15 / Math.max(0.05, len)));
+  const len = (A.zmax - A.B[i].t[2]) * Math.abs(A.rig.scale.y); if (len > 0.12) A.bones[i].scale.set(1, 1, Math.max(1, d * 1.15 / len)); // solo el brazo del T (el guante del CT no tiene manga)
 }

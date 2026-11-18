@@ -164,7 +164,7 @@ export function zoneNodes(nav, bit) {
   for (const i of zoneCells(W, bit)) {
     const x = (i % W.n + 0.5) * W.cell, z = (Math.floor(i / W.n) + 0.5) * W.cell;
     const cx = Math.floor(x / nav.c), cz = Math.floor(z / nav.c), j = cz * nav.m + cx;
-    for (let l = W.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j]) { out.add(l * nav.N + j); break; }
+    for (let l = W.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j]) { out.add(l * nav.N + j); break; } // el nivel más alto que sea transitable
   }
   return [...out];
 }

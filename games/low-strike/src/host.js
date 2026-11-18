@@ -2,7 +2,7 @@
 import { WEAPONS, ECON, BUY, applyDamage, slotOf } from './weapons.js';
 import { zoneNodes, findPath } from './nav.js';
 import { NADE, inFire } from './nades.js';
-import { zoneAt, lineOfSight } from './world.js';
+import { zoneAt, lineOfSight, floorAt, blocked } from './world.js';
 
 // tiempos de competitivo de CS:GO: 15 s de congelamiento, ronda de 1:55, 20 s de compra, bomba de 40 s
 export const ROUND = { freeze: 15, live: 115, buy: 20, post: 6, bomb: 40, plant: 3.2, defuse: 10, kit: 5, over: 12 };
@@ -58,6 +58,16 @@ export function makeHost(G) {
   // Puntos de aparición: lugares despejados (sin paredes ni escalones al lado), separados ~2 m, agrupados
   // cerca del centro del spawn y mirando hacia la salida (el camino hacia los sitios), no contra una pared.
   function spawnPoints(side) {
+    // mapas .bsp: los spawns originales del mapa, salvo los que no quedan sobre piso firme (barandas, bordes)
+    const orig = G.info && G.info.spawns && G.info.spawns[side];
+    if (orig && orig.length) {
+      const ok = orig.filter(p => {
+        const g = floorAt(G.W, p[0], p[2], p[1] + 0.6); if (!(g > -50) || Math.abs(g - p[1]) > 0.6) return false;
+        for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, x = p[0] + Math.cos(a) * 0.45, z = p[2] + Math.sin(a) * 0.45, h = floorAt(G.W, x, z, g + 0.6); if (!(h > g - 0.3 && h < g + 0.4)) return false; }
+        return !blocked(G.W, p[0], p[2], g, 1.8, 0.4);
+      }).map(p => [p[0], floorAt(G.W, p[0], p[2], p[1] + 0.6), p[2], p[3]]);
+      if (ok.length >= 5) { let cx = 0, cz = 0; for (const p of ok) { cx += p[0]; cz += p[2]; } return { pts: ok, cx: cx / ok.length, cz: cz / ok.length }; }
+    }
     const nav = G.nav, nodes = zoneNodes(nav, side === 'T' ? 16 : 32);
     const clear = n => {
       const l = Math.floor(n / nav.N), i = n % nav.N, x = i % nav.m, z = Math.floor(i / nav.m), h = nav.H[l][i];
