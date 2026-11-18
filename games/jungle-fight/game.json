@@ -1,6 +1,6 @@
 {
   "name": "Jungle Fight",
-  "description": "Peleas 2D estilo arcade en la selva: 8 luchadores con combos, especiales y remates, 8 escenarios. 1v1 online o contra la CPU.",
+  "description": "Peleas 2D estilo arcade en la selva: 8 luchadores con combos, especiales y remates, 8 escenarios. 1v1 online o contra la CPU (3 niveles de dificultad).",
   "author": "iamaster213-del",
   "mode": "multi",
   "minPlayers": 1,
