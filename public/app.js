@@ -142,14 +142,56 @@
 
   $('#btnCreate').addEventListener('click', () => {
     const name = myName();
-    if (name) ensureSocket().emit('room:create', { name }, onJoined);
+    if (name) ensureSocket().emit('room:create', { name, roomName: $('#inRoomName').value.trim(), pass: $('#inRoomPass').value }, onJoined);
   });
-  $('#btnJoin').addEventListener('click', () => {
+  // unirse: si la sala tiene contraseña, aparece el campo para escribirla
+  function joinCode(code) {
     const name = myName();
     if (!name) return;
-    const code = $('#inCode').value.trim().toUpperCase();
     if (code.length !== 5) { $('#onlineErr').textContent = 'El código tiene 5 letras'; return; }
-    ensureSocket().emit('room:join', { code, name }, onJoined);
+    const pass = $('#passRow').hidden ? '' : $('#inJoinPass').value;
+    ensureSocket().emit('room:join', { code, name, pass }, res => {
+      if (!res.ok && res.needPass) {
+        $('#inCode').value = code; $('#passRow').hidden = false; $('#onlineErr').textContent = res.error;
+        $('#inJoinPass').focus(); return;
+      }
+      if (res.ok) { $('#passRow').hidden = true; $('#inJoinPass').value = ''; }
+      onJoined(res);
+    });
+  }
+  $('#btnJoin').addEventListener('click', () => joinCode($('#inCode').value.trim().toUpperCase()));
+  $('#inJoinPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnJoin').click(); });
+  $('#inCode').addEventListener('input', () => { $('#passRow').hidden = true; $('#inJoinPass').value = ''; });
+
+  // lista de salas abiertas (se actualiza sola mientras estás en "Jugar online")
+  const LOCK = '<svg viewBox="0 0 24 24" class="lock" aria-label="Con contraseña"><path d="M7 10V7a5 5 0 0110 0v3h1.5A1.5 1.5 0 0120 11.5v9a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 20.5v-9A1.5 1.5 0 015.5 10zm2.5 0h5V7a2.5 2.5 0 00-5 0z"/></svg>';
+  let listTimer = null;
+  function refreshRooms() {
+    ensureSocket().emit('rooms:list', null, res => {
+      const ul = $('#roomList'); if (!res || !res.ok) return;
+      if (!res.rooms.length) { ul.innerHTML = '<li class="none">No hay salas abiertas. ¡Creá una!</li>'; return; }
+      ul.innerHTML = res.rooms.map(r => `<li class="${r.playing ? 'playing' : ''}" data-code="${r.code}"><div class="rn"><b>${r.locked ? LOCK : ''}${esc(r.name)}</b><small>${r.game ? esc(r.game) : 'Eligiendo juego'} · host ${esc(r.host)}</small></div><span class="rc">${r.n}/${r.max}</span><button class="btn small" ${r.playing || r.n >= r.max ? 'disabled' : ''}>${r.playing ? 'Jugando' : 'Entrar'}</button></li>`).join('');
+      ul.querySelectorAll('li[data-code] button').forEach(b => b.addEventListener('click', () => {
+        const li = b.closest('li'), code = li.dataset.code;
+        $('#passRow').hidden = !li.querySelector('.lock'); $('#inJoinPass').value = '';
+        if (li.querySelector('.lock')) { $('#inCode').value = code; $('#onlineErr').textContent = 'Esta sala tiene contraseña'; $('#inJoinPass').focus(); return; }
+        joinCode(code);
+      }));
+    });
+  }
+  $('#btnRefresh').addEventListener('click', refreshRooms);
+  new MutationObserver(() => {
+    const on = !$('#viewOnline').hidden;
+    if (on && !listTimer) { refreshRooms(); listTimer = setInterval(refreshRooms, 4000); }
+    else if (!on && listTimer) { clearInterval(listTimer); listTimer = null; }
+  }).observe($('#viewOnline'), { attributes: true, attributeFilter: ['hidden'] });
+
+  // ajustes de la sala (solo el host)
+  $('#btnRoomSave').addEventListener('click', () => {
+    socket.emit('room:settings', { roomName: $('#setRoomName').value.trim(), pass: $('#setRoomPass').value }, res => {
+      if (!res.ok) return toast(res.error);
+      $('#setRoomPass').value = ''; toast(room && room.locked ? 'Sala guardada' : 'Sala guardada');
+    });
   });
   $('#inName').addEventListener('keydown', e => { if (e.key === 'Enter') ($('#inCode').value.trim() ? $('#btnJoin') : $('#btnCreate')).click(); });
   $('#inCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnJoin').click(); });
@@ -185,6 +227,9 @@
     renderBadge();
     if (!room) return;
     $('#roomCode').textContent = room.code;
+    $('#roomName').innerHTML = esc(room.name || '') + (room.locked ? ' <small class="lockTag">con contraseña</small>' : '');
+    $('#roomSettings').hidden = !isHost();
+    if (document.activeElement !== $('#setRoomName')) $('#setRoomName').value = room.name || '';
 
     const ul = $('#playerList');
     ul.innerHTML = '';

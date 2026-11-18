@@ -158,3 +158,23 @@ input.invalid { outline: 2px solid var(--err); border-color: transparent; }
 .admP button { background: #22232d; border: 0; color: #ddd; border-radius: 5px; padding: 3px 6px; cursor: pointer; font-size: 12px; }
 .admNote { color: #8a8fa0; font-size: 12.5px; margin: 4px 0; }
 .admOff { margin-top: 12px; width: 100%; background: none; border: 1px solid #444; color: #999; border-radius: 7px; padding: 6px; cursor: pointer; }
+
+/* ---------- salas online ---------- */
+.onlineWrap { display: grid; grid-template-columns: minmax(300px, 420px) minmax(280px, 520px); gap: 18px; justify-content: center; align-items: start; margin-top: 30px; }
+.onlineWrap .card.narrow { margin: 0; }
+@media (max-width: 820px) { .onlineWrap { grid-template-columns: 1fr; } }
+.opts { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; display: flex; flex-direction: column; gap: 10px; }
+.opts summary { cursor: pointer; font-weight: 800; color: var(--muted); }
+.opts[open] { padding-bottom: 12px; } .opts[open] > *:not(summary) { margin-top: 10px; display: flex; }
+.roomsCard { display: flex; flex-direction: column; gap: 12px; }
+.roomsHead { display: flex; justify-content: space-between; align-items: center; }
+.roomList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }
+.roomList li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.roomList li.none { color: var(--muted); justify-content: center; border-style: dashed; }
+.roomList li.playing { opacity: .6; }
+.roomList .rn { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.roomList .rn b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.roomList .rn small { color: var(--muted); font-weight: 700; }
+.roomList .rc { font-weight: 800; color: var(--muted); }
+.lock { width: 15px; height: 15px; fill: currentColor; flex: none; display: inline-block; vertical-align: -2px; margin-right: 4px; }
+.roomName { font-weight: 800; margin-top: 4px; } .lockTag { color: var(--muted); font-weight: 700; }

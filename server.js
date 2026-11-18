@@ -129,13 +129,38 @@ function cleanName(n) {
 }
 
 function publicRoom(r) {
-  return { code: r.code, hostId: r.hostId, gameId: r.gameId, state: r.state, players: [...r.players.values()] };
+  return { code: r.code, name: r.name, locked: !!r.pass, hostId: r.hostId, gameId: r.gameId, state: r.state, players: [...r.players.values()] };
+}
+
+// Contraseña opcional de la sala: se guarda solo el hash (con sal propia de la sala)
+function cleanRoomName(n) { return String(n || '').replace(/[<>&"'\u0000-\u001f]/g, '').trim().slice(0, 28); }
+function hashPass(salt, pass) { return crypto.createHash('sha256').update(salt + ':' + String(pass).slice(0, 64)).digest('hex'); }
+function setPass(r, pass) {
+  pass = String(pass || '').slice(0, 64);
+  if (!pass) { r.pass = null; return; }
+  r.salt = crypto.randomBytes(8).toString('hex'); r.pass = hashPass(r.salt, pass);
+}
+function passOk(r, pass) {
+  if (!r.pass) return true;
+  const a = Buffer.from(hashPass(r.salt, pass || ''), 'hex'), b = Buffer.from(r.pass, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+// lista de salas para el menú "Jugar online" (sin códigos de salas privadas a la vista: se entra con la contraseña)
+function roomList() {
+  const out = [];
+  for (const r of rooms.values()) {
+    const g = r.gameId ? GAME_BY_ID.get(r.gameId) : null;
+    const host = r.players.get(r.hostId);
+    out.push({ code: r.code, name: r.name, locked: !!r.pass, host: host ? host.name : '', n: r.players.size, max: g ? Math.min(g.maxPlayers || MAX_ROOM_SIZE, MAX_ROOM_SIZE) : MAX_ROOM_SIZE, game: g ? g.name : null, playing: r.state === 'playing' });
+  }
+  return out.sort((a, b) => (a.playing - b.playing) || (b.n - a.n)).slice(0, 60);
 }
 
 io.on('connection', socket => {
   let room = null;
-  let msgCount = 0;
+  let msgCount = 0, passTries = 0;
   const resetTimer = setInterval(() => { msgCount = 0; }, 1000);
+  const passTimer = setInterval(() => { passTries = 0; }, 60000);
 
   function leave() {
     if (!room) return;
@@ -156,13 +181,16 @@ io.on('connection', socket => {
     io.to(r.code).emit('room:update', publicRoom(r));
   }
 
+  socket.on('rooms:list', (_p, cb) => { if (typeof cb === 'function') cb({ ok: true, rooms: roomList() }); });
+
   socket.on('room:create', (payload, cb) => {
     if (typeof cb !== 'function') return;
     const name = cleanName(payload && payload.name);
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     leave();
     const code = makeCode();
-    const r = { code, hostId: socket.id, players: new Map(), gameId: null, state: 'lobby' };
+    const r = { code, name: cleanRoomName(payload && payload.roomName) || 'Sala de ' + name, pass: null, salt: '', hostId: socket.id, players: new Map(), gameId: null, state: 'lobby' };
+    setPass(r, payload && payload.pass);
     r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0 });
     rooms.set(code, r);
     room = r;
@@ -179,6 +207,11 @@ io.on('connection', socket => {
     if (!r) return cb({ ok: false, error: 'No existe esa sala' });
     if (r.state === 'playing') return cb({ ok: false, error: 'La partida ya empezó, esperá a que termine' });
     if (r.players.size >= MAX_ROOM_SIZE) return cb({ ok: false, error: 'La sala está llena' });
+    if (r.pass && r.hostId !== socket.id) {
+      if (!(payload && payload.pass)) return cb({ ok: false, needPass: true, error: 'Esta sala tiene contraseña' });
+      if (++passTries > 12) return cb({ ok: false, needPass: true, error: 'Demasiados intentos, esperá un minuto' });
+      if (!passOk(r, payload.pass)) return cb({ ok: false, needPass: true, error: 'Contraseña incorrecta' });
+    }
     leave();
     r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0 });
     room = r;
@@ -188,6 +221,16 @@ io.on('connection', socket => {
   });
 
   socket.on('room:leave', () => leave());
+
+  // el host puede cambiar el nombre y la contraseña de la sala desde el lobby
+  socket.on('room:settings', (payload, cb) => {
+    const reply = typeof cb === 'function' ? cb : () => {};
+    if (!room || room.hostId !== socket.id) return reply({ ok: false, error: 'Solo el host puede cambiar la sala' });
+    const n = cleanRoomName(payload && payload.roomName); if (n) room.name = n;
+    if (payload && 'pass' in payload) setPass(room, payload.pass);
+    io.to(room.code).emit('room:update', publicRoom(room));
+    reply({ ok: true });
+  });
 
   socket.on('room:selectGame', payload => {
     if (!room || room.hostId !== socket.id || room.state !== 'lobby') return;
@@ -282,7 +325,7 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('disconnect', () => { clearInterval(resetTimer); leave(); });
+  socket.on('disconnect', () => { clearInterval(resetTimer); clearInterval(passTimer); leave(); });
 });
 
 server.listen(PORT, () => console.log(`ClaudeArcade en http://localhost:${PORT}`));

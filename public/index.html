@@ -28,19 +28,37 @@
     </section>
 
     <section id="viewOnline" hidden>
-      <div class="card narrow">
-        <h2>Jugar online</h2>
-        <label class="field">Tu nombre <span class="req">(obligatorio)</span>
-          <input id="inName" maxlength="16" autocomplete="nickname" required>
-        </label>
-        <button id="btnCreate" class="btn primary big">Crear sala</button>
-        <div class="or"><span>o unite con un código</span></div>
-        <div class="row">
-          <input id="inCode" placeholder="CÓDIGO" maxlength="5" autocapitalize="characters">
-          <button id="btnJoin" class="btn">Unirse</button>
+      <div class="onlineWrap">
+        <div class="card narrow">
+          <h2>Jugar online</h2>
+          <label class="field">Tu nombre <span class="req">(obligatorio)</span>
+            <input id="inName" maxlength="16" autocomplete="nickname" required>
+          </label>
+          <details id="createOpts" class="opts">
+            <summary>Opciones de la sala nueva</summary>
+            <label class="field">Nombre de la sala <span class="req">(opcional)</span>
+              <input id="inRoomName" maxlength="28" placeholder="Sala de ...">
+            </label>
+            <label class="field">Contraseña <span class="req">(opcional: si la ponés, solo entra quien la sepa)</span>
+              <input id="inRoomPass" type="password" maxlength="32" autocomplete="new-password">
+            </label>
+          </details>
+          <button id="btnCreate" class="btn primary big">Crear sala</button>
+          <div class="or"><span>o unite con un código</span></div>
+          <div class="row">
+            <input id="inCode" placeholder="CÓDIGO" maxlength="5" autocapitalize="characters">
+            <button id="btnJoin" class="btn">Unirse</button>
+          </div>
+          <div class="row" id="passRow" hidden>
+            <input id="inJoinPass" type="password" maxlength="32" placeholder="Contraseña de la sala" autocomplete="off">
+          </div>
+          <p id="onlineErr" class="err"></p>
+          <button class="btn ghost back">← Volver al catálogo</button>
         </div>
-        <p id="onlineErr" class="err"></p>
-        <button class="btn ghost back">← Volver al catálogo</button>
+        <div class="card roomsCard">
+          <div class="roomsHead"><h3>Salas abiertas</h3><button id="btnRefresh" class="btn small ghost">Actualizar</button></div>
+          <ul id="roomList" class="roomList"></ul>
+        </div>
       </div>
     </section>
 
@@ -51,10 +69,17 @@
             <div>
               <small>SALA</small>
               <div id="roomCode" class="code"></div>
+              <div id="roomName" class="roomName"></div>
             </div>
             <button id="btnCopy" class="btn small">🔗 Copiar link</button>
           </div>
           <ul id="playerList" class="players"></ul>
+          <details id="roomSettings" class="opts" hidden>
+            <summary>Nombre y contraseña de la sala</summary>
+            <input id="setRoomName" maxlength="28" placeholder="Nombre de la sala">
+            <input id="setRoomPass" type="password" maxlength="32" placeholder="Contraseña nueva (vacía = sin contraseña)" autocomplete="new-password">
+            <button id="btnRoomSave" class="btn small">Guardar</button>
+          </details>
           <p id="lastResult" class="result" hidden></p>
           <button id="btnLeave" class="btn ghost">Salir de la sala</button>
         </div>
