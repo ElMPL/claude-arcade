@@ -5,7 +5,12 @@ export const DEF = {
   sens: 2.1, invert: false, // sensibilidad (x1000 rad/px)
   xStatic: false, xColor: '#5dff6a', xSize: 8, xGap: 4, xThick: 2, xDot: false, xOutline: true,
   vol: 0.8, quality: 2, // 0 sin sombras · 1 sombras bajas · 2 sombras altas
+  // arma en primera persona, igual que en CS2 (viewmodel_fov 54–68, offsets en unidades del juego)
+  vmFov: 60, vmX: 1, vmY: 1, vmZ: -1, vmPreset: 1,
+  aspect: '16:9', // 16:9 · 4:3b (con barras) · 4:3s (estirado)
 };
+// presets de CS2 (viewmodel_presetpos): 1 Escritorio, 2 Sillón, 3 Clásico
+export const VM_PRESETS = { 1: { vmFov: 60, vmX: 1, vmY: 1, vmZ: -1 }, 2: { vmFov: 54, vmX: 0, vmY: 0, vmZ: -1.5 }, 3: { vmFov: 54, vmX: 2.5, vmY: 0, vmZ: -1.5 } };
 const COLORS = ['#5dff6a', '#00e5ff', '#ffe14a', '#ff4a4a', '#ff4af0', '#ffffff'];
 
 export function makeSettings(store, onChange) {
@@ -21,7 +26,7 @@ export function makeSettings(store, onChange) {
   const row = (label, inner) => `<div class="st-row"><label>${label}</label><div class="st-c">${inner}</div></div>`;
   const slider = (k, min, max, step, fmt = v => v) => `<input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${S[k]}"><output data-o="${k}">${fmt(S[k])}</output>`;
   const toggle = (k, a, b) => `<div class="seg" data-t="${k}"><button data-v="1" class="${S[k] ? 'on' : ''}">${a}</button><button data-v="0" class="${S[k] ? '' : 'on'}">${b}</button></div>`;
-  const FMT = { sens: v => (+v).toFixed(2), vol: v => Math.round(v * 100) + '%', xSize: v => v, xGap: v => v, xThick: v => v };
+  const FMT = { vmFov: v => v, vmX: v => (+v).toFixed(1), vmY: v => (+v).toFixed(1), vmZ: v => (+v).toFixed(1), sens: v => (+v).toFixed(2), vol: v => Math.round(v * 100) + '%', xSize: v => v, xGap: v => v, xThick: v => v };
 
   function render() {
     el.innerHTML = `<div class="ms-box st-box">
@@ -37,6 +42,13 @@ export function makeSettings(store, onChange) {
           <h3>GRÁFICOS</h3>
           ${row('Sombras', `<div class="seg" data-q><button data-v="0" class="${S.quality === 0 ? 'on' : ''}">No</button><button data-v="1" class="${S.quality === 1 ? 'on' : ''}">Bajas</button><button data-v="2" class="${S.quality === 2 ? 'on' : ''}">Altas</button></div>`)}
           <p class="note">Las sombras se aplican al cargar la próxima partida.</p>
+          ${row('Relación de aspecto', `<div class="seg" data-a>${[['16:9', '16:9'], ['4:3b', '4:3 con barras'], ['4:3s', '4:3 estirado']].map(([v, t]) => `<button data-v="${v}" class="${S.aspect === v ? 'on' : ''}">${t}</button>`).join('')}</div>`)}
+          <h3>ARMA EN PRIMERA PERSONA</h3>
+          ${row('Posición', `<div class="seg" data-vp>${[[1, 'Escritorio'], [2, 'Sillón'], [3, 'Clásico']].map(([v, t]) => `<button data-v="${v}" class="${S.vmPreset === v ? 'on' : ''}">${t}</button>`).join('')}</div>`)}
+          ${row('Campo de visión', slider('vmFov', 54, 68, 1, FMT.vmFov))}
+          ${row('Horizontal (X)', slider('vmX', -2.5, 2.5, 0.5, FMT.vmX))}
+          ${row('Profundidad (Y)', slider('vmY', -2, 2, 0.5, FMT.vmY))}
+          ${row('Vertical (Z)', slider('vmZ', -2, 2, 0.5, FMT.vmZ))}
         </div>
         <div>
           <h3>MIRA</h3>
@@ -52,9 +64,11 @@ export function makeSettings(store, onChange) {
       </div>
       <div class="st-btns"><button class="fn-play small ghost" id="stReset">VALORES POR DEFECTO</button><button class="fn-play small" id="stClose">LISTO</button></div>
     </div>`;
-    for (const r of el.querySelectorAll('input[type=range]')) r.oninput = () => { const k = r.dataset.k; S[k] = +r.value; el.querySelector(`[data-o="${k}"]`).textContent = (FMT[k] || (v => v))(S[k]); save(); preview(); };
+    for (const r of el.querySelectorAll('input[type=range]')) r.oninput = () => { const k = r.dataset.k; S[k] = +r.value; if (k.startsWith('vm')) { S.vmPreset = 0; for (const b of el.querySelectorAll('[data-vp] button')) b.classList.remove('on'); } el.querySelector(`[data-o="${k}"]`).textContent = (FMT[k] || (v => v))(S[k]); save(); preview(); };
     for (const sg of el.querySelectorAll('[data-t]')) for (const b of sg.children) b.onclick = () => { S[sg.dataset.t] = b.dataset.v === '1'; save(); render(); };
     for (const b of el.querySelectorAll('[data-q] button')) b.onclick = () => { S.quality = +b.dataset.v; save(); render(); };
+    for (const b of el.querySelectorAll('[data-a] button')) b.onclick = () => { S.aspect = b.dataset.v; save(); render(); };
+    for (const b of el.querySelectorAll('[data-vp] button')) b.onclick = () => { S.vmPreset = +b.dataset.v; Object.assign(S, VM_PRESETS[S.vmPreset]); save(); render(); };
     for (const b of el.querySelectorAll('[data-c]')) b.onclick = () => { S.xColor = b.dataset.c; save(); render(); };
     el.querySelector('#stReset').onclick = () => { Object.assign(S, DEF); save(); render(); };
     el.querySelector('#stClose').onclick = () => close();

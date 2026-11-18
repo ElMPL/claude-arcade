@@ -68,7 +68,8 @@
   </div>
   <section id="tabPlay" class="fn-tab">
     <div id="party" class="party"></div>
-    
+    <div id="lookPick" class="lookPick"><div class="lk-team"><button data-team="T">T</button><button data-team="CT">CT</button></div><div class="lk-wsel"><button data-dir="-1">‹</button><span class="lk-w"></span><button data-dir="1">›</button></div></div>
+
     <div class="right">
       <div class="modeCard">
         <div class="mc-map"><canvas id="modeMap" width="340" height="190"></canvas><div id="modeMapName"></div></div>
@@ -105,13 +106,12 @@
 
 <div id="loading"><div class="logo">COUNTER<span>STRIKA</span></div><div id="loadMsg">Cargando…</div><div id="loadInfo"></div></div>
 <div id="teamSel" hidden>
-  <h2>ELEGÍ TU EQUIPO</h2>
+  <div class="ts-head"><h2>ELEGÍ UN EQUIPO</h2><span id="tsMap"></span></div>
   <div class="ts-row">
-    <button class="ts-card t" data-side="T"><b>TERRORISTAS</b><ul class="ts-list"></ul><em class="ts-note"></em></button>
-    <button class="ts-card ct" data-side="CT"><b>ANTITERRORISTAS</b><ul class="ts-list"></ul><em class="ts-note"></em></button>
+    <button class="ts-card t" data-side="T"><img class="ts-img" alt=""><div class="ts-info"><b>TERRORISTAS</b><span class="ts-count"></span><ul class="ts-list"></ul><em class="ts-note"></em></div></button>
+    <button class="ts-card ct" data-side="CT"><img class="ts-img" alt=""><div class="ts-info"><b>ANTITERRORISTAS</b><span class="ts-count"></span><ul class="ts-list"></ul><em class="ts-note"></em></div></button>
   </div>
-  <small>Con <kbd>M</kbd> cambiás de equipo durante la partida</small>
-  <button id="tsClose">CERRAR</button>
+  <div class="ts-foot"><small>Con <kbd>M</kbd> cambiás de equipo durante la partida</small><button id="tsClose">CERRAR</button></div>
 </div>
 <div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small><button id="cpSettings">CONFIGURACIÓN</button></div>
 <div id="touch" hidden>

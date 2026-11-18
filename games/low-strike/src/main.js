@@ -72,7 +72,7 @@ const M = {
 const me = () => G.players.get(myId);
 
 // ---------------- entrada ----------------
-const settings = makeSettings(store, S => { A.setVolume(S.vol * 0.7); });
+const settings = makeSettings(store, S => { A.setVolume(S.vol * 0.7); applyView(); });
 const CFG = settings.S; A.setVolume(CFG.vol * 0.7);
 const keys = new Set(); let mouseL = false, mouseR = false, locked = false, lockAt = 0, mAvg = 6;
 const touchState = { mx: 0, mz: 0, fire: false, look: null };
@@ -127,13 +127,13 @@ function look(dx, dy) {
   M.swayT[0] += dx * 4; M.swayT[1] += dy * 4;
 }
 function lockPointer() {
-  if (settings.isOpen()) return;
+  if (settings.isOpen() || teamSelOpen) return;
   const c = renderer.domElement; if (!c.requestPointerLock) return;
   // movimiento sin aceleración del sistema (menos saltos); si el navegador no lo soporta, el pedido normal
   const plain = () => { try { const r = c.requestPointerLock(); if (r && r.catch) r.catch(() => { }); } catch (e) { } };
   try { const r = c.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(plain); else if (!r) { } } catch (e) { plain(); }
 }
-document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === renderer.domElement; if (locked) lockAt = performance.now(); updateClickPlay(); });
+document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === renderer.domElement; if (locked && teamSelOpen) { document.exitPointerLock(); locked = false; } if (locked) lockAt = performance.now(); updateClickPlay(); });
 function updateClickPlay() { $('clickPlay').hidden = locked || isTouch || G.phase === 'lobby' || buyOpen || teamSelOpen || !loaded || settings.isOpen(); }
 // ---------------- elegir equipo (al entrar a la partida, y con M para cambiar) ----------------
 let teamSelOpen = false, teamSelForced = false;
@@ -143,7 +143,22 @@ function openTeamSel(on, forced = false) {
   if (on) { document.exitPointerLock && document.exitPointerLock(); renderTeamSel(); }
   updateClickPlay();
 }
+// retrato del agente de cada equipo (con su arma), para la pantalla de elegir equipo
+const portraits = {};
+function agentPortrait(team) {
+  if (portraits[team]) return portraits[team];
+  try {
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setSize(360, 480); r.setClearColor(0, 0);
+    const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight('#dfe6f2', '#3a3028', 2.0)); const d = new THREE.DirectionalLight('#ffe8cc', 2.6); d.position.set(2, 3, 3); sc.add(d); const d2 = new THREE.DirectionalLight('#9cc4ff', 1.6); d2.position.set(-3, 2, -2); sc.add(d2);
+    const m = makePlayerModel(team, 0); setModelGun(m, team === 'T' ? 'ak47' : 'm4a4', 0); m.rotation.y = Math.PI + 0.45; sc.add(m);
+    poseModel(m, { speed: 0, duck: 0, pitch: -0.05, onGround: true, dead: 0 }, 0.016);
+    const cam = new THREE.PerspectiveCamera(30, 360 / 480, 0.1, 20); cam.position.set(0, 1.15, 4.4); cam.lookAt(0, 0.98, 0);
+    r.render(sc, cam); portraits[team] = r.domElement.toDataURL('image/png'); r.dispose(); r.forceContextLoss();
+  } catch (e) { portraits[team] = ''; }
+  return portraits[team];
+}
 function renderTeamSel() {
+  $('tsMap').textContent = (G.mapName || '') + ' · ' + ((MODES[G.cfg.mode || 'comp'] || {}).name || '');
   const P = me();
   for (const side of ['T', 'CT']) {
     const ps = [...G.players.values()].filter(p => p.team === side && !p.kicked);
@@ -151,7 +166,9 @@ function renderTeamSel() {
     const full = G.cfg.bots ? !bots : false;
     const el = document.querySelector(`#teamSel [data-side="${side}"]`);
     el.classList.toggle('full', full && (!P || P.team !== side)); el.classList.toggle('mine', !!P && P.team === side);
-    el.querySelector('.ts-list').innerHTML = hum.map(p => `<li>${String(p.name).replace(/[<>&"]/g, '')}</li>`).join('') + (bots ? `<li class="b">${bots} bot${bots > 1 ? 's' : ''}</li>` : '');
+    const img = el.querySelector('.ts-img'); if (!img.src) { const u = agentPortrait(side); if (u) img.src = u; }
+    el.querySelector('.ts-count').textContent = `${hum.length} jugador${hum.length === 1 ? '' : 'es'} · ${bots} bot${bots === 1 ? '' : 's'}`;
+    el.querySelector('.ts-list').innerHTML = hum.map(p => `<li>${String(p.name).replace(/[<>&"]/g, '')}</li>`).join('');
     el.querySelector('.ts-note').textContent = P && P.team === side ? 'Tu equipo' : full ? 'Lleno' : G.cfg.bots ? 'Reemplazás a un bot' : 'Entrás en la próxima ronda';
   }
 }
@@ -783,6 +800,20 @@ function buyKey(e) {
 $('buy').addEventListener('mousedown', e => e.stopPropagation());
 
 // ---------------- render ----------------
+// relación de aspecto (16:9, 4:3 con barras o 4:3 estirado, como en CS) y campo de visión del arma (viewmodel_fov)
+function applyView() {
+  if (!renderer) return;
+  const S = settings.S, W = innerWidth, H = innerHeight, cv = renderer.domElement;
+  let asp = W / H;
+  if (S.aspect === '4:3b') { const w = Math.min(W, Math.round(H * 4 / 3)); renderer.setSize(w, H); cv.style.marginLeft = ((W - w) / 2) + 'px'; asp = w / H; }
+  else if (S.aspect === '4:3s') { renderer.setSize(Math.round(H * 4 / 3), H, false); cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.marginLeft = '0'; asp = 4 / 3; }
+  else { renderer.setSize(W, H); cv.style.marginLeft = '0'; }
+  document.body.classList.toggle('bars43', S.aspect === '4:3b');
+  camera.aspect = vmCam.aspect = asp; camera.updateProjectionMatrix();
+  // viewmodel_fov: horizontal a 4:3 en Source; se escala desde el valor de siempre (60 ↔ 66° vertical acá)
+  const t = Math.tan((S.vmFov || 60) * Math.PI / 360) / Math.tan(30 * Math.PI / 180);
+  vmCam.fov = 2 * Math.atan(Math.tan(33 * Math.PI / 180) * t) * 180 / Math.PI; vmCam.updateProjectionMatrix();
+}
 function initRender() {
   renderer = new THREE.WebGLRenderer({ antialias: QUALITY > 1 && !isTouch, stencil: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5));
@@ -800,7 +831,7 @@ function initRender() {
   vmScene.environment = scene.environment; vmScene.environmentIntensity = 0.7;
   vm = makeViewModel(); vmScene.add(vm);
   const mz = makeFxMuzzle(); vm.userData.flash = mz;
-  addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = vmCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix(); });
+  addEventListener('resize', applyView); applyView();
   renderer.domElement.addEventListener('click', () => { if (G.phase !== 'lobby' && !locked && !isTouch && !buyOpen) lockPointer(); });
   $('clickPlay').addEventListener('click', e => { if (e.target.id === 'cpSettings') return; A.initAudio(); A.setVolume(CFG.vol * 0.7); lockPointer(); });
   $('cpSettings').addEventListener('click', e => { e.stopPropagation(); settings.open(() => updateClickPlay()); updateClickPlay(); });
@@ -1168,6 +1199,7 @@ function updateCamera(dt) {
       const n = Math.ceil(dt / 0.004), h = dt / n; for (let k = 0; k < n; k++) { const acc = -650 * M.rk - 38 * M.rkV; M.rkV += acc * h; M.rk += M.rkV * h; } }
     const bob = P.alive ? M.bob : G.time * 2, ba = P.alive ? Math.min(1, Math.hypot(M.pl.vx, M.pl.vz) / 5) : 0.3;
     let ox = b[0] + Math.cos(bob) * 0.008 * ba + M.sway[0] * 0.02, oy = b[1] + Math.abs(Math.sin(bob)) * 0.01 * ba - M.sway[1] * 0.02, oz = b[2] + (w && w.cat === 'knife' ? M.kick * 0.045 : 0);
+    { const S = settings.S, U = 0.0254; ox += ((S.vmX ?? 1) - 1) * U; oz -= ((S.vmY ?? 1) - 1) * U; oy += ((S.vmZ ?? -1) + 1) * U; } // viewmodel_offset_x/y/z
     let rx = M.kick * 0.12, ry = 0, rz = 0;
     if (P.alive && w && w.cat !== 'knife') { const r = M.rk; oz += r * 0.18; oy += r * 0.02; rx += r * 0.45; rz += r * M.rkR; ry += r * M.rkY * 0.4; }
     vm.userData.reloadK = 0;
@@ -1366,8 +1398,18 @@ function mapThumb(id) {
   return thumbCache[id];
 }
 let menu = null;
-function lobbyInit() { menu.show(); }
-function renderLobby() { menu.refresh(); }
+function lobbyInit() { menu.show(); menuBackdrop(); }
+function renderLobby() { menu.refresh(); menuBackdrop(); }
+// fondo del menú: el mapa elegido, como en CS2
+let menuBgId = null;
+async function menuBackdrop() {
+  const id = G.cfg.map; if (!menu || menuBgId === id) return; menuBgId = id;
+  try {
+    const data = mapCache[id] || (mapCache[id] = await loadMap(id));
+    if (G.cfg.map !== id || G.phase !== 'lobby') return;
+    menu.setBackdrop(data.bsp ? buildFromBsp(data.bsp, data.info).mesh : null, data.info);
+  } catch (e) { console.warn('fondo del menú', e); }
+}
 function pushCfg() { if (!isHost()) return; send('cfg', { cfg: G.cfg, prefs: G.prefs }); renderLobby(); }
 const readySet = new Set(); let startTimer = 0;
 async function startGame(d) {
@@ -1448,7 +1490,7 @@ async function boot() {
   for (const b of document.querySelectorAll('#teamSel [data-side]')) b.onclick = () => pickTeam(b.dataset.side);
   $('tsClose').onclick = () => openTeamSel(false);
   menu = makeMenu({
-    G, store, MAPS, LENGTHS, DIFF, MODES, mapThumb, ctx: () => ctx, myId: () => myId, isHost, pushCfg,
+    G, store, MAPS, LENGTHS, DIFF, MODES, mapThumb, WNAME, ctx: () => ctx, myId: () => myId, isHost, pushCfg,
     openSettings: (cb) => settings.open(cb),
     sendPref: (pr) => { G.prefs[myId] = pr; if (isHost()) pushCfg(); else send('pref', pr, { to: ctx.hostId }); },
     onStart: () => { A.initAudio(); if (!isTouch) goFullscreen(); G.emit('start', { cfg: G.cfg, prefs: G.prefs }); },

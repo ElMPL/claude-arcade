@@ -40,25 +40,90 @@ export function makeMenu(o) {
   const holder = new THREE.Group(); scene.add(holder);
   let model = null, modelKey = '', spin = 0.4, drag = null, t0 = 0;
 
-  function myTeamPreview() { return store.get('ls:lastTeam', 'T') === 'CT' ? 'CT' : 'T'; }
-  function rebuildModel() {
-    const team = myTeamPreview(), w = team === 'T' ? 'ak47' : 'm4a4';
-    if (team === modelKey) return; modelKey = team;
-    holder.clear();
-    model = makePlayerModel(team, 0);
-    setModelGun(model, w, 0);
-    holder.add(model);
+  // aspecto en el menú (como el botón de CS2): bando y arma con la que aparecés; se comparte con el grupo
+  const LOOK_W = { T: ['ak47', 'awp', 'galil', 'deagle', 'mp9', 'glock', 'knife'], CT: ['m4a4', 'm4a1s', 'awp', 'famas', 'deagle', 'usp', 'knife'] };
+  const menuLook = Object.assign({ team: 'T', w: 'ak47' }, store.get('ls:menuLook', {}));
+  function myTeamPreview() { return menuLook.team === 'CT' ? 'CT' : 'T'; }
+  const nameSprite = (name, team) => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d');
+    x.font = '600 30px Rajdhani, sans-serif'; x.textAlign = 'center'; const w = Math.min(250, x.measureText(name).width + 28);
+    x.fillStyle = 'rgba(8,10,14,.72)'; x.fillRect(128 - w / 2, 10, w, 44); x.fillStyle = team === 'CT' ? '#8db4ff' : '#f2c04a'; x.fillRect(128 - w / 2, 50, w, 4);
+    x.fillStyle = '#fff'; x.fillText(name, 128, 42);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); sp.scale.set(0.9, 0.225, 1); sp.renderOrder = 5; return sp;
+  };
+  let models = [];
+  function lineup() {
+    const ctx = o.ctx(), me = o.myId();
+    const people = (ctx.players || [{ id: me, name: ctx.me ? ctx.me.name : 'Jugador' }]).slice(0, 5).map(p => {
+      const pr = p.id === me ? menuLook : (G.prefs[p.id] && G.prefs[p.id].look) || { team: 'T', w: 'ak47' };
+      return { id: p.id, name: p.name, team: pr.team === 'CT' ? 'CT' : 'T', w: pr.w || 'ak47', me: p.id === me };
+    });
+    people.sort((a, b) => (b.me - a.me)); // yo en el medio, el resto a los costados
+    return people;
   }
+  function rebuildModel() {
+    const people = lineup(), key = JSON.stringify(people.map(p => [p.id, p.team, p.w, p.name]));
+    if (key === modelKey) return; modelKey = key;
+    holder.clear(); models = [];
+    people.forEach((p, i) => {
+      const m = makePlayerModel(p.team, 0); setModelGun(m, p.w, 0);
+      const side = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2);
+      m.position.set(side * 1.05, 0, -Math.abs(side) * 0.45); m.rotation.y = -side * 0.12;
+      const tag = nameSprite(p.name, p.team); tag.position.set(0, 2.08, 0); m.add(tag);
+      holder.add(m); models.push(m);
+    });
+    model = models[0] || null;
+  }
+  // fondo: el mapa elegido (como en CS2), con los personajes parados en un lugar del mapa
+  let backdrop = null, inMap = false;
+  M.setBackdrop = (mesh, info) => {
+    if (backdrop) { scene.remove(backdrop); backdrop = null; }
+    inMap = false;
+    if (!mesh) return;
+    const rc = new THREE.Raycaster(), V = THREE.Vector3;
+    const pivot = new THREE.Group(), inner = new THREE.Group(); pivot.add(inner); inner.add(mesh);
+    mesh.updateMatrixWorld(true);
+    // lugares candidatos: los spawns y el centro de los sitios mirando a 8 lados; gana el de vista más abierta
+    const cands = [...((info.spawns || {}).CT || []), ...((info.spawns || {}).T || [])].filter((_, i) => i % 3 === 0);
+    const zm = info.zonesM || {};
+    for (const k of ['A', 'B']) { const z = zm[k]; if (!z) continue; const cx = (z[0] + z[2]) / 2, cz = (z[1] + z[3]) / 2; rc.set(new V(cx, 60, cz), new V(0, -1, 0)); rc.far = 120; const h = rc.intersectObject(mesh, true)[0]; if (h) for (let a = 0; a < 8; a++) cands.push([cx, h.point.y, cz, a * Math.PI / 4]); }
+    let best = null;
+    for (const s of cands) {
+      const fwd = new V(-Math.sin(s[3]), 0, -Math.cos(s[3])), D = 7.2;
+      const eye = new V(s[0], s[1] + 1.5, s[2]).addScaledVector(fwd, -D); // la cámara, 7 m detrás del lugar
+      rc.set(new V(s[0], s[1] + 1.5, s[2]), fwd.clone().negate()); rc.far = D + 0.5; if (rc.intersectObject(mesh, true).length) continue; // pared entre cámara y grupo
+      const cp = new V(s[0], s[1], s[2]);
+      rc.set(new V(cp.x, cp.y + 0.6, cp.z), new V(0, -1, 0)); rc.far = 4; const h = rc.intersectObject(mesh, true)[0];
+      if (!h || Math.abs(h.point.y - s[1]) > 1.0) continue;
+      const side = new V(fwd.z, 0, -fwd.x); let ok = true;
+      for (const k of [-1, 1]) { rc.set(new V(cp.x, h.point.y + 1, cp.z), side.clone().multiplyScalar(k)); rc.far = 2.4; if (rc.intersectObject(mesh, true).length) ok = false; }
+      if (!ok) continue;
+      // vista: qué tan lejos llegan los rayos desde la cámara hacia adelante (y un poco hacia arriba)
+      let score = 0;
+      for (const [yo, po] of [[0, 0.05], [-0.35, 0.08], [0.35, 0.08], [-0.6, 0.15], [0.6, 0.15], [0, 0.35]]) {
+        const d = new V(-Math.sin(s[3] + yo), po, -Math.cos(s[3] + yo)).normalize(); rc.set(eye, d); rc.far = 90; const hit = rc.intersectObject(mesh, true)[0];
+        score += hit ? hit.distance : 90;
+      }
+      if (!best || score > best.score) best = { score, cp: new V(cp.x, h.point.y, cp.z), yaw: s[3] };
+    }
+    if (best) { inner.position.set(-best.cp.x, -best.cp.y, -best.cp.z); pivot.rotation.y = -best.yaw; backdrop = pivot; scene.add(pivot); inMap = true; }
+    for (const ob of [floor, ped, ring, glow, halo]) ob.visible = !inMap;
+    scene.fog = inMap ? new THREE.Fog('#c9d6e2', 40, 220) : new THREE.Fog('#1a1d22', 6, 16);
+    scene.background = inMap ? new THREE.Color('#8fb2d8') : bgt;
+  };
   M.render = (renderer, dt) => {
     t0 += dt;
     if (!drag) spin += dt * 0.25;
-    holder.rotation.y = Math.PI + Math.sin(spin) * 0.6 + 0.35;
-    if (model) poseModel(model, { speed: 0, duck: 0, pitch: Math.sin(t0 * 1.3) * 0.04 - 0.05, onGround: true, dead: 0 }, dt);
+    holder.rotation.y = Math.PI + (inMap ? Math.sin(spin) * 0.12 : Math.sin(spin) * 0.6 + 0.35);
+    rebuildModel();
+    models.forEach((m, i) => poseModel(m, { speed: 0, duck: 0, pitch: Math.sin(t0 * 1.3 + i) * 0.04 - 0.05, onGround: true, dead: 0 }, dt));
     { const a = dustG.attributes.position; for (let i = 0; i < dustN; i++) { let y = a.array[i * 3 + 1] + dt * 0.06; if (y > 3.2) y = 0; a.array[i * 3 + 1] = y; a.array[i * 3] += Math.sin(t0 * 0.4 + i) * dt * 0.02; } a.needsUpdate = true; }
     { const tc = myTeamPreview() === 'CT' ? '#5b9bff' : '#f2c04a'; ringMat.color.set(tc); glowMat.color.set(tc); }
     const asp = innerWidth / innerHeight;
     cam.aspect = asp; cam.fov = asp < 1 ? 46 : 30; cam.updateProjectionMatrix();
-    cam.position.set(asp < 1 ? 0 : -0.05, 1.5, 7.2); cam.lookAt(asp < 1 ? 0 : -0.05, 0.62, 0);
+    const nP = models.length, back = nP > 1 ? 1.4 + nP * 0.35 : 0;
+    cam.position.set(asp < 1 ? 0 : -0.05, 1.5, 7.2 + back); cam.lookAt(asp < 1 ? 0 : -0.05, 0.75, 0);
     renderer.setClearColor('#0b0f16'); renderer.clear();
     renderer.render(scene, cam);
   };
@@ -67,12 +132,21 @@ export function makeMenu(o) {
   addEventListener('pointerup', () => { drag = null; });
 
   // ---------- DOM ----------
-  function savePref() { store.set('ls:look', look); o.sendPref({ t: look.t }); }
-  M.myPref = () => ({ t: look.t });
+  function savePref() { store.set('ls:menuLook', menuLook); o.sendPref({ look: menuLook }); }
+  M.myPref = () => ({ look: menuLook });
+  function renderLook() {
+    const box = $('lookPick'); if (!box) return;
+    const list = LOOK_W[menuLook.team]; if (!list.includes(menuLook.w)) menuLook.w = list[0];
+    box.querySelector('[data-team="T"]').classList.toggle('on', menuLook.team === 'T'); box.querySelector('[data-team="CT"]').classList.toggle('on', menuLook.team === 'CT');
+    box.querySelector('.lk-w').textContent = (o.WNAME ? o.WNAME(menuLook.w) : menuLook.w).toUpperCase();
+  }
   M.show = () => {
     $('lobby').hidden = false;
     for (const b of document.querySelectorAll('#lobby nav button')) b.onclick = () => { if (b.dataset.tab === 'settings') { b.classList.add('on'); o.openSettings(() => render()); } else render(); };
-    for (const b of document.querySelectorAll('[data-pref]')) b.onclick = () => { look.t = +b.dataset.pref; savePref(); render(); };
+    { const box = $('lookPick');
+      for (const b of box.querySelectorAll('[data-team]')) b.onclick = () => { menuLook.team = b.dataset.team; menuLook.w = LOOK_W[menuLook.team][0]; savePref(); renderLook(); };
+      for (const b of box.querySelectorAll('[data-dir]')) b.onclick = () => { const l = LOOK_W[menuLook.team], i = l.indexOf(menuLook.w); menuLook.w = l[(i + +b.dataset.dir + l.length) % l.length]; savePref(); renderLook(); };
+      renderLook(); }
     $('goBtn').onclick = () => { if (!o.isHost()) return; if (!canStart()) return; o.onStart(); };
     $('modeBtn').onclick = () => { $('modeSel').hidden = false; render(); };
     $('modeClose').onclick = () => { $('modeSel').hidden = true; };
@@ -120,7 +194,6 @@ export function makeMenu(o) {
     for (const b of document.querySelectorAll('#lobby nav button')) b.classList.toggle('on', b.dataset.tab === 'play');
     $('meName').textContent = ctx.me.name;
     $('roomInfo').textContent = ctx.online ? `Sala ${ctx.roomCode || ''} · ${(ctx.players || []).length} jugador${(ctx.players || []).length === 1 ? '' : 'es'}` : 'Práctica sin conexión';
-    for (const b of document.querySelectorAll('[data-pref]')) b.classList.toggle('on', +b.dataset.pref === look.t);
     // equipo / grupo
     const people = (ctx.players || []).map(p => ({ ...p, pr: G.prefs[p.id] || {} }));
     const per = G.cfg.bots ? Math.max(G.cfg.size, Math.ceil(people.length / 2)) : Math.ceil(people.length / 2);
