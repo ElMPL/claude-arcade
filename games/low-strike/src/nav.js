@@ -223,8 +223,7 @@ export function sealTraps(W, nav, jump = 1.45) {
   W.okNav = { m, N, c: nav.c, H, ok, L: W.L };
   const climb = n => {
     if (nav.main[n] || jumps[n] === 255) return false;
-    if (jumps[n] > 2 || hOf(n) - base[n] > 2.3) return true;
-    const ci = cInfo[comp[n]]; return !!ci && (ci.area > 10 || (ci.area > 5 && ci.up > 1.25));
+    return jumps[n] > 2 || hOf(n) - base[n] > 2.6;
   };
   let cells = 0;
   for (let n = 0; n < T; n++) {

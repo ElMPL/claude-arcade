@@ -100,20 +100,23 @@ export function placeProps(W, nav, mapId, count = 24) {
     if (out.length >= count) break;
     if (out.some(o => Math.hypot(o.x - c[0], o.z - c[2]) < 12)) continue;
     const kind = kinds[Math.floor(r() * kinds.length)], P = PROPS[kind]();
-    // de espaldas a la pared: se corre un poco hacia la pared
-    const ry = c[3] + (r() - 0.5) * 0.3, back = 0;
-    const x = c[0] + Math.sin(c[3]) * back, z = c[2] + Math.cos(c[3]) * back;
-    // colisión: todas las celdas bajo el prop rotado
-    const cells = [], cs = Math.cos(ry), sn = Math.sin(ry);
-    const R = Math.hypot(P.hw, P.hd) + W.cell;
-    for (let gz = Math.floor((z - R) / W.cell); gz <= Math.floor((z + R) / W.cell); gz++) for (let gx = Math.floor((x - R) / W.cell); gx <= Math.floor((x + R) / W.cell); gx++) {
-      const wx = (gx + 0.5) * W.cell - x, wz = (gz + 0.5) * W.cell - z;
-      const lx = wx * cs - wz * sn - (P.cx || 0), lz = wx * sn + wz * cs;
-      if (Math.abs(lx) <= P.hw && Math.abs(lz) <= P.hd) cells.push(gz * W.n + gx);
-    }
-    let ok = cells.length > 0;
-    for (const ci of cells) { const t = W.top[0][ci]; let fl = NaN; for (let q = 0; q < W.L; q++) if (!isNaN(W.top[q][ci]) && Math.abs(W.top[q][ci] - c[1]) < 0.25) fl = q; if (isNaN(fl) || W.cls[fl][ci] !== 1) { ok = false; break; } }
-    if (!ok) continue;
+    // de espaldas a la pared: se arrima hasta tocarla (sin meterse) y solo en piso parejo (nada flotando)
+    const ry = c[3] + (r() - 0.5) * 0.2, cs = Math.cos(ry), sn = Math.sin(ry), R = Math.hypot(P.hw, P.hd) + W.cell;
+    const foot = (x, z) => {
+      const cells = [];
+      for (let gz = Math.floor((z - R) / W.cell); gz <= Math.floor((z + R) / W.cell); gz++) for (let gx = Math.floor((x - R) / W.cell); gx <= Math.floor((x + R) / W.cell); gx++) {
+        const wx = (gx + 0.5) * W.cell - x, wz = (gz + 0.5) * W.cell - z;
+        const lx = wx * cs - wz * sn - (P.cx || 0), lz = wx * sn + wz * cs;
+        if (Math.abs(lx) <= P.hw && Math.abs(lz) <= P.hd) cells.push(gz * W.n + gx);
+      }
+      let lo = 1e9, hi = -1e9, ok = cells.length > 0;
+      for (const ci of cells) { let fl = NaN; for (let q = 0; q < W.L; q++) if (!isNaN(W.top[q][ci]) && Math.abs(W.top[q][ci] - c[1]) < 0.3) { fl = q; break; } if (isNaN(fl) || W.cls[fl][ci] !== 1) { ok = false; break; } const t = W.top[fl][ci]; lo = Math.min(lo, t); hi = Math.max(hi, t); }
+      return ok && hi - lo < 0.1 ? { cells, y: lo } : null;
+    };
+    let x = c[0], z = c[2], F = foot(x, z);
+    if (!F) continue;
+    for (let k = 0; k < 10; k++) { const nx = x + Math.sin(c[3]) * 0.05, nz = z + Math.cos(c[3]) * 0.05, F2 = foot(nx, nz); if (!F2) break; x = nx; z = nz; F = F2; }
+    const cells = F.cells; c[1] = F.y;
     for (const ci of cells) for (let q = 0; q < W.L; q++) if (!isNaN(W.top[q][ci]) && Math.abs(W.top[q][ci] - c[1]) < 0.25) {
       const above = q + 1 < W.L && !isNaN(W.bot[q + 1][ci]) ? W.bot[q + 1][ci] : 99;
       W.top[q][ci] = Math.min(above, c[1] + P.h); W.cls[q][ci] = 2;

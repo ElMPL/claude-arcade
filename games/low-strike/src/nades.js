@@ -7,13 +7,17 @@ export const NADE = {
   smokeLife: 18, fireLife: 7, decoyLife: 15,
   smokeR: 3.6, fireR: 2.6, heR: 350 * U, heDmg: 98,
 };
-// tipo de lanzamiento: 1 fuerte (clic izq), 0.5 medio (ambos), 0.3 suave (clic der)
-export function makeNade(type, owner, team, ox, oy, oz, yaw, pitch, pvx, pvz, power = 1) {
+// Lanzamiento como en CS (CBaseCSGrenade::ThrowGrenade): fuerza 1 (clic izq), 0.5 (los dos), 0 (clic der) →
+// velocidad 675 u/s × (0.3 + 0.7·fuerza); el ángulo se levanta 10° y se estira (pitch' = 10° + pitch·100/90);
+// sale 16 u adelante del ojo (sin atravesar paredes) y se le suma 1.25 × la velocidad del jugador, INCLUIDA la
+// vertical: por eso el jumpthrow (saltar y soltar a la vez) llega más lejos.
+export function makeNade(type, owner, team, ox, oy, oz, yaw, pitch, pvx, pvz, power = 1, pvy = 0, W = null) {
   const sp = NADE.speed * (0.3 + 0.7 * power);
-  // como CS: el lanzamiento sale un poco hacia arriba de la mira
-  const p = pitch + (10 * Math.PI / 180) * (1 - Math.abs(pitch) / (Math.PI / 2));
+  const pd = pitch * 180 / Math.PI, p = Math.max(-90, Math.min(90, 10 + pd * (100 / 90))) * Math.PI / 180;
   const dx = -Math.sin(yaw) * Math.cos(p), dy = Math.sin(p), dz = -Math.cos(yaw) * Math.cos(p);
-  return { type, owner, team, x: ox + dx * 0.1, y: oy + dy * 0.1 - 0.05, z: oz + dz * 0.1, vx: dx * sp + pvx * 1.25, vy: dy * sp, vz: dz * sp + pvz * 1.25, t: 0, acc: 0, rest: false, state: 'fly', life: 0 };
+  let off = 16 * U;
+  if (W) { const h = raycast(W, ox, oy, oz, dx, dy, dz, off + 0.15); if (h) off = Math.max(0, h.t - 0.15); }
+  return { type, owner, team, x: ox + dx * off, y: oy + dy * off, z: oz + dz * off, vx: dx * sp + pvx * 1.25, vy: dy * sp + pvy * 1.25, vz: dz * sp + pvz * 1.25, t: 0, acc: 0, rest: false, state: 'fly', life: 0 };
 }
 // avanza; devuelve lista de eventos { type:'det'|'bounce'|'end', g }
 export function stepNade(W, g, dt, out) {

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadMap } from './mapdata.js';
-import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked } from './world.js';
+import { buildWorld, floorAt, solidAt, zoneAt, raycast, blocked , refineSites } from './world.js';
 import { buildMeshes, buildFromModel, buildEnvironment, themeOf } from './mesher.js';
 import { buildNav, sealTraps, okSpot } from './nav.js';
 import { buildDecor } from './decor.js';
@@ -17,7 +17,7 @@ import { inaccuracy, recoilStep, shotDir, traceShot, canSee } from './combat.js'
 import { segBlockedBySmoke } from './nades.js';
 import { makeNade, stepNade, NADE } from './nades.js';
 import { makeFx } from './fx.js';
-import { makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT } from './models.js';
+import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT } from './models.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
@@ -150,7 +150,7 @@ function onKey(c) {
   else if (c === 'KeyR') reload();
   else if (c === 'KeyG') dropCurrent();
   else if (c === 'KeyE') use();
-  else if (c === 'KeyF') { if (M.reloadT <= 0 && M.drawT <= 0 && !M.scope) M.inspect = 3.0; }
+  else if (c === 'KeyF') { if (M.reloadT <= 0 && M.drawT <= 0 && !M.scope) { const ct = (WEAPONS[curId()] || {}).cat; M.inspectDur = ct === 'knife' ? 2.6 : ct === 'pistol' ? 3.2 : 4.2; M.inspect = M.inspectDur; } }
 }
 // táctil (básico)
 function setupTouch() {
@@ -235,7 +235,7 @@ function secondary() {
   const id = curId(), w = WEAPONS[id];
   if (w && w.scope && M.reloadT <= 0 && M.drawT <= 0) { M.scope = (M.scope + 1) % (w.scope.length + 1); A.sfxClick(null, 3000, 0.2); return; }
   if (id === 'knife' && M.fireT <= 0 && M.drawT <= 0) { knife(true); }
-  if (w && w.cat === 'grenade' && !mouseL && M.throwT <= 0) { M.nadeHold = 0.3; }
+  if (w && w.cat === 'grenade' && !mouseL && M.throwT <= 0) { M.nadeHold = 0.001; }
 }
 function dropCurrent() {
   const P = me(); const s = M.slot; if (!P.alive) return;
@@ -399,7 +399,7 @@ function throwNade(power) {
   const P = me(), p = M.pl, id = curId();
   if (!WEAPONS[id] || WEAPONS[id].cat !== 'grenade' || M.nadeCd > 0) return;
   const eye = [p.x, p.y + eyeH(p), p.z];
-  const data = { i: myId, ty: id, tm: P.team, o: eye.map(v => +v.toFixed(3)), yaw: +p.yaw.toFixed(4), pitch: +p.pitch.toFixed(4), v: [+p.vx.toFixed(3), +p.vz.toFixed(3)], pw: power };
+  const data = { i: myId, ty: id, tm: P.team, o: eye.map(v => +v.toFixed(3)), yaw: +p.yaw.toFixed(4), pitch: +p.pitch.toFixed(4), v: [+p.vx.toFixed(3), +p.vz.toFixed(3), +(p.onGround ? 0 : p.vy).toFixed(3)], pw: power };
   addNade(data); send('nd', data); req('nade', { type: id });
   M.nadeCd = 0.6; A.sfxThrow();
   // sacar la granada de la lista local ya (el host confirma)
@@ -416,7 +416,7 @@ G.botThrow = (p, type, yaw, pitch, power) => {
   addNade(data); send('nd', data); if (H) H.handle('nade', { type }, p.id);
 };
 function addNade(d) {
-  const g = makeNade(d.ty, d.i, d.tm, d.o[0], d.o[1], d.o[2], d.yaw, d.pitch, d.v[0], d.v[1], d.pw);
+  const g = makeNade(d.ty, d.i, d.tm, d.o[0], d.o[1], d.o[2], d.yaw, d.pitch, d.v[0], d.v[1], d.pw, d.v[2] || 0, G.W);
   g.key = Math.random(); G.nades.push(g);
   const m = gunMesh(d.ty); m.scale.setScalar(1.6); scene.add(m); nadeMeshes.set(g, m);
 }
@@ -675,7 +675,7 @@ function updateTraj() {
   const P = me(), id = curId();
   const show = G.cfg.mode === 'practice' && P && P.alive && M.pl && WEAPONS[id] && WEAPONS[id].cat === 'grenade' && M.nadeHold;
   if (!show) { if (trajLine) trajLine.visible = false; return; }
-  const p = M.pl, g = makeNade(id, myId, P.team, p.x, p.y + eyeH(p), p.z, p.yaw, p.pitch, p.vx, p.vz, M.nadeHold);
+  const p = M.pl, g = makeNade(id, myId, P.team, p.x, p.y + eyeH(p), p.z, p.yaw, p.pitch, p.vx, p.vz, M.nadeHold, p.onGround ? 0 : p.vy, G.W);
   const pts = [], ev = [];
   for (let i = 0; i < 260 && g.state === 'fly'; i++) { stepNade(G.W, g, 1 / 64, ev); if (i % 2 === 0) pts.push(g.x, g.y, g.z); if (g.rest) break; }
   if (!trajLine) { trajLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#7cff8a', depthTest: false, transparent: true, opacity: 0.9 })); trajLine.renderOrder = 26; trajLine.frustumCulled = false; scene.add(trajLine); }
@@ -801,6 +801,7 @@ async function loadGame(id) {
     const L2 = data.layers.map(l => ({ ...l, cls: l.cls.slice(), top: l.top ? l.top.slice() : l.top, bot: l.bot ? l.bot.slice() : l.bot, h: l.h ? l.h.slice() : l.h }));
     if (data.layers.flags) L2.flags = data.layers.flags.slice();
     const W2 = buildWorld(data.info, L2);
+    refineSites(W2);
     const props = data.mesh ? placeProps(W2, buildNav(W2), id) : [];
     if (data.mesh) sealTraps(W2, buildNav(W2));
     return { W: W2, props };
@@ -987,11 +988,6 @@ function updateLocal(dt) {
   if (p.y < -20 && !M.voidSent) { M.voidSent = true; req('fall', { d: 999 }); }
   // pasos propios
   const sp = Math.hypot(p.vx, p.vz);
-  // si alguien se las arregló para subirse a un techo o al borde de una pared, vuelve al último lugar válido
-  if (p.onGround) {
-    if (okSpot(G.W, p.x, p.y, p.z)) { M.okPos = [p.x, p.y, p.z]; M.badT = 0; }
-    else if (M.okPos && p.y > M.okPos[1] + 2.0 && (M.badT = (M.badT || 0) + dt) > 1.0) { p.x = M.okPos[0]; p.y = M.okPos[1]; p.z = M.okPos[2]; p.vx = p.vz = 0; M.badT = 0; hud.center('No se puede subir ahí', 1200); }
-  }
   if (p.onGround && sp > 3.6) { M.stepT -= dt; if (M.stepT <= 0) { M.stepT = 0.36; A.sfxStep(null, 0.45, surfAt(p.x, p.y, p.z)); } }
   M.bob += dt * sp * 1.4 * (p.onGround ? 1 : 0);
   // copiar al roster (para radar, balas de otros, etc.)
@@ -1003,13 +999,13 @@ function updateLocal(dt) {
   const wcat = (WEAPONS[id] || {}).cat;
   if (wcat === 'grenade') {
     // como CS2: apretás para sacar el seguro y soltás para tirar (der. = suave, ambos = medio)
-    if (mouseL && !M.nadeHold && M.throwT <= 0) M.nadeHold = mouseR ? 0.6 : 1;
-    if (mouseL && mouseR && M.nadeHold) M.nadeHold = 0.6;
+    if ((mouseL || mouseR) && !M.nadeHold && M.throwT <= 0) M.nadeHold = mouseL && mouseR ? 0.5 : mouseL ? 1 : 0.001;
+    if (mouseL && mouseR && M.nadeHold) M.nadeHold = 0.5;
     if (M.nadeHold && !mouseL && !mouseR && M.drawT <= 0 && M.throwT <= 0) {
       if (G.phase === 'freeze') { hud.center('Esperá a que empiece la ronda', 1000); M.nadeHold = 0; }
       else { M.throwT = 0.45; M.throwPow = M.nadeHold; M.nadeHold = 0; }
     }
-    if (M.throwT > 0) { const prev = M.throwT; M.throwT -= dt; if (prev > 0.3 && M.throwT <= 0.3) throwNade(M.throwPow || 1); }
+    if (M.throwT > 0) { const prev = M.throwT; M.throwT -= dt; if (prev > 0.35 && M.throwT <= 0.35) throwNade(M.throwPow ?? 1); }
   } else if (id === 'c4') {
     const site = zoneAt(G.W, p.x, p.z) & 12;
     if (mouseL && site && p.onGround && G.phase === 'live' && M.drawT <= 0) {
@@ -1126,11 +1122,17 @@ function updateCamera(dt) {
     }
     if (P.alive && M.drawT > 0) { const k = Math.max(0, M.drawT) / 0.6; oy -= k * 0.25; rx -= k * 0.8; }
     if (P.alive && M.inspect) {
-      // inspección como en CS: muestra el costado izquierdo, lo sostiene, gira para mostrar el otro lado y vuelve
-      const KF = [[0, 0, 0, 0, 0, 0], [0.22, 0.05, 1.05, 0.45, -0.07, 0.03], [0.5, 0.0, 1.15, 0.5, -0.08, 0.035], [0.72, -0.35, -0.55, -0.9, -0.03, 0.05], [0.88, -0.3, -0.5, -0.85, -0.02, 0.045], [1, 0, 0, 0, 0, 0]];
-      const k = 1 - M.inspect / 3.0; let i = 0; while (i < KF.length - 2 && k > KF[i + 1][0]) i++;
+      // inspección como en CS, distinta según el arma: [t, rx, ry, rz, dx, dy, dz]
+      const cat = (WEAPONS[wid] || {}).cat, D = M.inspectDur || 3;
+      const KF = cat === 'knife'
+        ? [[0, 0, 0, 0, 0, 0, 0], [0.18, -0.15, 0.55, 0.3, -0.05, 0.03, 0], [0.42, -0.15, 0.6, 2.9, -0.06, 0.05, 0.02], [0.6, -0.1, 0.5, 3.1, -0.06, 0.05, 0.02], [0.8, 0.3, -0.4, 0.2, 0.02, 0.0, 0], [1, 0, 0, 0, 0, 0, 0]] // gira la hoja y la mira de los dos lados
+        : cat === 'pistol'
+          ? [[0, 0, 0, 0, 0, 0, 0], [0.22, 0.1, 0.95, 0.35, -0.05, 0.03, 0.03], [0.48, 0.12, 1.05, 0.4, -0.06, 0.035, 0.03], [0.68, -0.25, -0.5, -1.2, -0.02, 0.05, 0.02], [0.86, -0.22, -0.45, -1.1, -0.02, 0.045, 0.02], [1, 0, 0, 0, 0, 0, 0]]
+          : [[0, 0, 0, 0, 0, 0, 0], [0.16, 0.08, 0.9, 0.5, -0.08, 0.04, 0.02], [0.4, 0.1, 1.0, 0.55, -0.09, 0.045, 0.02], [0.55, 0.45, 0.35, -0.2, -0.04, 0.02, -0.02], [0.7, -0.3, -0.45, -0.95, -0.02, 0.06, 0.03], [0.88, -0.28, -0.4, -0.9, -0.02, 0.055, 0.03], [1, 0, 0, 0, 0, 0, 0]]; // costado, cargador y el otro costado
+      const k = 1 - M.inspect / D; let i = 0; while (i < KF.length - 2 && k > KF[i + 1][0]) i++;
       const A0 = KF[i], A1 = KF[i + 1], t = Math.max(0, Math.min(1, (k - A0[0]) / (A1[0] - A0[0]))), e = t * t * (3 - 2 * t), L = j => A0[j] + (A1[j] - A0[j]) * e;
-      rx += L(1); ry += L(2); rz += L(3); ox += L(4); oy += L(5);
+      rx += L(1); ry += L(2); rz += L(3); ox += L(4); oy += L(5); oz += L(6);
+      if (cat !== 'knife' && cat !== 'pistol' && k > 0.42 && k < 0.62) vm.userData.reloadK = 0.08 + (k - 0.42) / 0.2 * 0.18; // la mano izquierda toca el cargador
     }
     if (wid === 'knife' && P.alive && M.fireT > 0) { const k = M.fireT / (M.knife2 ? 1 : 0.45); ry -= Math.sin(k * Math.PI) * 0.9; oz -= Math.sin(k * Math.PI) * 0.08; }
     if (M.plantT > 0 || M.defusing) { oy -= 0.08; rx -= 0.7; }
@@ -1349,6 +1351,7 @@ function becomeHost() {
 // ---------------- arranque ----------------
 async function boot() {
   hud.init();
+  await loadGunModels();
   initRender();
   setupTouch();
   requestAnimationFrame(frame);

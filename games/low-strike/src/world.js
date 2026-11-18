@@ -404,3 +404,33 @@ export function zoneCells(W, bit) {
   for (let i = 0; i < W.n * W.n; i++) if (W.flags[i] & bit) out.push(i);
   return out;
 }
+// Los sitios A y B vienen como rectángulos; acá se recortan a la parte caminable conectada con el centro del sitio
+// (sin pasar paredes ni escalones altos), así la zona de plantar no se escapa a pasillos vecinos.
+export function refineSites(W) {
+  const n = W.n, N = n * n;
+  for (const bit of [4, 8]) {
+    let x0 = n, z0 = n, x1 = -1, z1 = -1;
+    for (let i = 0; i < N; i++) if (W.flags[i] & bit) { const x = i % n, z = (i - x) / n; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    if (x1 < 0) continue;
+    const walk = i => W.cls[0][i] === 1 && !isNaN(W.top[0][i]);
+    const cx = (x0 + x1) >> 1, cz = (z0 + z1) >> 1;
+    // altura del piso más común del rectángulo (el piso del sitio, no una caja o un banco)
+    const hist = new Map();
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) { const i = z * n + x; if ((W.flags[i] & bit) && walk(i)) { const k = Math.round(W.top[0][i] * 4); hist.set(k, (hist.get(k) || 0) + 1); } }
+    let mode = 0, mc = -1; for (const [k, c] of hist) if (c > mc) { mc = c; mode = k / 4; }
+    let start = -1, bd = 1e9;
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) { const i = z * n + x; if (!walk(i) || Math.abs(W.top[0][i] - mode) > 0.3) continue; const d = (x - cx) ** 2 + (z - cz) ** 2; if (d < bd) { bd = d; start = i; } }
+    if (start < 0) continue;
+    const seen = new Uint8Array(N), q = [start]; seen[start] = 1;
+    for (let k = 0; k < q.length; k++) {
+      const i = q[k], x = i % n, z = (i - x) / n;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, zz = z + dz; if (xx < x0 || xx > x1 || zz < z0 || zz > z1) continue;
+        const j = zz * n + xx; if (seen[j] || !walk(j) || Math.abs(W.top[0][j] - W.top[0][i]) > 0.5) continue;
+        seen[j] = 1; q.push(j);
+      }
+    }
+    if (q.length < 200) continue; // si quedó casi vacío, se deja como estaba
+    for (let i = 0; i < N; i++) if ((W.flags[i] & bit) && !seen[i]) W.flags[i] &= ~bit;
+  }
+}

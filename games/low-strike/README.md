@@ -35,7 +35,7 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
 - **Movimiento:** saltar justo al caer salta menos y caer rápido frena, como en CS:GO. Si quedás en un hueco sin salida, te saca solo.
 - **Precisión como en CS2:** cada arma tiene su imprecisión parada, agachada, corriendo y en el aire (la SSG es precisa en el punto alto del salto; la AWP no); al caer tarda un instante en recuperarse.
 - **Sonido 3D:** se oye de qué lado viene cada cosa; lo que viene de abajo suena apagado y lo de arriba más agudo. Los pasos cambian según el piso (arena, piedra, madera, metal) y correr se oye más lejos.
-- **Granadas:** rebotan más en paredes que en el piso, el humo llena el lugar sin atravesar paredes y una flash casi no ciega si estás de espaldas.
+- **Granadas como en CS:** 675 u/s × (0.3 + 0.7·fuerza), el ángulo se levanta 10°, salen 16 u adelante del ojo y se les suma 1.25 × la velocidad del jugador (también la vertical: el jumpthrow llega más lejos). Se tiran 0,1 s después de soltar el botón. Rebotan más en paredes que en el piso, el humo llena el lugar sin atravesar paredes y una flash casi no ciega si estás de espaldas.
 - **Bots:** cambian de ruta, chequean ángulos mientras caminan, compran y usan humos, flashes y molotovs, y rotan con lo que avisa el equipo (radio o marcador).
 - **Red:** los jugadores remotos se dibujan interpolados 100 ms atrás (movimiento suave); los tiros los decide quien dispara, según lo que veía.
 - **Retroceso:** patrones fijos para AK-47, M4A4 y los demás rifles, siempre iguales para que se puedan aprender.
@@ -47,7 +47,7 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
 ## Menú de inicio
 - **Pestaña JUGAR:** tu personaje en 3D, el grupo de la sala, la elección de equipo (T, CT o automático) y la tarjeta de modo.
 - **Modos:** 2v2, 3v3 o 5v5, con bots o sin bots, en los 2 mapas. Se elige también la duración y el nivel de los bots.
-- **2v2 (estilo Wingman):** se juega en un solo sitio. El juego busca los caminos entre los spawns y ese sitio y cierra el resto del mapa con barricadas de madera.
+- **2v2 (estilo Wingman):** se juega en un solo sitio. El otro sitio y sus entradas se cierran con una pared invisible alta (no se puede saltar); los caminos entre los spawns y el sitio quedan libres.
 - **Pestaña CONFIGURACIÓN** (también desde la pausa con Esc): sensibilidad, invertir eje Y, volumen, sombras y la mira (estática o dinámica, color, largo, separación, grosor, punto central y contorno). Se guarda en el navegador.
 - Por ahora no hay skins: un modelo por bando, parecido a los originales (T con pasamontañas y chaleco de cargadores, CT con casco, antiparras y máscara de gas).
 
@@ -64,9 +64,10 @@ En el juego la malla se pinta con texturas generadas por código al estilo de Du
 
 ## Gráficos
 - Texturas generadas por código en 512 px con relieve (normal maps): arenisca en bloques, revoque con partes descascaradas, arena con piedritas, baldosas irregulares, madera, tejas, chapa. Materiales PBR con luz de entorno.
+- **Modelos de armas:** geometría de los modelos de CS2 que subió el usuario (`tools/import_guns.py` los simplifica a ~10 mil triángulos los rifles y ~6 mil las pistolas, separa las piezas y les pone color: madera, polímero, metal, cargador). No son obra nuestra: son de Valve, así que hay que tenerlo en cuenta antes de publicar el juego afuera de ClaudeArcade.
 - **Primera persona:** manos con guante y dedos articulados (3 falanges por dedo y pulgar) en poses distintas para empuñadura, guardamanos, pistola a dos manos, cuchillo y granadas; antebrazos que entran desde abajo de la pantalla. AK-47, M4A4/M4A1-S y pistolas rehechas con proporciones de las reales (cargador curvo, guardamanos, freno de boca, correderas redondeadas) y partes metálicas con brillo.
 - **Personajes:** cuerpo con forma, cara cubierta (pasamontañas o máscara con casco, antiparras y auriculares), chalecos con bolsillos; al disparar el arma patea y al recargar la mano va al cargador. Sombras reales que siguen la pose.
-- **Mapas:** letras A y B pintadas en cada sitio, toldos, ventanas con postigos y cables entre paredes; quien se suba a un techo vuelve al último lugar válido.
+- **Mapas:** toldos, ventanas con postigos y cables entre paredes (solo sobre paredes planas). Las zonas de plantar se recortan a la parte caminable del sitio.
 - **HUD estilo CS2:** paneles finos, íconos propios en SVG (vida, chaleco, chaleco + casco, kit, bomba, carrito de compra) y ficha corta de cada arma en el menú de compra.
 - Personajes y armas de poligonado medio: cuerpos redondeados, cascos y cabezas esféricas, piernas y brazos cilíndricos, armas con biseles y cilindros suaves.
 - El sol proyecta sombras (se pueden bajar o sacar en la configuración). Cada jugador tiene además una sombra suave debajo.

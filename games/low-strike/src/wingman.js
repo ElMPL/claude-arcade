@@ -31,53 +31,39 @@ export function applyWingman(W, nav) {
   const score = l => Math.max(best(l, dT), best(l, dC)) + 0.3 * (best(l, dT) + best(l, dC));
   const site = score(sA) <= score(sB) ? 'A' : 'B';
   const sS = site === 'A' ? sA : sB;
-  // zona permitida: los caminos reales (A*) entre spawns y sitio en ambos sentidos, más un margen, más
-  // un círculo alrededor de cada spawn y del sitio
-  const T = nav.L * nav.N, allowed = new Uint8Array(T);
+  // se cierra solo el otro sitio: todo lo que está a menos de ~16 m caminando de él, salvo los caminos entre los
+  // spawns y el sitio que se juega. El borde es una pared invisible y alta (no se puede saltar ni ver la madera).
+  const T = nav.L * nav.N, sO = site === 'A' ? sB : sA, dO = dist(nav, sO);
   const ctr = list => { let x = 0, y = 0, z = 0; for (const n of list) { const p = nav.pos(n); x += p[0]; y += p[1]; z += p[2]; } const k = list.length; return nav.nearest(x / k, y / k, z / k); };
   const cT = ctr(sT), cC = ctr(sC), cS = ctr(sS);
-  const seeds = [];
-  for (const [a, b] of [[cT, cS], [cS, cT], [cC, cS], [cS, cC], [cT, cC], [cC, cT]]) {
-    const path = findPath(nav, a, b); if (!path) continue;
-    for (const q of path) { const n = nav.nearest(q[0], q[1], q[2]); if (n >= 0) seeds.push([n, 16]); }
-  }
-  for (const n of sT) seeds.push([n, 14]); for (const n of sC) seeds.push([n, 14]); for (const n of sS) seeds.push([n, 16]);
-  // inundación limitada por pasos desde cada semilla
-  const left = new Int8Array(T).fill(-1), q = [];
-  for (const [n, r] of seeds) if (r > left[n]) { left[n] = r; q.push(n); }
-  while (q.length) { const u = q.pop(); allowed[u] = 1; if (left[u] <= 0) continue; nav.neighbors(u, tmp); for (let k = 0; k < tmp.length; k += 2) { const v = tmp[k]; if (nav.main[v] && left[u] - 1 > left[v]) { left[v] = left[u] - 1; q.push(v); } } }
-  // se agranda un anillo la zona permitida para que la barricada no le coma espacio a los pasillos
+  const keep = new Uint8Array(T), q = [], left = new Int8Array(T).fill(-1);
+  const seed = (n, r) => { if (n >= 0 && r > left[n]) { left[n] = r; q.push(n); } };
+  for (const [a, b] of [[cT, cS], [cS, cT], [cC, cS], [cS, cC]]) { const path = findPath(nav, a, b); if (path) for (const p of path) seed(nav.nearest(p[0], p[1], p[2]), 4); }
+  for (const n of sS) seed(n, 6); for (const n of sT) seed(n, 6); for (const n of sC) seed(n, 6);
+  while (q.length) { const u = q.pop(); keep[u] = 1; if (left[u] <= 0) continue; nav.neighbors(u, tmp); for (let k = 0; k < tmp.length; k += 2) { const v = tmp[k]; if (nav.main[v] && left[u] - 1 > left[v]) { left[v] = left[u] - 1; q.push(v); } } }
+  const shut = new Uint8Array(T);
+  for (let n = 0; n < T; n++) if (nav.main[n] && dO[n] < 16 && !keep[n]) shut[n] = 1;
   const nb = [], block = new Set();
-  const grow = Uint8Array.from(allowed);
-  for (let n = 0; n < T; n++) if (allowed[n]) { nav.neighbors(n, nb); for (let k = 0; k < nb.length; k += 2) if (nav.main[nb[k]]) grow[nb[k]] = 1; }
-  allowed.set(grow);
-  // barricada: cada nodo caminable vecino de la zona permitida que no esté permitido
   for (let n = 0; n < T; n++) {
-    if (!allowed[n]) continue;
+    if (!shut[n]) continue;
     nav.neighbors(n, nb);
-    for (let k = 0; k < nb.length; k += 2) { const v = nb[k]; if (!allowed[v] && nav.main[v]) block.add(v); }
+    for (let k = 0; k < nb.length; k += 2) { const v = nb[k]; if (nav.main[v] && !shut[v]) { block.add(n); break; } }
   }
   const cells = [];
   for (const v of block) {
     const l = Math.floor(v / nav.N), i = v % nav.N, x = i % nav.m, z = Math.floor(i / nav.m), h = nav.H[l][i];
     for (let dz = 0; dz < nav.k; dz++) for (let dx = 0; dx < nav.k; dx++) {
       const cx = x * nav.k + dx, cz = z * nav.k + dz, ci = cz * W.n + cx;
-      // la columna de esa capa se vuelve pared de 3 m sobre el piso (la capa más cercana a la altura del nodo)
-      let li = -1, bd = 0.35; for (let q = 0; q < W.L; q++) { const t = W.top[q][ci]; if (!isNaN(t) && Math.abs(t - h) < bd) { bd = Math.abs(t - h); li = q; } }
+      let li = -1, bd = 0.35; for (let qq = 0; qq < W.L; qq++) { const t = W.top[qq][ci]; if (!isNaN(t) && Math.abs(t - h) < bd) { bd = Math.abs(t - h); li = qq; } }
       if (li < 0) continue;
-      // no tapar un camino permitido que pase por arriba o por abajo en la misma columna
-      let clash = false; for (let q = 0; q < nav.L && !clash; q++) { const nn = q * nav.N + i; if (allowed[nn] && Math.abs(nav.H[q][i] - h) < 3.4 && nn !== v) clash = true; }
-      if (clash) continue;
-      const top = W.top[li][ci];
-      const above = li + 1 < W.L && !isNaN(W.bot[li + 1][ci]) ? W.bot[li + 1][ci] : Infinity;
-      W.top[li][ci] = Math.min(top + 3.2, above); W.cls[li][ci] = 3;
-      cells.push([cx, cz, top, Math.min(3.2, above - top)]);
+      const above = li + 1 < W.L && !isNaN(W.bot[li + 1][ci]) ? W.bot[li + 1][ci] : 60;
+      W.top[li][ci] = Math.min(W.top[li][ci] + 12, above); W.cls[li][ci] = 3;
     }
   }
   // solo queda una zona para plantar
   const kill = site === 'A' ? 8 : 4;
   for (let i = 0; i < W.flags.length; i++) W.flags[i] &= ~kill;
-  return { site, cells };
+  return { site, cells }; // cells vacío: la barrera es invisible
 }
 
 // barricadas de madera con franjas de peligro

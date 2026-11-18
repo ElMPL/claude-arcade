@@ -1,7 +1,7 @@
 // Modelos de poligonado medio: armas (perfiles extruidos con biseles), personajes redondeados,
 // y brazos que agarran el arma con IK de dos huesos (en primera y en tercera persona).
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { WEAPONS } from './weapons.js';
 
@@ -388,12 +388,15 @@ function design(id) {
       muzzle = [0.15, 0.045];
       break;
     }
-    case 'knife': { // cuchillo táctico: mango engomado, guarda y hoja con punta
-      add(prof([[-0.12, -0.012], [-0.005, -0.014], [-0.005, 0.014], [-0.12, 0.012], [-0.13, 0.0]], 0.024, '#1f2023'), 'w');
-      add(prof([[-0.005, -0.03], [0.012, -0.03], [0.012, 0.024], [-0.005, 0.024]], 0.03, '#3a3c40'), 'm');
-      add(prof([[0.012, -0.016], [0.17, -0.012], [0.215, 0.006], [0.17, 0.016], [0.06, 0.016], [0.012, 0.016]], 0.005, '#c9cfd6'), 'b');
-      add(prof([[0.03, 0.016], [0.16, 0.016], [0.16, 0.019], [0.03, 0.019]], 0.007, '#8d949c'), 'm');
-      muzzle = [0.21, 0];
+    case 'knife': { // cuchillo táctico: mango engomado grueso con ranuras, guarda, hoja con punta recortada y canal
+      add(rbox(0.028, 0.036, 0.122, -0.066, 0.0, '#202124', 0, 0.011), 'w');
+      for (let i = 0; i < 4; i++) add(box(0.03, 0.006, 0.008, -0.025 - i * 0.022, -0.017, '#141416'));
+      add(rbox(0.03, 0.03, 0.016, -0.13, 0.0, '#3a3c40', 0, 0.006), 'm'); // pomo
+      add(prof([[-0.004, -0.03], [0.012, -0.03], [0.012, 0.028], [-0.004, 0.028]], 0.034, '#3a3c40'), 'm'); // guarda
+      add(prof([[0.012, -0.017], [0.16, -0.015], [0.205, 0.004], [0.175, 0.012], [0.12, 0.019], [0.012, 0.019]], 0.006, '#c9cfd6'), 'b'); // hoja
+      add(prof([[0.03, 0.002], [0.13, 0.002], [0.13, 0.008], [0.03, 0.008]], 0.0075, '#8d949c'), 'm'); // canal
+      add(prof([[0.012, -0.017], [0.16, -0.015], [0.165, -0.011], [0.012, -0.012]], 0.0065, '#e8edf2'), 'm'); // filo
+      muzzle = [0.2, 0];
       break;
     }
     case 'he': add(paint(new THREE.IcosahedronGeometry(0.037, 0), '#3d4a2c')); add(box(0.016, 0.02, 0.016, 0, 0.04, '#999')); add(box(0.008, 0.05, 0.016, -0.02, 0.025, '#aaa', 0.03)); break;
@@ -465,10 +468,57 @@ function design(id) {
   return { parts: P, fore, muzzle, grip };
 }
 const gcache = new Map(), icache = new Map();
-export function gunInfo(id) { if (!icache.has(id)) { const d = design(id); icache.set(id, { fore: d.fore, muzzle: d.muzzle, grip: d.grip }); } return icache.get(id); }
+// ---------- modelos importados (guns/guns.bin, ver tools/import_guns.py) ----------
+let GUNS = null, GUNBUF = null;
+export async function loadGunModels(base = 'guns/') {
+  try {
+    const [meta, buf] = await Promise.all([fetch(base + 'guns.json').then(r => r.json()), fetch(base + 'guns.bin').then(r => r.arrayBuffer())]);
+    GUNS = meta; GUNBUF = buf; gcache.clear(); icache.clear();
+  } catch (e) { console.warn('armas: uso los modelos simples', e); }
+}
+const METAL_COLS = new Set(['2c2e32', '3a3d42', '232427', '9ba1a9', 'a3a9b1']);
+function importedGeo(id, finish) {
+  const m = GUNS[id], F = FINISHES[finish] || FINISHES[0];
+  const q = new Int16Array(GUNBUF, m.o, m.nv * 3), c = new Uint8Array(GUNBUF, m.o + m.nv * 6, m.nv * 3), ix = new Uint16Array(GUNBUF, m.oi, m.ni);
+  const pos = new Float32Array(m.nv * 3); for (let i = 0; i < pos.length; i++) pos[i] = q[i] * m.sc;
+  const col = new Float32Array(m.nv * 3), metal = new Uint8Array(m.nv), fb = F.b ? new THREE.Color(F.b) : null, fw = F.w ? new THREE.Color(F.w) : null, tc = new THREE.Color();
+  for (let i = 0; i < m.nv; i++) {
+    const hex = ((c[i * 3] << 16) | (c[i * 3 + 1] << 8) | c[i * 3 + 2]).toString(16).padStart(6, '0');
+    tc.setRGB(c[i * 3] / 255, c[i * 3 + 1] / 255, c[i * 3 + 2] / 255, THREE.SRGBColorSpace);
+    metal[i] = METAL_COLS.has(hex) || hex === '2c2e32' ? 1 : 0;
+    // acabado (skin): el cuerpo toma el color principal y las piezas de color (madera, polímero) el secundario
+    if (fb && id !== 'knife') { if (hex === '2c2e32' || !metal[i] && hex !== '1f2023') tc.copy(metal[i] ? fb : (fw || fb)); }
+    col[i * 3] = tc.r; col[i * 3 + 1] = tc.g; col[i * 3 + 2] = tc.b;
+  }
+  let g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(ix, 1));
+  // grupos: metal (material brillante) y el resto
+  const tri = ix.length / 3, order = [...Array(tri).keys()].sort((a, b) => metal[ix[b * 3]] - metal[ix[a * 3]]);
+  const ix2 = new Uint16Array(ix.length); order.forEach((t, k) => { ix2[k * 3] = ix[t * 3]; ix2[k * 3 + 1] = ix[t * 3 + 1]; ix2[k * 3 + 2] = ix[t * 3 + 2]; });
+  let nm = 0; for (const t of order) if (metal[ix[t * 3]]) nm++;
+  g.setIndex(new THREE.BufferAttribute(ix2, 1));
+  g = toCreasedNormals(g, Math.PI / 5);
+  g.clearGroups(); g.addGroup(0, nm * 3, 0); g.addGroup(nm * 3, (tri - nm) * 3, 1);
+  g.computeBoundingSphere();
+  return g;
+}
+// datos para las manos: boca, guardamanos y empuñadura del modelo importado
+function importedInfo(id) {
+  const m = GUNS[id], d = design(id), q = new Int16Array(GUNBUF, m.o, m.nv * 3);
+  const muzzle = m.muzzle; let fore = null;
+  if (d.fore) {
+    const fu = d.fore[0] / Math.max(0.05, d.muzzle[0]) * muzzle[0]; let lo = 9;
+    for (let i = 0; i < m.nv; i++) { const u = -q[i * 3 + 2] * m.sc, y = q[i * 3 + 1] * m.sc; if (Math.abs(u - fu) < 0.025 && y > -0.03 && y < lo) lo = y; }
+    fore = [fu, lo < 9 ? lo + 0.012 : d.fore[1]];
+  }
+  const cat = WEAPONS[id] ? WEAPONS[id].cat : '';
+  const grip = cat === 'pistol' || id === 'zeus' ? [0.0, 0.03] : [0.0, -0.005];
+  return { fore, muzzle, grip };
+}
+export function gunInfo(id) { if (GUNS && GUNS[id]) { if (!icache.has(id)) icache.set(id, importedInfo(id)); return icache.get(id); } if (!icache.has(id)) { const d = design(id); icache.set(id, { fore: d.fore, muzzle: d.muzzle, grip: d.grip }); } return icache.get(id); }
 export function gunGeo(id, finish = 0) {
   const key = id + ':' + finish;
   if (gcache.has(key)) return gcache.get(key);
+  if (GUNS && GUNS[id]) { const g = importedGeo(id, finish); gcache.set(key, g); return g; }
   const d = design(id), F = FINISHES[finish] || FINISHES[0];
   const isGun = WEAPONS[id] && WEAPONS[id].dmg;
   const geos = d.parts.map(([g, role]) => {
@@ -717,7 +767,7 @@ const POSES = {
   // mano izquierda abrazando la derecha en las pistolas
   cup: { curl: [C(1.0, 1.0, 0.6), C(1.1, 1.1, 0.6), C(1.2, 1.1, 0.6), C(1.3, 1.1, 0.6)], thumb: [0.15, -0.3, -0.9, 0.05], basis: [[0, 1, 0], [-1, 0, 0], [0, 0, 1]], tilt: 0.3, pos: [-0.046, -0.06, -0.012] },
   // cuchillo: mano cerrada sobre el mango horizontal
-  knife: { curl: [C(1.25, 1.35, 0.9), C(1.35, 1.45, 0.9), C(1.4, 1.5, 0.9), C(1.45, 1.5, 0.9)], thumb: [-0.25, -0.6, -0.7, 0.2], basis: [[0, 0, 1], [1, 0, 0], [0, 1, 0]], tilt: 0, pos: [0.03, 0.04, 0.065] },
+  knife: { curl: [C(1.35, 1.45, 0.9), C(1.4, 1.5, 0.95), C(1.45, 1.5, 0.95), C(1.5, 1.5, 0.95)], thumb: [-0.35, -0.75, -0.35, 0.45], basis: [[0, 0, 1], [1, 0, 0], [0, 1, 0]], tilt: 0, pos: [0.028, 0.034, 0.064] },
   // granadas y C4: mano que sostiene algo redondo
   ball: { curl: [C(0.8, 0.8, 0.5), C(0.85, 0.85, 0.5), C(0.9, 0.85, 0.5), C(0.95, 0.85, 0.5)], thumb: [0.3, -0.7, -0.6, 0.2], basis: [[0, -1, 0], [1, 0, 0], [0, 0, 1]], tilt: 0.2, pos: [0.05, -0.01, 0.01] },
 };
@@ -775,8 +825,8 @@ export function setViewGun(vm, id, team, si = 0, finish = 0) {
   u.mag = null;
   if (isMagGun) { const mg = new THREE.Mesh(new RoundedBoxGeometry(0.026, cat === 'pistol' ? 0.09 : 0.13, 0.05, 2, 0.006), new THREE.MeshStandardMaterial({ color: '#2a2b2d', roughness: 0.5, metalness: 0.4 })); mg.position.set(0, -0.06, -0.03); mg.visible = false; u.arms[1].h.add(mg); u.mag = mg; }
   // dónde se sostiene respecto de la cámara
-  u.base = id === 'dualies' ? [0.12, -0.13, -0.44] : cat === 'pistol' || id === 'zeus' ? [0.125, -0.12, -0.42] : cat === 'knife' ? [0.15, -0.15, -0.34] : nade ? [0.14, -0.14, -0.32] : cat === 'sniper' ? [0.15, -0.17, -0.44] : [0.15, -0.165, -0.37];
-  u.rot = cat === 'knife' ? [0.35, 0.55, -0.25] : nade ? [0.1, 0.2, 0] : [0.03, 0.06, 0];
+  u.base = id === 'dualies' ? [0.12, -0.13, -0.44] : cat === 'pistol' || id === 'zeus' ? [0.125, -0.12, -0.42] : cat === 'knife' ? [0.12, -0.16, -0.36] : nade ? [0.14, -0.14, -0.32] : cat === 'sniper' ? [0.15, -0.17, -0.44] : [0.15, -0.165, -0.37];
+  u.rot = cat === 'knife' ? [0.22, 0.32, -0.12] : nade ? [0.1, 0.2, 0] : [0.03, 0.06, 0];
   vm.traverse(o => { o.renderOrder = 10; o.frustumCulled = false; });
 }
 // ubica las manos (pegadas al arma según la pose) y los antebrazos desde abajo de la pantalla
@@ -794,9 +844,9 @@ export function updateViewArms(vm) {
       let pos = P.pos.slice();
       if (!right && pose === 'fore') pos = [-0.022, (info.fore ? info.fore[1] : 0) - 0.032, -(info.fore ? info.fore[0] : 0.3)];
       if (right && cat === 'pistol') pos = [0.033, -0.032, 0.026];
-      if (right && info.grip) pos = [pos[0], pos[1] + info.grip[1], pos[2] - info.grip[0]];
       if (!right && pose === 'cup') pos = [-0.042, -0.05, 0.012];
       if (!right && u.dual) pos = [-0.21 + 0.033, -0.05, 0.048];
+      if (info.grip && (right || pose === 'cup' || u.dual)) pos = [pos[0], pos[1] + info.grip[1], pos[2] - info.grip[0]];
       vT.set(...pos).applyMatrix4(gm);
       hq.copy(gq).multiply(poseQuat(pose));
       // recarga: la mano izquierda va al cargador, baja, vuelve con otro y lo mete

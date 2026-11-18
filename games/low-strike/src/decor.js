@@ -23,23 +23,6 @@ const DIRS8 = Array.from({ length: 8 }, (_, i) => [Math.cos(i * Math.PI / 4), Ma
 export function buildDecor(W, nav, mapId, info) {
   const g = new THREE.Group(), r = rng(mapId.length * 131 + 7);
   const dust = mapId === 'dust2';
-  // ---------- letras de los sitios ----------
-  const zones = info && info.zones;
-  if (zones) for (const key of ['A', 'B']) {
-    const z = zones[key]; if (!z) continue;
-    const cx = (z[0] + z[2]) / 2 * W.cell, cz = (z[1] + z[3]) / 2 * W.cell, fy = floorAt(W, cx, cz, 40);
-    if (!(fy > -1e8)) continue;
-    const mat = new THREE.MeshBasicMaterial({ map: letterTex(key, dust ? '#c8321e' : '#b8261c'), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, fog: true });
-    const fl = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), mat); fl.rotation.x = -Math.PI / 2; fl.position.set(cx, fy + 0.02, cz); g.add(fl);
-    // pared más cercana al centro del sitio
-    let best = null;
-    for (const [dx, dz] of DIRS8) { const h = raycast(W, cx, fy + 1.6, cz, dx, 0, dz, 14); if (h && (!best || h.t < best.t) && Math.abs(h.ny) < 0.3) best = { ...h, dx, dz }; }
-    if (best) {
-      const wl = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.9), mat.clone());
-      const px = cx + best.dx * (best.t - 0.03), pz = cz + best.dz * (best.t - 0.03);
-      wl.position.set(px, fy + 1.7, pz); wl.lookAt(px + best.nx, fy + 1.7, pz + best.nz); g.add(wl);
-    }
-  }
   // ---------- toldos, ventanas y cables, desde nodos de la zona principal ----------
   const nodes = []; for (let n = 0; n < nav.L * nav.N; n++) if (nav.main[n]) nodes.push(n);
   const aw = [], win = [], frame = [], cab = [], wood = [];
@@ -55,6 +38,13 @@ export function buildDecor(W, nav, mapId, info) {
     // la pared tiene que seguir arriba (si no, es un murito)
     const up = raycast(W, x, y + 3.2, z, dx, 0, dz, hit.t + 0.4); if (!up) continue;
     const tx = -nz, tz = nx, ang = Math.atan2(nx, nz);
+    // la pared tiene que ser plana donde va el detalle (si no, quedaría flotando o metido): 6 rayos de control
+    let flat = true;
+    for (const [sx, sy] of [[-1.2, 1.6], [1.2, 1.6], [-1.2, 3.2], [1.2, 3.2], [0, 2.4], [0, 3.6]]) {
+      const ox = x + tx * sx, oz = z + tz * sx, h2 = raycast(W, ox, y + sy, oz, dx, 0, dz, hit.t + 0.6);
+      if (!h2 || Math.abs(h2.t - hit.t) > 0.08 || Math.abs(h2.nx - nx) + Math.abs(h2.nz - nz) > 0.1) { flat = false; break; }
+    }
+    if (!flat) continue;
     const kind = r();
     if (kind < 0.35 && nAw < 16 && far(wx, wz, 9)) { nAw++;
       // toldo: tela inclinada saliendo de la pared, con rayas y dos soportes
