@@ -546,6 +546,23 @@ export function buildFromModel(W, mesh, info, mapId, nav) {
     }
     o += part.tris * 9; t0 += part.tris;
   }
+  // superficie del piso por celda de 0,5 m (para el sonido de los pasos): 1 arena, 2 piedra, 3 madera, 4 metal
+  {
+    const sc = 0.5, sm = Math.ceil(W.n * W.cell / sc), surf = new Uint8Array(sm * sm), sy = new Float32Array(sm * sm).fill(-1e9);
+    const code = k => { const tx = (C[k] || [])[1]; return k === 'metal' ? 4 : tx === 'sand' ? 1 : tx === 'wood' || tx === 'crate' || k === 'crate' || k === 'wood' ? 3 : 2; };
+    for (let i = 0; i < total; i++) {
+      const k = keyOf[i]; if (k === 'wall' || k === 'base' || k === 'ceiling' || k === 'roof') continue;
+      const a = i * 9, x0 = mesh[a] / 100, y0 = mesh[a + 1] / 100, z0 = mesh[a + 2] / 100, x1 = mesh[a + 3] / 100, y1 = mesh[a + 4] / 100, z1 = mesh[a + 5] / 100, x2 = mesh[a + 6] / 100, y2 = mesh[a + 7] / 100, z2 = mesh[a + 8] / 100;
+      const ny = (z1 - z0) * (x2 - x0) - (x1 - x0) * (z2 - z0), len = Math.hypot((y1 - y0) * (z2 - z0) - (z1 - z0) * (y2 - y0), ny, (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0)) || 1;
+      if (Math.abs(ny / len) < 0.7) continue;
+      const c = code(k), yy = (y0 + y1 + y2) / 3;
+      for (let gz = Math.floor(Math.min(z0, z1, z2) / sc); gz <= Math.floor(Math.max(z0, z1, z2) / sc); gz++) for (let gx = Math.floor(Math.min(x0, x1, x2) / sc); gx <= Math.floor(Math.max(x0, x1, x2) / sc); gx++) {
+        if (gx < 0 || gz < 0 || gx >= sm || gz >= sm) continue; const j = gz * sm + gx;
+        if (yy > sy[j]) { sy[j] = yy; surf[j] = c; }
+      }
+    }
+    W.surf = { sc, sm, surf, sy };
+  }
   const keys = [...new Set(keyOf)];
   let tris = 0;
   for (const key of keys) {

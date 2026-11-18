@@ -280,3 +280,36 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #556; border-bo
 .gmode.on { border-color: #ffd34a; background: rgba(255, 211, 74, .14); }
 @media (max-width: 760px) { .gmodes { grid-template-columns: repeat(2, 1fr); } }
 /* rueda de compra (CS:GO) */
+
+/* tarjeta de muerte: quién te mató, con qué y el daño entre los dos */
+#deathCard { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); width: 320px; background: rgba(10, 11, 14, .86); border-top: 3px solid #d8432f; padding: 10px 14px 12px; z-index: 12; pointer-events: none; font-family: 'Rajdhani', sans-serif; }
+#deathCard .dc-h { font-size: 12px; letter-spacing: 2px; color: #ff7a6a; font-weight: 700; }
+#deathCard .dc-k { font-size: 26px; font-weight: 700; line-height: 1.1; } #deathCard .dc-k.T { color: var(--t); } #deathCard .dc-k.CT { color: var(--ct); } #deathCard .dc-k small { font-size: 12px; color: #aaa; }
+#deathCard .dc-w { display: flex; align-items: center; gap: 10px; margin: 4px 0; color: #dfe3e8; font-size: 14px; font-weight: 600; } #deathCard .dc-w img { height: 26px; }
+#deathCard .dc-hp { color: #aeb3bb; font-size: 13px; margin-bottom: 6px; } #deathCard .dc-hp b { color: #fff; }
+#deathCard .dc-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; border-top: 1px solid rgba(255, 255, 255, .08); padding-top: 4px; font-size: 14px; color: #cfd3da; }
+#deathCard .dc-row b { font-size: 20px; color: #fff; } #deathCard .dc-row small { color: #9aa1aa; min-width: 70px; text-align: right; }
+
+#loadInfo { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 520px; text-align: center; }
+#loadInfo img { width: 260px; height: 260px; border-radius: 6px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 10px 30px rgba(0, 0, 0, .5); }
+#loadTip { color: #c9cfd8; font-size: 16px; font-weight: 600; min-height: 2.6em; margin: 0; }
+
+/* pantallas táctiles: HUD más chico y corrido para no quedar debajo de los botones */
+body.touch #radarBox { width: 120px; } body.touch #radar { width: 120px; height: 120px; }
+body.touch #zoneName { font-size: 11px; }
+body.touch #money { top: 150px; font-size: 18px; padding: 2px 8px; } body.touch #buyHint, body.touch #slots, body.touch .lb-keys { display: none; }
+body.touch #vitals { left: 50%; transform: translateX(calc(-100% - 4px)); bottom: 6px; }
+body.touch .vit { min-width: 0; font-size: 24px; padding: 3px 10px 7px 8px; } body.touch .vit .ico { width: 18px; height: 18px; }
+body.touch #ammo { right: auto; left: 50%; margin-left: 4px; bottom: 6px; padding: 3px 10px 4px 14px; background: var(--pan); text-align: left; }
+body.touch #ammo .nums { font-size: 26px; justify-content: flex-start; } body.touch #ammo small { font-size: 16px; } body.touch #wname { font-size: 10px; }
+body.touch #feed div { font-size: 12px; padding: 1px 6px; } body.touch #feed img { height: 14px; }
+body.touch #top .sc, body.touch #clock { font-size: 20px; } body.touch .pips i { width: 14px; height: 20px; font-size: 9px; }
+@media (max-height: 520px) {
+  .fn-top { padding: 6px 14px; gap: 14px; } .fn-top .logo { font-size: 28px; } .fn-top nav button { font-size: 20px; padding: 2px 8px; }
+  .right { width: 250px; right: 12px; bottom: 12px; gap: 6px; } .modeCard canvas { display: none; }
+  .teamPick { bottom: 12px; left: 12px; transform: none; flex-direction: column; gap: 4px; } .teamPick button { font-size: 13px !important; padding: 4px 8px !important; }
+}
+
+/* viñeta suave y un poco más de contraste y color (como el gradeo de CS2) */
+#vignette { position: fixed; inset: 0; pointer-events: none; z-index: 9; background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, .28) 100%); }
+#view canvas { filter: contrast(1.06) saturate(1.1); }

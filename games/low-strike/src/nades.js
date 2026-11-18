@@ -33,10 +33,11 @@ export function stepNade(W, g, dt, out) {
             g.x += g.vx / sp * t; g.y += g.vy / sp * t; g.z += g.vz / sp * t;
             const n = [hit.nx, hit.ny, hit.nz];
             if ((g.type === 'molotov' || g.type === 'incendiary') && n[1] > 0.7) { detonate(W, g, out); continue; }
-            const vn = g.vx * n[0] + g.vy * n[1] + g.vz * n[2];
-            g.vx -= 2 * vn * n[0]; g.vy -= 2 * vn * n[1]; g.vz -= 2 * vn * n[2];
-            g.vx *= 0.45; g.vy *= 0.45; g.vz *= 0.45;
-            if (n[1] > 0.7) { g.vx *= 0.75; g.vz *= 0.75; if (Math.abs(g.vy) < 1.2) { g.vy = 0; if (Math.hypot(g.vx, g.vz) < 0.25) g.rest = true; } }
+            const vn = g.vx * n[0] + g.vy * n[1] + g.vz * n[2], floor = n[1] > 0.7;
+            const tx = g.vx - vn * n[0], ty = g.vy - vn * n[1], tz = g.vz - vn * n[2];
+            const el = floor ? 0.4 : 0.5, fr = floor ? 0.72 : 0.86; // como CS: paredes rebotan más que el piso
+            g.vx = tx * fr - vn * el * n[0]; g.vy = ty * fr - vn * el * n[1]; g.vz = tz * fr - vn * el * n[2];
+            if (floor) { if (Math.abs(g.vy) < 1.2) { g.vy = 0; if (Math.hypot(g.vx, g.vz) < 0.25) g.rest = true; } }
             if (sp > 2) out.push({ type: 'bounce', g });
           } else { g.x += g.vx * h; g.y += g.vy * h; g.z += g.vz * h; }
         }

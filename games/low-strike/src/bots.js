@@ -4,7 +4,7 @@ import { makePlayer, movePlayer, eyeH, PM } from './player.js';
 import { findPath, zoneNodes } from './nav.js';
 import { WEAPONS, slotOf } from './weapons.js';
 import { canSee, inaccuracy, recoilStep, shotDir, traceShot } from './combat.js';
-import { zoneAt, blocked } from './world.js';
+import { zoneAt, blocked, raycast } from './world.js';
 const U = 0.0254, D2R = Math.PI / 180;
 
 export const DIFF = {
@@ -65,7 +65,7 @@ export function makeBots(G, H) {
     for (const p of G.players.values()) {
       if (!p.bot) continue;
       const b = B.brain(p);
-      Object.assign(b, { path: null, goal: null, goalKind: null, rotated: false, tgt: null, hold: null, plantT: 0, bought: false, buyT: 0.6 + rnd() * 2.2, lastKnown: null, blind: 0, reload: 0, shots: 0, pp: 0, py: 0, mag: {}, look: null });
+      Object.assign(b, { used: false, utilT: 3 + rnd() * 4, path: null, goal: null, goalKind: null, rotated: false, tgt: null, hold: null, plantT: 0, bought: false, buyT: 0.6 + rnd() * 2.2, lastKnown: null, blind: 0, reload: 0, shots: 0, pp: 0, py: 0, mag: {}, look: null });
       b.site = p.team === 'CT' ? (ct++ % 2 === 0 ? 'A' : 'B') : plan.site;
       if (p.team === 'CT' && rnd() < 0.25) b.site = b.site === 'A' ? 'B' : 'A';
       if (G.wingSite) b.site = G.wingSite;
@@ -102,13 +102,36 @@ export function makeBots(G, H) {
     if (m() >= 1000) H.buy(p, 'vesthelm'); else if (m() >= 650 && (G.round === 1 || G.round === LEN_HALF() + 1 || rnd() < 0.5)) H.buy(p, 'vest');
     if (!T && m() >= 400 && rnd() < 0.6) H.buy(p, 'defuser');
     if (G.round === 1 && m() >= 500 && !p.inv.p && rnd() < 0.3) H.buy(p, T ? 'tec9' : 'fiveseven');
+    // utilidad: humo y flash; los CT también molotov si sobra
+    const nades = T ? ['smoke', 'flash', 'flash', 'molotov'] : ['smoke', 'flash', 'incendiary', 'he'];
+    for (let k = 0; k < 2; k++) { const n = nades[Math.floor(rnd() * nades.length)]; if (m() >= 600 && rnd() < 0.75) H.buy(p, n); }
   }
+  // tirar una granada hacia un punto (tiro con arco según la distancia)
+  function throwAt(p, type, tx, ty, tz) {
+    if (!G.botThrow || !p.inv.g.includes(type)) return false;
+    const pl = p.pl, dx = tx - pl.x, dz = tz - pl.z, d = Math.hypot(dx, dz);
+    const yaw = Math.atan2(-dx, -dz), pitch = Math.max(-0.2, Math.min(0.85, Math.atan2(ty - pl.y, d) + 0.18 + d * 0.012)), pw = d > 14 ? 1 : d > 7 ? 0.55 : 0.3;
+    pl.yaw = yaw; G.botThrow(p, type, yaw, pitch, pw); return true;
+  }
+  B.info = (team, x, z) => {
+    const zz = zoneAt(G.W, x, z); let site = zz & 4 ? 'A' : zz & 8 ? 'B' : null;
+    if (!site && plan.siteC) { const dA = plan.siteC.A ? Math.hypot(x - plan.siteC.A[0], z - plan.siteC.A[2]) : 1e9, dB = plan.siteC.B ? Math.hypot(x - plan.siteC.B[0], z - plan.siteC.B[2]) : 1e9; if (Math.min(dA, dB) < 28) site = dA < dB ? 'A' : 'B'; }
+    if (site) teams[team].seen = { site, t: 10 };
+  };
   const LEN_HALF = () => ({ rapida: 4, corta: 8, comp: 12 })[G.cfg.len];
 
-  function goTo(p, b, x, y, z) {
+  const plen = P => { let s = 0; if (P) for (let i = 1; i < P.length; i++) s += Math.hypot(P[i][0] - P[i - 1][0], P[i][2] - P[i - 1][2]); return s; };
+  function goTo(p, b, x, y, z, vary = false) {
     const nav = G.nav, pl = p.pl;
     const from = nav.nearest(pl.x, pl.y, pl.z), to = nav.nearest(x, y, z);
-    b.path = findPath(nav, from, to); b.pi = 1; b.goal = [x, y, z]; b.repath = 6 + rnd() * 2;
+    let path = findPath(nav, from, to);
+    // a veces toma otro camino: pasa por un punto corrido hacia un costado (si no es mucho más largo)
+    if (vary && path && path.length > 12 && rnd() < 0.55) {
+      const mx = (pl.x + x) / 2, mz = (pl.z + z) / 2, dx = x - pl.x, dz = z - pl.z, L = Math.hypot(dx, dz) || 1, off = (rnd() < 0.5 ? -1 : 1) * (8 + rnd() * 12);
+      const mid = nav.nearest(mx - dz / L * off, (pl.y + y) / 2, mz + dx / L * off);
+      if (mid >= 0 && nav.main[mid]) { const a = findPath(nav, from, mid), c = a && findPath(nav, mid, to); if (a && c && plen(a) + plen(c) < plen(path) * 1.55) path = a.concat(c.slice(1)); }
+    }
+    b.path = path; b.pi = 1; b.goal = [x, y, z]; b.repath = 6 + rnd() * 2;
     if (!b.path) b.repath = 1.5 + rnd();
   }
   const randNode = (list) => G.nav.pos(list[Math.floor(rnd() * list.length)]);
@@ -242,8 +265,23 @@ export function makeBots(G, H) {
             b.rotated = true; if (aliveCount('CT') > 1 && rnd() < 0.7) { b.site = seen.site; b.goal = null; b.goalKind = null; }
           } else if (!b.goal || b.goalKind !== 'hold') { goal = randNode(siteNodes[b.site]); b.goalKind = 'hold'; b.look = plan['entry' + b.site] || null; }
         }
+        // utilidad: los T, al entrar, tapan con humo la llegada de los CT y tiran flash al sitio; los CT queman o
+        // revientan el lugar donde vieron a los T (sin verlos ahora)
+        b.utilT = (b.utilT ?? 1 + rnd() * 2) - dt;
+        if (b.utilT <= 0 && !tgt && live && md !== 'dm' && md !== 'ar') {
+          b.utilT = 2 + rnd() * 2;
+          const sc = plan.siteC && plan.siteC[b.site];
+          if (p.team === 'T' && plan.go && sc && Math.hypot(pl.x - sc[0], pl.z - sc[2]) < 26 && !b.used) {
+            const ce = plan['ctEntry' + b.site];
+            if (ce && p.inv.g.includes('smoke')) b.used = throwAt(p, 'smoke', ce[0], ce[1], ce[2]);
+            else if (p.inv.g.includes('flash')) b.used = throwAt(p, 'flash', sc[0], sc[1] + 2, sc[2]);
+          } else if (p.team === 'CT' && b.lastKnown && b.lkT > 0 && b.lkT < 4) {
+            const k = b.lastKnown, d = Math.hypot(k[0] - pl.x, k[2] - pl.z);
+            if (d > 6 && d < 24) { if (!throwAt(p, 'incendiary', k[0], k[1], k[2]) && !throwAt(p, 'he', k[0], k[1], k[2])) throwAt(p, 'flash', k[0], k[1] + 2, k[2]); }
+          }
+        }
         if (!goal && b.goal && !b.path && b.repath <= 0) b.goal = null;
-        if (goal) goTo(p, b, goal[0], goal[1], goal[2]);
+        if (goal) goTo(p, b, goal[0], goal[1], goal[2], b.goalKind === 'site' || b.goalKind === 'stage' || b.goalKind === 'hold');
         // seguir el camino
         if (!stay && b.path && b.pi < b.path.length) {
           const wp = b.path[b.pi];
@@ -264,7 +302,16 @@ export function makeBots(G, H) {
         // mirada: a lo último conocido, o hacia donde camina
         let ly = null, lp = 0;
         if (b.lastKnown && b.lkT > 0) { const k = b.lastKnown; ly = Math.atan2(-(k[0] - pl.x), -(k[2] - pl.z)); lp = Math.atan2(k[1] + 1.4 - pl.y - eyeH(pl), Math.hypot(k[0] - pl.x, k[2] - pl.z)); }
-        else if ((mvx || mvz) && !(b.goalKind === 'hold' && b.look && b.path && b.pi >= b.path.length - 3)) { ly = Math.atan2(-mvx, -mvz); }
+        else if ((mvx || mvz) && !(b.goalKind === 'hold' && b.look && b.path && b.pi >= b.path.length - 3)) {
+          // mientras camina va chequeando ángulos: mira hacia el lado con más vista (esquinas, ventanas, pasillos)
+          const my = Math.atan2(-mvx, -mvz); b.chkT = (b.chkT ?? 0) - dt;
+          if (b.chkT <= 0) {
+            b.chkT = 0.9 + rnd() * 0.9; b.chkY = null;
+            if (rnd() < 0.7) { let best = 9; const ey = pl.y + eyeH(pl);
+              for (const da of [-1.1, -0.6, 0.6, 1.1]) { const a = my + da, dx = -Math.sin(a), dz = -Math.cos(a), h = raycast(G.W, pl.x, ey, pl.z, dx, 0, dz, 30), d = h ? h.t : 30; if (d > best + rnd() * 4) { best = d; b.chkY = da; } } }
+          }
+          ly = b.chkY != null && b.chkT > 0.35 ? my + b.chkY : my;
+        }
         else if (b.look) { ly = Math.atan2(-(b.look[0] - pl.x), -(b.look[2] - pl.z)); }
         if (ly !== null) turn(pl, ly, lp, D.turn * 0.55 * D2R * dt);
       }
@@ -297,7 +344,7 @@ export function makeBots(G, H) {
       if (d < 0.62) { const k = d > 1e-4 ? (0.62 - d) / d * 0.5 : 0; const nx = pl.x + (d > 1e-4 ? dx * k : 0.05), nz = pl.z + (d > 1e-4 ? dz * k : 0.03); if (!blocked(G.W, nx, nz, pl.y, pl.h, PM.r)) { pl.x = nx; pl.z = nz; } }
     }
     p.x = pl.x; p.y = pl.y; p.z = pl.z; p.yaw = pl.yaw; p.pitch = pl.pitch; p.duck = pl.duck; p.h = pl.h; p.vx = pl.vx; p.vz = pl.vz; p.onGround = pl.onGround;
-    p.wpn = p.inv.c4 && b.plantT > 0 ? 'c4' : weaponOf(p); p.scoped = b.wantScope && w.cat === 'sniper';
+    p.wpn = p.inv.c4 && b.plantT > 0 ? 'c4' : weaponOf(p); p.scoped = b.wantScope && w.cat === 'sniper'; p.reloading = b.reload > 0;
   }
   function fire(p, b, w, wid, D, dist) {
     const pl = p.pl;

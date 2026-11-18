@@ -9,14 +9,17 @@ export const PEN = { pistol: 0.12, smg: 0.16, rifle: 0.36, sniper: 0.6, heavy: 0
 const penOf = w => w.id === 'awp' ? 0.85 : w.id === 'deagle' || w.id === 'r8' ? 0.3 : w.id === 'ak47' ? 0.42 : w.cat === 'heavy' && w.pellets > 1 ? 0 : (PEN[w.cat] ?? 0);
 
 // imprecisión actual (radianes)
+const JUMP = { rifle: 0.2, smg: 0.1, pistol: 0.08, heavy: 0.1, sniper: 0.35 };
 export function inaccuracy(w, st) {
   // st: { speed, onGround, duck, scoped, shots }
   let a = w.scope && w.cat === 'sniper' ? (st.scoped ? w.scoped : w.spread) : w.spread;
   const max = w.speed * U * (st.scoped && w.cat === 'sniper' ? 0.5 : 1);
   const mv = Math.max(0, Math.min(1, (st.speed - max * 0.34) / (max * 0.66)));
   a += w.move * mv;
-  if (!st.onGround) a += w.cat === 'sniper' ? 0.25 : 0.12;
-  if (st.duck > 0.5 && st.onGround) a *= 0.75;
+  // en el aire: depende del arma y de la velocidad horizontal (quieto en el punto alto del salto la SSG es precisa)
+  if (!st.onGround) { const j = w.jump ?? JUMP[w.cat] ?? 0.12, hs = Math.min(1, st.speed / Math.max(1, max)); a += j * (0.25 + 0.75 * hs); }
+  else if (st.sinceLand !== undefined && st.sinceLand < 0.35) a += (w.jump ?? JUMP[w.cat] ?? 0.12) * 0.5 * (1 - st.sinceLand / 0.35); // al caer
+  if (st.duck > 0.5 && st.onGround) a *= w.crouch ?? 0.8;
   if (w.auto && w.pellets === 1) a += Math.min(0.022, st.shots * 0.0016);
   if (w.cat === 'pistol' && !w.auto) a += Math.min(0.03, st.shots * 0.006);
   return a;

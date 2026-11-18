@@ -208,7 +208,24 @@ export function sealTraps(W, nav, jump = 1.45) {
       if (j < jumps[v]) { jumps[v] = j; base[v] = b; dq.push(v); }
     });
   }
-  const climb = n => !nav.main[n] && jumps[n] < 255 && (jumps[n] > 2 || hOf(n) - base[n] > 2.6);
+  // zonas trepables agrupadas: una caja es chica; un techo o el borde de una pared es grande o muy alto
+  const comp = new Int32Array(T).fill(-1), cInfo = [];
+  for (let n = 0; n < T; n++) {
+    if (nav.main[n] || jumps[n] === 255 || comp[n] >= 0) continue;
+    const id = cInfo.length, q = [n]; comp[n] = id; let cnt = 0, up = 0;
+    for (let qi = 0; qi < q.length; qi++) { const u = q[qi]; cnt++; up = Math.max(up, hOf(u) - base[u]); nbr(u, v => { if (comp[v] < 0 && !nav.main[v] && jumps[v] < 255 && Math.abs(hOf(v) - hOf(u)) < 0.7) { comp[v] = id; q.push(v); } }); }
+    cInfo.push({ area: cnt * nav.c * nav.c, up });
+  }
+  // mapa de lugares válidos para pararse (zona principal o una caja chica); el juego usa esto para bajar
+  // a quien se las arregle para subir a un techo
+  const ok = new Uint8Array(T);
+  for (let n = 0; n < T; n++) { if (nav.main[n]) ok[n] = 1; else if (jumps[n] < 255) { const ci = cInfo[comp[n]]; if (ci && ci.area <= 14 && ci.up <= 2.0 && jumps[n] <= 2) ok[n] = 1; } }
+  W.okNav = { m, N, c: nav.c, H, ok, L: W.L };
+  const climb = n => {
+    if (nav.main[n] || jumps[n] === 255) return false;
+    if (jumps[n] > 2 || hOf(n) - base[n] > 2.3) return true;
+    const ci = cInfo[comp[n]]; return !!ci && (ci.area > 10 || (ci.area > 5 && ci.up > 1.25));
+  };
   let cells = 0;
   for (let n = 0; n < T; n++) {
     const trap = fwd[n] && !back[n];
@@ -234,4 +251,15 @@ export function sealTraps(W, nav, jump = 1.45) {
     }
   }
   return cells;
+}
+
+// ¿(x,y,z) está parado en un lugar válido? (si no se sabe, sí)
+export function okSpot(W, x, y, z) {
+  const O = W.okNav; if (!O) return true;
+  const xi = Math.floor(x / O.c), zi = Math.floor(z / O.c); if (xi < 0 || zi < 0 || xi >= O.m || zi >= O.m) return false;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    const xx = xi + dx, zz = zi + dz; if (xx < 0 || zz < 0 || xx >= O.m || zz >= O.m) continue; const i = zz * O.m + xx;
+    for (let l = 0; l < O.L; l++) { const h = O.H[l][i]; if (!isNaN(h) && Math.abs(h - y) < 1.0 && O.ok[l * O.N + i]) return true; }
+  }
+  return false;
 }

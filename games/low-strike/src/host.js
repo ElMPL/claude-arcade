@@ -28,7 +28,7 @@ export function makeHost(G) {
   let dirty = true, stT = 0, lossStreak = [1, 1], plantedBy = null, defusing = new Map(), fireTick = 0, overT = 0, ended = false;
   const mode = () => G.cfg.mode || 'comp';
   const respawnQ = new Map(); // id -> segundos hasta reaparecer (DM / Arms Race)
-  let timeouts = [1, 1], timeoutNext = 0, votes = { 0: new Set(), 1: new Set() };
+  let timeouts = [1, 1], timeoutNext = 0, votes = { 0: new Set(), 1: new Set() }; const kickVotes = new Map();
   let dropSeq = 1;
 
   // ---------- armado ----------
@@ -126,6 +126,7 @@ export function makeHost(G) {
         if (first) { p.ar = 0; p.helm = false; }
       } else { p.inv.c4 = false; if (p.team === 'T') p.inv.kit = false; p.inv.pa = p.inv.sa = null; p.inv.v++; }
       p.hp = 100; p.alive = true; p.dmgR = 0; p.dmgBy = {}; p.rounds++;
+      if (p.kicked) { p.alive = false; p.hp = 0; }
       if (mode() === 'casual') { p.ar = 100; p.helm = true; if (p.team === 'CT') p.inv.kit = true; }
       if (mode() === 'practice') p.money = ECON.max;
       if (mode() === 'ar') arGive(p);
@@ -236,6 +237,7 @@ export function makeHost(G) {
   }
   // ---------- reaparición (DM / Arms Race): lejos de los enemigos ----------
   function respawn(p) {
+    if (p.kicked) return;
     const nav = G.nav, enemies = [...G.players.values()].filter(q => q.alive && q.team !== p.team);
     let best = null, bd = -1;
     const cands = [...G.spawns.T.pts, ...G.spawns.CT.pts];
@@ -253,7 +255,7 @@ export function makeHost(G) {
   function checkEnd() {
     if (G.phase !== 'live' || RESPAWN(mode()) || mode() === 'practice') return;
     let tA = 0, cA = 0, tN = 0, cN = 0;
-    for (const p of G.players.values()) { if (p.team === 'T') { tN++; if (p.alive) tA++; } else { cN++; if (p.alive) cA++; } }
+    for (const p of G.players.values()) { if (p.kicked) continue; if (p.team === 'T') { tN++; if (p.alive) tA++; } else { cN++; if (p.alive) cA++; } }
     if (cN && cA === 0) return endRound('T', 'elim');
     if (tN && tA === 0 && G.bomb.state !== 'planted') return endRound('CT', 'elim');
   }
@@ -432,6 +434,19 @@ export function makeHost(G) {
         break;
       }
       case 'vote': {
+        if (d.k === 'kick') {
+          // votación para echar a un compañero: hace falta la mayoría de los humanos del equipo (sin contar al votado)
+          const q = G.players.get(d.id); if (!q || q.team !== p.team || q.kicked || q.id === p.id) return;
+          const set = kickVotes.get(q.id) || new Set(); set.add(p.id); kickVotes.set(q.id, set);
+          const voters = [...G.players.values()].filter(x => x.team === p.team && !x.bot && !x.kicked && x.id !== q.id), need = Math.max(1, Math.ceil(voters.length * 0.6));
+          G.emit('ev', { t: 'kickVote', team: p.team, who: p.name, tgt: q.name, n: set.size, of: need });
+          if (set.size >= need) {
+            q.kicked = true; kickVotes.delete(q.id);
+            if (q.alive) { q.alive = false; q.hp = 0; }
+            G.emit('ev', { t: 'kicked', id: q.id, n: q.name }); dirty = true; checkEnd();
+          }
+          break;
+        }
         // votación para rendirse: tienen que votar todos los humanos del equipo
         const g = p.grp; votes[g].add(p.id);
         const humans = [...G.players.values()].filter(q => q.grp === g && !q.bot);

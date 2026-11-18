@@ -1,6 +1,7 @@
 // Efectos visuales con pools de instancias: trazadoras, chispas, sangre, marcas de bala, humo, fuego y explosiones.
 import * as THREE from 'three';
 import { NADE } from './nades.js';
+import { raycast } from './world.js';
 
 const tmpO = new THREE.Object3D(), tmpC = new THREE.Color(), UP = new THREE.Vector3(0, 1, 0), V = new THREE.Vector3();
 
@@ -91,7 +92,7 @@ export function makeFx(scene) {
   let lightT = 0;
   fx.flashLight = (p, k = 1) => { light.position.set(p[0], p[1], p[2]); light.intensity = 6 * k; lightT = 0.05; };
   // ---------- humo (bolas opacas low-poly) ----------
-  const SMAX = 10 * 40;
+  const SMAX = 10 * 66;
   const sg = new THREE.IcosahedronGeometry(1, 0);
   const sm = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: '#b9bcc0', flatShading: true }), SMAX);
   sm.instanceMatrix.setUsage(THREE.DynamicDrawUsage); sm.count = 0; sm.frustumCulled = false; scene.add(sm);
@@ -100,9 +101,13 @@ export function makeFx(scene) {
   fx.smoke = (g, W) => {
     const balls = [];
     // las bolas se reparten como un domo, sin atravesar paredes
-    for (let i = 0; i < 38; i++) {
-      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * NADE.smokeR * 0.85, h = Math.random() * 2.6;
-      balls.push({ x: g.x + Math.cos(a) * r, y: g.y + 0.4 + h, z: g.z + Math.sin(a) * r, s: 0.9 + Math.random() * 0.9, ph: Math.random() * 6, c: 0.82 + Math.random() * 0.14 });
+    // el humo llena el espacio: más bolas, más grandes, y si una pared corta el camino se queda de este lado
+    const cy = g.y + 0.6;
+    for (let i = 0; i < 64; i++) {
+      const a = Math.random() * Math.PI * 2; let r = Math.sqrt(Math.random()) * NADE.smokeR * 0.9; const h = Math.random() * 2.8;
+      const dx = Math.cos(a), dz = Math.sin(a), dy = (h + 0.2 - 0.6) / Math.max(0.5, r);
+      if (W && r > 0.3) { const L = Math.hypot(1, dy), hit = raycast(W, g.x, cy, g.z, dx / L, dy / L, dz / L, r * L); if (hit) r = Math.max(0.2, hit.t / L - 0.6); }
+      balls.push({ x: g.x + dx * r, y: g.y + 0.4 + h, z: g.z + dz * r, s: 1.0 + Math.random() * 0.9, ph: Math.random() * 6, c: 0.8 + Math.random() * 0.14 });
     }
     smokes.push({ g, balls });
   };

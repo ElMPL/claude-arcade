@@ -25,10 +25,19 @@ Shooter táctico en 3D de poligonado medio para ClaudeArcade, inspirado en Count
   - Con la bomba plantada hay 40 s. Desactivarla lleva 10 s, o 5 s con kit.
   - Los equipos cambian de lado en el entretiempo.
   - Duración de la partida: Rápida (gana el primero a 5), Corta (a 9) o Competitiva (a 13).
+- **Votaciones:** rendirse o echar a un compañero (radio **C**, mayoría del equipo).
+- **Radar compartido:** los enemigos que ve cualquier compañero aparecen en tu radar.
+- **Al morir:** tarjeta con quién te mató, con qué arma, cuánta vida le quedó y el daño que se hicieron.
+- **Inspección** del arma con **F**. **Pantalla de carga** con el plano del mapa (sitios marcados) y consejos.
 - **Comunicación:** radio con **Z / X / C** (los comandos de CS:GO), marcador en el piso y en el radar con **V** o la rueda del mouse.
 - **Fin de partida:** tabla con bajas, asistencias, muertes, HS%, ADR y MVP. La tabla con Tab muestra también la plata de tu equipo.
 - **Kill feed:** íconos de headshot, a través de pared, sin mira, a través de humo y atacante cegado.
 - **Movimiento:** saltar justo al caer salta menos y caer rápido frena, como en CS:GO. Si quedás en un hueco sin salida, te saca solo.
+- **Precisión como en CS2:** cada arma tiene su imprecisión parada, agachada, corriendo y en el aire (la SSG es precisa en el punto alto del salto; la AWP no); al caer tarda un instante en recuperarse.
+- **Sonido 3D:** se oye de qué lado viene cada cosa; lo que viene de abajo suena apagado y lo de arriba más agudo. Los pasos cambian según el piso (arena, piedra, madera, metal) y correr se oye más lejos.
+- **Granadas:** rebotan más en paredes que en el piso, el humo llena el lugar sin atravesar paredes y una flash casi no ciega si estás de espaldas.
+- **Bots:** cambian de ruta, chequean ángulos mientras caminan, compran y usan humos, flashes y molotovs, y rotan con lo que avisa el equipo (radio o marcador).
+- **Red:** los jugadores remotos se dibujan interpolados 100 ms atrás (movimiento suave); los tiros los decide quien dispara, según lo que veía.
 - **Retroceso:** patrones fijos para AK-47, M4A4 y los demás rifles, siempre iguales para que se puedan aprender.
 - **Granadas:** HE, flash, humo (tapa la vista de los bots y apaga el fuego), molotov/incendiaria y señuelo.
 - **Bots:** se mueven con navegación A*, compran, plantan y desactivan. Tienen 4 niveles.
@@ -56,6 +65,8 @@ En el juego la malla se pinta con texturas generadas por código al estilo de Du
 ## Gráficos
 - Texturas generadas por código en 512 px con relieve (normal maps): arenisca en bloques, revoque con partes descascaradas, arena con piedritas, baldosas irregulares, madera, tejas, chapa. Materiales PBR con luz de entorno.
 - **Primera persona:** manos con guante y dedos articulados (3 falanges por dedo y pulgar) en poses distintas para empuñadura, guardamanos, pistola a dos manos, cuchillo y granadas; antebrazos que entran desde abajo de la pantalla. AK-47, M4A4/M4A1-S y pistolas rehechas con proporciones de las reales (cargador curvo, guardamanos, freno de boca, correderas redondeadas) y partes metálicas con brillo.
+- **Personajes:** cuerpo con forma, cara cubierta (pasamontañas o máscara con casco, antiparras y auriculares), chalecos con bolsillos; al disparar el arma patea y al recargar la mano va al cargador. Sombras reales que siguen la pose.
+- **Mapas:** letras A y B pintadas en cada sitio, toldos, ventanas con postigos y cables entre paredes; quien se suba a un techo vuelve al último lugar válido.
 - **HUD estilo CS2:** paneles finos, íconos propios en SVG (vida, chaleco, chaleco + casco, kit, bomba, carrito de compra) y ficha corta de cada arma en el menú de compra.
 - Personajes y armas de poligonado medio: cuerpos redondeados, cascos y cabezas esféricas, piernas y brazos cilíndricos, armas con biseles y cilindros suaves.
 - El sol proyecta sombras (se pueden bajar o sacar en la configuración). Cada jugador tiene además una sombra suave debajo.

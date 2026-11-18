@@ -13,6 +13,7 @@
 <div id="view"></div>
 
 <!-- HUD -->
+<div id="vignette"></div>
 <div id="hud" hidden>
   <div id="radarBox"><canvas id="radar" width="220" height="220"></canvas><div id="zoneName"></div></div>
   <div id="money"><i id="cartIco"></i><span class="cur">$</span><span id="moneyV">800</span><div id="moneyAdd"></div></div>
@@ -54,6 +55,7 @@
 <!-- TABLA (Tab) -->
 <div id="board" hidden></div>
 <div id="radioMenu" hidden></div>
+<div id="deathCard" hidden></div>
 <div id="radioLog"></div>
 <div id="endScreen" hidden></div>
 
@@ -82,9 +84,9 @@
     </div>
   </section>
   <div class="lb-keys">
-    <span><kbd>WASD</kbd> moverse</span><span><kbd>Shift</kbd> caminar</span><span><kbd>C</kbd> agacharse</span><span><kbd>Espacio</kbd> saltar</span>
+    <span><kbd>WASD</kbd> moverse</span><span><kbd>Shift</kbd> caminar</span><span><kbd>Ctrl</kbd> agacharse</span><span><kbd>Espacio</kbd> saltar</span>
     <span><kbd>Clic</kbd> disparar</span><span><kbd>Clic der.</kbd> mira</span><span><kbd>R</kbd> recargar</span><span><kbd>1-5</kbd> <kbd>Q</kbd> armas</span>
-    <span><kbd>B</kbd> comprar</span><span><kbd>E</kbd> desactivar / agarrar</span><span><kbd>G</kbd> tirar arma</span><span><kbd>Tab</kbd> tabla</span>
+    <span><kbd>B</kbd> comprar</span><span><kbd>E</kbd> desactivar / agarrar</span><span><kbd>G</kbd> tirar arma</span><span><kbd>Tab</kbd> tabla</span><span><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> radio</span><span><kbd>V</kbd> marcar</span><span><kbd>F</kbd> inspeccionar</span>
   </div>
   <div id="modeSel" class="fn-overlay" hidden>
     <div class="ms-box">
@@ -105,7 +107,7 @@
   </div>
 </div>
 
-<div id="loading"><div class="logo">COUNTER<span>STRIKA</span></div><div id="loadMsg">Cargando…</div></div>
+<div id="loading"><div class="logo">COUNTER<span>STRIKA</span></div><div id="loadMsg">Cargando…</div><div id="loadInfo"></div></div>
 <div id="clickPlay" hidden><div>Hacé clic para jugar</div><small>Esc libera el mouse</small><button id="cpSettings">CONFIGURACIÓN</button></div>
 <div id="touch" hidden>
   <div id="stick"><i></i></div>

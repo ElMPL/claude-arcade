@@ -15,18 +15,27 @@ export function initAudio() {
 export function setVolume(v) { vol0 = v; if (master) master.gain.value = v; }
 export function setListener(x, y, z, yaw) { L.x = x; L.y = y; L.z = z; L.yaw = yaw; }
 // destino con volumen por distancia y paneo
+// Posicional 3D: panner HRTF (adelante/atrás/costados) y, además, un filtro que cambia el timbre si el sonido
+// viene de abajo (apagado, como a través del piso) o de arriba (más agudo), para saber si está en otro nivel.
 function out(pos, vol = 1, range = 30) {
   const g = ctx.createGain();
-  let gain = vol, pan = 0;
+  let gain = vol, dst = master;
   if (pos) {
     const dx = pos[0] - L.x, dy = pos[1] - L.y, dz = pos[2] - L.z, d = Math.hypot(dx, dy, dz);
     gain *= 1 / (1 + (d / range) ** 2 * 3);
-    if (d > 0.5) { const rx = Math.cos(L.yaw), rz = -Math.sin(L.yaw); pan = Math.max(-1, Math.min(1, (dx * rx + dz * rz) / d)) * 0.8; }
+    if (gain < 0.004) return null;
+    if (d > 0.4 && ctx.createPanner) {
+      const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'linear'; p.refDistance = 1; p.maxDistance = 1e6; p.rolloffFactor = 0;
+      // en coordenadas del oyente (adelante = -z): así no hace falta mover el listener de Web Audio
+      const fx = -Math.sin(L.yaw), fz = -Math.cos(L.yaw), rx = Math.cos(L.yaw), rz = -Math.sin(L.yaw);
+      const lx = dx * rx + dz * rz, lf = dx * fx + dz * fz;
+      if (p.positionX) { p.positionX.value = lx; p.positionY.value = dy * 0.6; p.positionZ.value = -lf; } else p.setPosition(lx, dy * 0.6, -lf);
+      p.connect(dst); dst = p;
+      if (Math.abs(dy) > 1.8) { const f = ctx.createBiquadFilter(); if (dy < 0) { f.type = 'lowpass'; f.frequency.value = Math.max(700, 2600 - (-dy - 1.8) * 500); } else { f.type = 'highshelf'; f.frequency.value = 2500; f.gain.value = 4; } f.connect(dst); dst = f; }
+    }
   }
   if (gain < 0.004) return null;
-  g.gain.value = gain;
-  if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); p.connect(master); }
-  else g.connect(master);
+  g.gain.value = gain; g.connect(dst);
   return g;
 }
 function noise(dst, t, dur, f0, f1, q = 0.7, type = 'lowpass', a = 0.002, vol = 1) {
@@ -55,9 +64,13 @@ export function sfxShot(cat, pos, silent, deagle) {
   tone(o, t, s.d * 0.7, s.b * 1.6, s.b * 0.5, 'sine', 0.9);
   if (pos) noise(o, t + 0.05, s.d * 2.5, 700, 150, 0.5, 'lowpass', 0.02, 0.18); // eco
 }
-export function sfxStep(pos, vol = 1) {
-  if (!ctx) return; const o = out(pos, 0.5 * vol, 9); if (!o) return; const t = ctx.currentTime;
-  noise(o, t, 0.06, 900 + Math.random() * 400, 200, 1.2, 'lowpass', 0.002, 0.7); tone(o, t, 0.04, 90, 60, 'sine', 0.25);
+// pasos según el piso: 1 arena, 2 piedra, 3 madera, 4 metal. Correr suena más fuerte y se oye más lejos.
+export function sfxStep(pos, vol = 1, surf = 2) {
+  if (!ctx) return; const o = out(pos, 0.5 * vol, 9 + vol * 6); if (!o) return; const t = ctx.currentTime, r = Math.random();
+  if (surf === 1) { noise(o, t, 0.11, 700 + r * 300, 180, 0.8, 'lowpass', 0.004, 0.75); noise(o, t + 0.02, 0.07, 3200, 1800, 1.5, 'bandpass', 0.004, 0.25); }
+  else if (surf === 3) { tone(o, t, 0.07, 170 + r * 30, 110, 'triangle', 0.35); noise(o, t, 0.05, 1100, 400, 2, 'bandpass', 0.002, 0.6); }
+  else if (surf === 4) { tone(o, t, 0.16, 760 + r * 80, 700, 'square', 0.06); tone(o, t, 0.12, 1310, 1250, 'sine', 0.08); noise(o, t, 0.04, 2600, 1200, 3, 'bandpass', 0.001, 0.6); }
+  else { noise(o, t, 0.045, 2000 + r * 600, 900, 2.2, 'bandpass', 0.001, 0.85); tone(o, t, 0.04, 95, 60, 'sine', 0.25); }
 }
 export function sfxLand(pos) { if (!ctx) return; const o = out(pos, 0.6, 10); if (!o) return; const t = ctx.currentTime; noise(o, t, 0.1, 700, 120, 1, 'lowpass', 0.002, 0.9); }
 export function sfxClick(pos, f = 2200, v = 0.4) { if (!ctx) return; const o = out(pos, v, 8); if (!o) return; const t = ctx.currentTime; noise(o, t, 0.03, f, f * 0.5, 3, 'bandpass', 0.001, 0.9); }
