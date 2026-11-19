@@ -22,7 +22,14 @@ const SND = {
   impC: R('debris_concrete', 3), impM: R('debris_metal', 2), impW: R('debris_wood', 2),
   drop: ['items_weapondrop1'], pickup: ['items_ammopickup2'], clip: ['items_9mmclip1'], select: ['common_wpn_select'], deny: ['common_wpn_denyselect'], move: ['common_wpn_moveselect'],
   click: ['ui_buttonclick'], hover: ['ui_buttonrollover'],
+  // armas: disparo y recarga de CS:Source (las de CS:GO que no están usan la más parecida)
+  ...{'shot_ak47': ['shot_ak47'], 'shot_aug': ['shot_aug'], 'shot_awp': ['shot_awp'], 'shot_deagle': ['shot_deagle'], 'shot_dualies': ['shot_dualies'], 'shot_famas': ['shot_famas'], 'shot_fiveseven': ['shot_fiveseven'], 'shot_g3sg1': ['shot_g3sg1'], 'shot_galil': ['shot_galil'], 'shot_glock': ['shot_glock'], 'shot_m249': ['shot_m249'], 'shot_nova': ['shot_nova'], 'shot_m4a1s': ['shot_m4a1s'], 'shot_m4a4': ['shot_m4a4'], 'shot_mac10': ['shot_mac10'], 'shot_mp5': ['shot_mp5'], 'shot_p250': ['shot_p250'], 'shot_p90': ['shot_p90'], 'shot_ssg08': ['shot_ssg08'], 'shot_scar20': ['shot_scar20'], 'shot_sg553': ['shot_sg553'], 'shot_mp9': ['shot_mp9'], 'shot_ump': ['shot_ump'], 'shot_usp': ['shot_usp'], 'shot_p2000': ['shot_p2000'], 'shot_xm1014': ['shot_xm1014']},
+  ...{'rl_ak47': ['rl_ak47_0', 'rl_ak47_1', 'rl_ak47_2'], 'rl_aug': ['rl_aug_0', 'rl_aug_1', 'rl_aug_2'], 'rl_awp': ['rl_awp_0', 'rl_awp_1', 'rl_awp_2'], 'rl_deagle': ['rl_deagle_0', 'rl_deagle_1', 'rl_deagle_2'], 'rl_dualies': ['rl_dualies_0', 'rl_dualies_1', 'rl_dualies_2'], 'rl_famas': ['rl_famas_0', 'rl_famas_1', 'rl_famas_2'], 'rl_fiveseven': ['rl_fiveseven_0', 'rl_fiveseven_1', 'rl_fiveseven_2'], 'rl_g3sg1': ['rl_g3sg1_0', 'rl_g3sg1_1', 'rl_g3sg1_2'], 'rl_galil': ['rl_galil_0', 'rl_galil_1', 'rl_galil_2'], 'rl_glock': ['rl_glock_0', 'rl_glock_1', 'rl_glock_2'], 'rl_m249': ['rl_m249_0', 'rl_m249_1', 'rl_m249_2', 'rl_m249_3', 'rl_m249_4'], 'rl_m4a1s': ['rl_m4a1s_0', 'rl_m4a1s_1', 'rl_m4a1s_2'], 'rl_mac10': ['rl_mac10_0', 'rl_mac10_1', 'rl_mac10_2'], 'rl_mp5': ['rl_mp5_0', 'rl_mp5_1', 'rl_mp5_2'], 'rl_p250': ['rl_p250_0', 'rl_p250_1', 'rl_p250_2'], 'rl_p90': ['rl_p90_0', 'rl_p90_1', 'rl_p90_2', 'rl_p90_3'], 'rl_ssg08': ['rl_ssg08_0', 'rl_ssg08_1', 'rl_ssg08_2'], 'rl_scar20': ['rl_scar20_0', 'rl_scar20_1', 'rl_scar20_2'], 'rl_sg553': ['rl_sg553_0', 'rl_sg553_1', 'rl_sg553_2'], 'rl_mp9': ['rl_mp9_0', 'rl_mp9_1'], 'rl_ump': ['rl_ump_0', 'rl_ump_1', 'rl_ump_2'], 'rl_usp': ['rl_usp_0', 'rl_usp_1', 'rl_usp_2'], 'rl_shell': ['rl_shell_0'], 'rl_pump': ['rl_pump_0']},
+  knife_deploy: ['knife_deploy'], knife_hit: ['knife_hit1', 'knife_hit2', 'knife_hit3'], knife_wall: ['knife_hitwall'], knife_slash: ['knife_slash1', 'knife_slash2'], knife_stab: ['knife_stab'],
+  c4_beep: ['c4_beep'], c4_click: ['c4_click'], c4_disarm: ['c4_disarm'], c4_explode: ['c4_explode'], c4_plant: ['c4_plant'], flash_exp: ['flash_exp1', 'flash_exp2'], nade_hit: ['nade_hit', 'he_bounce'], smoke_exp: ['smoke_exp'],
+  empty_p: ['clipempty_pistol'], empty_r: ['clipempty_rifle'], pinpull: ['pinpull'], zoom: ['zoom'], deploy_r: ['deploy_rifle'], deploy_p: ['deploy_pistol'], sil_on: ['sil_on'], sil_off: ['sil_off'],
 };
+const SHOT_ALIAS = {'tec9': 'glock', 'cz75': 'p250', 'r8': 'deagle', 'negev': 'm249', 'mag7': 'xm1014', 'sawedoff': 'nova', 'mp7': 'mp5', 'bizon': 'mp5', 'mp5sd': 'mp5'}, REL_ALIAS = {'m4a4': 'm4a1s', 'p2000': 'usp', 'tec9': 'glock', 'cz75': 'p250', 'r8': 'deagle', 'negev': 'm249', 'mp7': 'mp5', 'bizon': 'mp5', 'mp5sd': 'mp5'};
 const buf = {};
 function loadSamples() {
   for (const n of new Set(Object.values(SND).flat()))
@@ -78,9 +85,11 @@ const SHOT = {
   pistol: { f: 2400, d: 0.18, b: 160, v: 0.8 }, smg: { f: 2000, d: 0.16, b: 130, v: 0.75 }, rifle: { f: 1600, d: 0.26, b: 95, v: 1 },
   sniper: { f: 1200, d: 0.55, b: 70, v: 1.25 }, heavy: { f: 1300, d: 0.32, b: 80, v: 1.05 }, equip: { f: 4000, d: 0.3, b: 300, v: 0.6 },
 };
-export function sfxShot(cat, pos, silent, deagle) {
+export function sfxShot(cat, pos, silent, deagle, wid) {
   if (!ctx) return; const s = SHOT[cat] || SHOT.rifle; const t = ctx.currentTime;
   const o = out(pos, (silent ? 0.35 : s.v) * (pos ? 1 : 0.6), silent ? 12 : 60); if (!o) return;
+  const k = 'shot_' + (wid === 'usp' && !silent ? 'p2000' : wid === 'm4a1s' && !silent ? 'm4a4' : SHOT_ALIAS[wid] || wid);
+  if (wid && samp(o, k, (silent ? 1.6 : 0.95) * (pos ? 1.4 : 1), 1)) return; // muestra original
   if (cat === 'equip') { noise(o, t, 0.35, 6000, 3000, 2, 'bandpass', 0.002, 0.7); tone(o, t, 0.3, 90, 60, 'sawtooth', 0.4); return; }
   if (silent) { noise(o, t, 0.09, 1800, 500, 1, 'lowpass', 0.001, 0.9); tone(o, t, 0.05, 300, 120, 'triangle', 0.3); return; }
   noise(o, t, s.d, s.f * (deagle ? 0.7 : 1), 200, 0.9, 'lowpass', 0.001, 1);
@@ -99,7 +108,14 @@ export function sfxStep(pos, vol = 1, surf = 2) {
 }
 export function sfxLand(pos, hard) { if (!ctx) return; const o = out(pos, 0.6, 10); if (!o) return; const t = ctx.currentTime; if (hard && !pos) samp(o, 'fall', 0.8); if (samp(o, 'land', 0.9)) return; noise(o, t, 0.1, 700, 120, 1, 'lowpass', 0.002, 0.9); }
 export function sfxClick(pos, f = 2200, v = 0.4) { if (!ctx) return; const o = out(pos, v, 8); if (!o) return; const t = ctx.currentTime; noise(o, t, 0.03, f, f * 0.5, 3, 'bandpass', 0.001, 0.9); }
-export function sfxReload(pos) { if (!ctx) return; const t = ctx.currentTime; const o = out(pos, 0.45, 8); if (!o) return; noise(o, t, 0.04, 1500, 700, 3, 'bandpass', 0.001, 0.8); noise(o, t + 0.35, 0.05, 2600, 1300, 4, 'bandpass', 0.001, 0.9); noise(o, t + 0.8, 0.05, 1800, 900, 4, 'bandpass', 0.001, 0.9); }
+// recarga: las piezas del arma (sacar cargador, meterlo, cerrojo) repartidas a lo largo de la animación
+export function sfxReload(pos, wid, dur = 2.5) {
+  if (!ctx) return; const o = out(pos, 0.5, 10); if (!o) return; const L = SND['rl_' + (REL_ALIAS[wid] || wid)];
+  if (L && L.some(n => buf[n])) { const at = L.length === 2 ? [0.15, 0.55] : L.length === 3 ? [0.15, 0.5, 0.78] : L.map((_, i) => 0.08 + i * 0.78 / (L.length - 1)); L.forEach((n, i) => { if (buf[n]) { const sn = ctx.createBufferSource(); sn.buffer = buf[n]; sn.connect(o); sn.start(ctx.currentTime + at[i] * dur); } }); return; }
+  if (/nova|xm1014|sawedoff/.test(wid || '') && buf.rl_shell_0) { const n = Math.max(2, Math.round(dur / 0.5)); for (let i = 0; i < n; i++) { const sn = ctx.createBufferSource(); sn.buffer = buf.rl_shell_0; sn.connect(o); sn.start(ctx.currentTime + 0.25 + i * (dur - 0.4) / n); } if (wid === 'nova' && buf.rl_pump_0) { const sn = ctx.createBufferSource(); sn.buffer = buf.rl_pump_0; sn.connect(o); sn.start(ctx.currentTime + dur - 0.3); } return; }
+  reloadSynth(o);
+}
+function reloadSynth(o) { const t = ctx.currentTime; noise(o, t, 0.04, 1500, 700, 3, 'bandpass', 0.001, 0.8); noise(o, t + 0.35, 0.05, 2600, 1300, 4, 'bandpass', 0.001, 0.9); noise(o, t + 0.8, 0.05, 1800, 900, 4, 'bandpass', 0.001, 0.9); }
 export function sfxHit(head, helmet) {
   if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.45);
   if (samp(o, head ? (helmet ? 'helmet' : 'hs') : 'flesh', head ? 1.1 : 0.9)) return;
@@ -161,3 +177,6 @@ export function sfxImpact(pos, mat) { if (!ctx) return; const o = out(pos, 0.35,
 export function sfxDrop(pos) { if (!ctx) return; samp(out(pos, 0.6, 10), 'drop', 1); }
 export function sfxSelect() { if (!ctx) return; const o = out(null, 0.3); if (!samp(o, 'select', 1)) noise(o, ctx.currentTime, 0.03, 1400, 700, 3, 'bandpass', 0.001, 0.9); }
 export function sfxUI(hover) { if (!ctx) return; samp(out(null, hover ? 0.25 : 0.4), hover ? 'hover' : 'click', 1); }
+// sonidos sueltos de CS:S (cuchillo, bomba, granadas, sin balas, zoom, sacar arma)
+export function sfxS(key, pos, vol = 1, range = 15) { if (!ctx) return false; const o = out(pos, vol, range); if (!o) return true; return samp(o, key, 1); }
+export function sfxShellLoad(pos) { if (!ctx) return; const o = out(pos, 0.5, 8); if (o) samp(o, 'rl_shell', 1); }

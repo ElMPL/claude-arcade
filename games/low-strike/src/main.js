@@ -261,7 +261,7 @@ function pick(slot, force) {
   if (slot !== M.slot) M.lastSlot = M.slot;
   M.slot = slot; M.inspect = 0; M.vmEv = { kind: 'draw' }; M.drawT = slot === 'k' ? 0.35 : 0.6; M.reloadT = 0; M.scope = 0; M.plantT = 0; M.nadeHold = 0;
   if (M.defusing) stopDefuse();
-  A.sfxSelect(); hud.showSlots();
+  A.sfxSelect(); { const c = (WEAPONS[curId()] || {}).cat; A.sfxS(c === 'knife' ? 'knife_deploy' : c === 'pistol' ? 'deploy_p' : c === 'rifle' || c === 'smg' || c === 'sniper' || c === 'heavy' ? 'deploy_r' : '', null, 0.45); } hud.showSlots();
 }
 function cycleSlot(d) {
   const order = ['p', 's', 'k', 'z', 'g', 'c4'].filter(s => slotWeapon(s));
@@ -288,7 +288,7 @@ function reload() {
   const s = M.slot; if (s !== 'p' && s !== 's') return;
   const w = WEAPONS[curId()], a = M.ammo[s];
   if (!w.mag || a[0] >= w.mag || a[1] <= 0 || M.reloadT > 0 || M.drawT > 0) return;
-  M.reloadT = w.reload; M.scope = 0; M.inspect = 0; A.sfxReload(null); M.vmEv = { kind: 'reload', dur: w.reload };
+  M.reloadT = w.reload; M.scope = 0; M.inspect = 0; A.sfxReload(null, curId(), w.reload); M.vmEv = { kind: 'reload', dur: w.reload };
 }
 function finishReload() {
   const s = M.slot, w = WEAPONS[curId()], a = M.ammo[s]; if (!a || !w.mag) return;
@@ -299,7 +299,7 @@ const zoomOf = () => { const w = WEAPONS[curId()]; return w && w.scope ? w.scope
 function secondary() {
   const P = me(); if (!P || !P.alive) return;
   const id = curId(), w = WEAPONS[id];
-  if (w && w.scope && M.reloadT <= 0 && M.drawT <= 0) { M.scope = (M.scope + 1) % (w.scope.length + 1); A.sfxClick(null, 3000, 0.2); return; }
+  if (w && w.scope && M.reloadT <= 0 && M.drawT <= 0) { M.scope = (M.scope + 1) % (w.scope.length + 1); if (!A.sfxS('zoom', null, 0.4)) A.sfxClick(null, 3000, 0.2); return; }
   if (id === 'knife' && M.fireT <= 0 && M.drawT <= 0) { knife(true); }
   if (w && w.cat === 'grenade' && !mouseL && M.throwT <= 0) { M.nadeHold = 0.001; }
 }
@@ -412,7 +412,7 @@ function shotFx(sid, wid, eye, ends, imps, hits, w) {
     if (r) fx.decalC([h[1][0] + dn[0] * r.t, h[1][1] + (dn[1] - 0.3) * r.t, h[1][2] + dn[2] * r.t], [r.nx, r.ny, r.nz], '#6e0b0e', 0.35 + (h[2] ? 0.2 : 0));
   }
   if (w.cat === 'knife') return;
-  A.sfxShot(w.cat, mine ? null : eye, !!w.silent, wid === 'deagle' || wid === 'r8');
+  A.sfxShot(w.cat, mine ? null : eye, !!w.silent, wid === 'deagle' || wid === 'r8', wid);
 }
 
 function fireLocal() {
@@ -422,7 +422,7 @@ function fireLocal() {
   if (w.cat === 'knife') { if (!M.trig || w.auto) knife(false); return; }
   if (!w.auto && M.trig) return;
   const slot = M.slot === 'z' ? null : M.slot;
-  if (slot && M.ammo[slot][0] <= 0) { if (!M.trig) { A.sfxClick(null, 2600, 0.35); M.trig = true; } reload(); return; }
+  if (slot && M.ammo[slot][0] <= 0) { if (!M.trig) { if (!A.sfxS(w.cat === 'pistol' ? 'empty_p' : 'empty_r', null, 0.5)) A.sfxClick(null, 2600, 0.35); M.trig = true; } reload(); return; }
   M.trig = true; M.inspect = 0;
   if (admin('ls.aim')) aimbot();
   const st = { speed: Math.hypot(p.vx, p.vz), vy: p.vy, onGround: p.onGround, duck: p.duck, scoped: M.scope > 0, shots: M.shots, sinceLand: p.sinceLand };
@@ -449,8 +449,9 @@ function knife(stab) {
   const d = shotDir(p.yaw, p.pitch, 0, 0, 0, Math.random);
   const r = traceShot(G.W, G.nades, myId, eye[0], eye[1], eye[2], d[0], d[1], d[2], wk, targets());
   if (r.hit) { const t = G.players.get(r.hit.id); if (t) { const back = Math.cos(angDiff(t.yaw, p.yaw)) > 0.5; if (back) r.hit.dmg = stab ? 180 : 90; } }
-  if (r.hit) { req('hit', { t: r.hit.id, w: 'knife', part: 'chest', d: r.hit.dmg }); fx.blood(r.hit.pos, d, false); A.sfxHit(false); }
-  else if (r.impacts.length) { const im = r.impacts[0]; fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]]); A.sfxClick(im, 1800, 0.5); const b = BRK ? BRK.at(im[0], im[1], im[2], 0.3) : -1; if (b >= 0) { breakIt(b); send('brk', { i: b }); } }
+  if (r.hit) { req('hit', { t: r.hit.id, w: 'knife', part: 'chest', d: r.hit.dmg }); fx.blood(r.hit.pos, d, false); A.sfxS(stab ? 'knife_stab' : 'knife_hit', null, 0.8); }
+  else if (!r.impacts.length) A.sfxS('knife_slash', null, 0.6);
+  else if (r.impacts.length) { const im = r.impacts[0]; fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]]); if (!A.sfxS('knife_wall', null, 0.7)) A.sfxClick(im, 1800, 0.5); const b = BRK ? BRK.at(im[0], im[1], im[2], 0.3) : -1; if (b >= 0) { breakIt(b); send('brk', { i: b }); } }
   else A.sfxThrow();
   M.fireT = stab ? 1.0 : 0.45; M.kick = 1; M.knife2 = stab; M.vmEv = { kind: stab ? 'stab_hit' : 'stab_miss' };
   send('sh', { i: myId, w: 'knife', o: eye, e: [r.end], m: [], h: r.hit ? [[r.hit.id, r.hit.pos, 0]] : [] });
@@ -511,7 +512,7 @@ function updateNades(dt) {
 }
 function nadeEvent(e) {
   const g = e.g, pos = [g.x, g.y, g.z];
-  if (e.type === 'bounce') { A.sfxBounce(pos); return; }
+  if (e.type === 'bounce') { A.sfxS('nade_hit', pos, 0.6, 20) || A.sfxBounce(pos); return; }
   if (e.type !== 'det') return;
   if (g.type === 'he') {
     fx.explosion(pos, false); A.sfxExplosion(pos, false);
@@ -519,11 +520,11 @@ function nadeEvent(e) {
     shakeFrom(pos, 12, 0.5);
     if (isHost() && H) H.heBlast(g, (gg, p) => { const L = Math.hypot(p.x - gg.x, p.y + 1 - gg.y, p.z - gg.z); const h = raycast(G.W, gg.x, gg.y + 0.15, gg.z, (p.x - gg.x) / L, (p.y + 1 - gg.y - 0.15) / L, (p.z - gg.z) / L, L); return !h || h.t >= L - 0.2; });
   } else if (g.type === 'flash') {
-    fx.flashPop(pos); A.sfxFlash(pos);
+    fx.flashPop(pos); A.sfxS('flash_exp', pos, 1.1, 60) || A.sfxFlash(pos);
     flashLocal(g);
     if (isHost() && BOTS) for (const p of G.players.values()) if (p.bot && p.alive) { const t = flashAmount(g, p.x, p.y + eyeH(p), p.z, p.yaw, p.pitch); if (t > 0) BOTS.flash(p, t); }
   } else if (g.type === 'smoke') {
-    fx.smoke(g, G.W); A.sfxSmoke(pos);
+    fx.smoke(g, G.W); A.sfxS('smoke_exp', pos, 0.9, 40) || A.sfxSmoke(pos);
     for (const f of G.nades) if ((f.type === 'molotov' || f.type === 'incendiary') && f.state === 'active' && Math.hypot(f.x - g.x, f.z - g.z) < NADE.smokeR + 1) f.life = Math.min(f.life, 0.3);
   } else if (g.type === 'molotov' || g.type === 'incendiary') {
     if (g.air) { fx.explosion(pos, false); return; }
@@ -690,10 +691,10 @@ function onEvent(e) {
       break;
     }
     case 'half': hud.center('Cambio de lado — empieza la segunda mitad', 4000); break;
-    case 'plant': hud.center('La bomba fue plantada en el sitio ' + e.site, 3000); A.sfxBeep([G.bomb.x, G.bomb.y, G.bomb.z], true); G.bomb.seen = true; break;
-    case 'defst': A.sfxDefuse([G.bomb.x, G.bomb.y, G.bomb.z]); break;
+    case 'plant': hud.center('La bomba fue plantada en el sitio ' + e.site, 3000); A.sfxS('c4_plant', [G.bomb.x, G.bomb.y, G.bomb.z], 0.8, 30) || A.sfxBeep([G.bomb.x, G.bomb.y, G.bomb.z], true); G.bomb.seen = true; break;
+    case 'defst': A.sfxS('c4_disarm', [G.bomb.x, G.bomb.y, G.bomb.z], 0.8, 25) || A.sfxDefuse([G.bomb.x, G.bomb.y, G.bomb.z]); break;
     case 'defused': hud.center('Desactivaron la bomba', 3000); break;
-    case 'boom': { fx.explosion([e.x, e.y, e.z], true); A.sfxExplosion([e.x, e.y, e.z], true); shakeFrom([e.x, e.y, e.z], 70, 2.2); if (M.pl) { const d = Math.hypot(M.pl.x - e.x, M.pl.y - e.y, M.pl.z - e.z); if (d < 35) M.blind = Math.max(M.blind, 0.9 * (1 - d / 35)); } break; }
+    case 'boom': { fx.explosion([e.x, e.y, e.z], true); A.sfxS('c4_explode', [e.x, e.y, e.z], 1.6, 300) || A.sfxExplosion([e.x, e.y, e.z], true); shakeFrom([e.x, e.y, e.z], 70, 2.2); if (M.pl) { const d = Math.hypot(M.pl.x - e.x, M.pl.y - e.y, M.pl.z - e.z); if (d < 35) M.blind = Math.max(M.blind, 0.9 * (1 - d / 35)); } break; }
     case 'bombdrop': if (P && P.team === 'T') hud.center('Se cayó la bomba', 1600); break;
     case 'bombpick': if (e.p === myId) { hud.center('Agarraste la bomba (5)', 1600); A.sfxPickup(); } break;
     case 'deny': hud.center(e.why, 1500); A.sfxDeny(); if (P && P.team === 'SPEC') openTeamSel(true, true); break;
@@ -1088,7 +1089,7 @@ function updateDrops(dt) {
   if (b.state === 'planted') {
     const t = Math.max(0, b.t), iv = Math.max(0.12, Math.min(1, t / 35));
     beepT -= dt; bombLight.visible = beepT > iv * 0.6;
-    if (beepT <= 0) { beepT = iv; A.sfxBeep([b.x, b.y, b.z], t < 10); }
+    if (beepT <= 0) { beepT = iv; A.sfxS('c4_beep', [b.x, b.y, b.z], 0.7, 40) || A.sfxBeep([b.x, b.y, b.z], t < 10); }
   } else bombLight.visible = false;
 }
 
@@ -1227,7 +1228,7 @@ settings.hooks.vmPreview = (cv, S) => {
 function buildSrcVM(wid, fin = 0) {
   const name = VMAP[wid], key = wid + ':' + fin; if (!name || srcVMs[key]) return;
   srcVMs[key] = 'loading';
-  loadVModel(name).then(def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { if (wid === 'dualies') { attachGun(v, gunGeo(wid, fin), null, /_R_/); attachGun(v, gunGeo(wid, fin), null, /_L_/); } else if (!(fin === 0 && nativeGun(v, wid)) && gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; });
+  loadVModel(name).then(def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { if (fin === 0 && nativeGun(v, wid)) { } else if (wid === 'dualies') { attachGun(v, gunGeo(wid, fin), null, /_R_/); attachGun(v, gunGeo(wid, fin), null, /_L_/); } else if (gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; });
 }
 // precarga de todos los modelos de primera persona al entrar (de a uno, sin trabar): así al comprar o cambiar de
 // arma ya están listos y no aparece por un instante el modelo de repuesto

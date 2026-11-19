@@ -8,7 +8,7 @@ export const VMAP = {
   ak47: 'v_rif_ak47', m4a4: 'v_rif_m4a1', m4a1s: 'v_rif_m4a1', famas: 'v_rif_famas', galil: 'v_rif_galil', aug: 'v_rif_aug', sg553: 'v_rif_sg552',
   awp: 'v_snip_awp', ssg08: 'v_snip_scout', g3sg1: 'v_snip_g3sg1', scar20: 'v_snip_sg550',
   glock: 'v_pist_glock18', usp: 'v_pist_usp', p2000: 'v_pist_usp', deagle: 'v_pist_deagle', p250: 'v_pist_p228', fiveseven: 'v_pist_fiveseven', dualies: 'v_pist_elite',
-  mac10: 'v_smg_mac10', mp9: 'v_smg_tmp', mp5sd: 'v_smg_mp5', mp5: 'v_smg_mp5', mp7: 'v_smg_mp5', bizon: 'v_smg_mp5',
+  mac10: 'v_smg_mac10', mp9: 'v_smg_tmp', mp5sd: 'v_smg_ump45', mp5: 'v_smg_ump45', mp7: 'v_smg_ump45', bizon: 'v_smg_ump45',
   tec9: 'v_pist_glock18', cz75: 'v_pist_p228', r8: 'v_pist_deagle', zeus: 'v_pist_p228', sawedoff: 'v_shot_m3super90', mag7: 'v_smg_ump45', negev: 'v_mach_m249para', ump: 'v_smg_ump45', p90: 'v_smg_p90',
   xm1014: 'v_shot_xm1014', nova: 'v_shot_m3super90', m249: 'v_mach_m249para',
   knife: 'v_knife_t', c4: 'v_c4', flash: 'v_eq_flashbang', he: 'v_eq_fraggrenade', smoke: 'v_eq_smokegrenade', decoy: 'v_eq_flashbang', molotov: 'v_eq_fraggrenade', incendiary: 'v_eq_fraggrenade',
@@ -210,19 +210,23 @@ export function inspectPose(V, k, cat) {
   if (hb) rotRoot(hb, L(1), 0, 0);
   if (lb) { const d = L(4); lb.position.z -= d * 14; lb.position.x -= d * 4; lb.position.y += d * 3; }
 }
-// Armas cuya malla de primera persona de Source tiene los mismos UV que las texturas de CS:GO subidas
-// (comprobado renderizando cada una): se usa la malla original texturizada en vez de pegarle el modelo de CS2.
-// Así queda exactamente en la mano y con las piezas animadas (cargador, cerrojo, anilla de la granada).
-export const NATIVE = { ak47: 'ak47', awp: 'awp', g3sg1: 'g3sg1', he: 'he', smoke: 'smoke', flash: '#7a7f74', c4: 'c4' };
+// Armas que existen en CS:Source: se usa la malla original de primera persona (brazos y arma animados juntos,
+// agarre exacto) con las texturas de CS:S de cada pieza (viewmodels/tex/css_<material>.webp). Las de CS:GO que no
+// están en CS:S (MP9, Tec-9, Negev…) siguen con el modelo de CS2 pegado a la mano.
+export const NATIVE = new Set(['ak47', 'm4a1s', 'm4a4', 'aug', 'famas', 'galil', 'sg553', 'awp', 'g3sg1', 'glock', 'usp', 'p2000', 'deagle', 'fiveseven', 'dualies', 'p250', 'mac10', 'ump', 'p90', 'xm1014', 'm249', 'knife', 'he', 'smoke', 'flash', 'decoy', 'c4']);
+const CSS_TEX = new Set(['c4', 'c4_light', 'flashbang', 'fraggrenade', 'smokegrenade', 'knife_t', 'mach_m249para', 'deagle_skin1', 'pist_elite', 'pist_fiveseven', 'glock18', 'pist_p228_1', 'pist_usp', 'rif_ak47skin1', 'rif_aug', 'rif_famas', 'rif_galil', 'rif_m4a1', 'rif_sg552', 'shot_m3super90', 'shot_xm1014', 'smg_mac10_1', 'mp5_1', 'smg_p90', 'smg_p90_sight', 'smg_tmp', 'smg_ump45', 'v_awp', 'v_awp_scope', 'snip_g3sg1', 'snip_scout', 'snip_sg550']);
+const TEX_ALIAS = { w_smg_mp5: 'mp5_1', handle: 'knife_t' };
 const texMats = {};
-export function nativeGun(V, wid, base = 'viewmodels/') {
-  const t = NATIVE[wid]; if (!t) return false;
-  if (!texMats[t] && t[0] === '#') texMats[t] = new THREE.MeshStandardMaterial({ color: t, roughness: 0.45, metalness: 0.6 });
-  if (!texMats[t]) { const map = tl.load(base + 'tex/' + t + '.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.anisotropy = 8; texMats[t] = new THREE.MeshStandardMaterial({ map, roughness: 0.6, metalness: 0.25 }); }
-  // sólo el grupo principal del arma; los chicos (mira, luz) quedan con el material liso
-  const G = V.def.meta.groups; let main = -1, best = 0; G.forEach((g, k) => { if (!/hands/i.test(g.tex) && g.c > best) { best = g.c; main = k; } });
-  V.mesh.material = G.map((g, k) => k === main ? texMats[t] : V.mesh.material[k]);
-  return true;
+function cssMat(name, base = 'viewmodels/') {
+  let n = String(name || '').toLowerCase(); n = TEX_ALIAS[n] || n; if (!CSS_TEX.has(n)) return null;
+  if (!texMats[n]) { const map = tl.load(base + 'tex/css_' + n + '.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.anisotropy = 8; texMats[n] = new THREE.MeshStandardMaterial({ map, roughness: 0.55, metalness: 0.3 }); }
+  return texMats[n];
+}
+export function nativeGun(V, wid) {
+  if (!NATIVE.has(wid)) return false;
+  const G = V.def.meta.groups; let any = false;
+  V.mesh.material = G.map((g, k) => { if (/hands/i.test(g.tex)) return V.mesh.material[k]; const m = cssMat(g.tex); if (m) { any = true; return m; } return V.mesh.material[k]; });
+  return any;
 }
 // cuchillo: la navaja (flip knife) del pack de CS:GO para 1.6, con su textura; la malla se pega al hueso del
 // cuchillo de Source (mismas animaciones de brazos). Las otras 9 terminaciones quedan en tex/knife_flip_N.webp.
@@ -258,13 +262,9 @@ async function staticFromV(vname, tex, opts = {}) {
     g.computeBoundingBox(); const c = g.boundingBox.getCenter(new THREE.Vector3()); g.translate(-c.x, -g.boundingBox.min.y, -c.z);
   } else { const c = g.boundingBox.getCenter(new THREE.Vector3()); g.translate(-c.x, -c.y, -c.z); }
   g.computeVertexNormals();
-  if (!texMats[tex]) {
-    if (tex[0] === '#') texMats[tex] = new THREE.MeshStandardMaterial({ color: tex, roughness: 0.45, metalness: 0.6 });
-    else { const map = tl.load('viewmodels/tex/' + tex + '.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; texMats[tex] = new THREE.MeshStandardMaterial({ map, roughness: 0.6, metalness: 0.2 }); }
-  }
-  return new THREE.Mesh(g, texMats[tex]);
+  return new THREE.Mesh(g, cssMat(gr.tex) || new THREE.MeshStandardMaterial({ color: '#777', roughness: 0.5 }));
 }
-export function c4World() { return (worldCache.c4 ||= staticFromV('v_c4', 'c4', { flat: true })).then(m => m.clone()); }
-const NADE_V = { he: ['v_eq_fraggrenade', 'he'], smoke: ['v_eq_smokegrenade', 'smoke'], flash: ['v_eq_flashbang', '#7a7f74'], decoy: ['v_eq_flashbang', '#6d6250'] };
+export function c4World() { return (worldCache.c4 ||= staticFromV('v_c4', null, { flat: true })).then(m => m.clone()); }
+const NADE_V = { he: ['v_eq_fraggrenade'], smoke: ['v_eq_smokegrenade'], flash: ['v_eq_flashbang'], decoy: ['v_eq_flashbang'] };
 export const nadeWorld = {};
 export function preloadNades() { for (const [k, [v, t]] of Object.entries(NADE_V)) staticFromV(v, t).then(m => { nadeWorld[k] = m; }).catch(() => {}); }
