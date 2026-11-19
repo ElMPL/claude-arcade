@@ -21,7 +21,7 @@ import { makeFx } from './fx.js';
 import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT, GMAT } from './models.js';
 import { loadAgents } from './agents.js';
 import { loadArms } from './vmarms.js';
-import { VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun, inspectPose, nativeGun, loadKnife, c4World } from './vmodels.js';
+import { VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun, inspectPose, nativeGun, c4World, nadeWorld, preloadNades } from './vmodels.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
@@ -483,7 +483,7 @@ G.botThrow = (p, type, yaw, pitch, power) => {
 function addNade(d) {
   const g = makeNade(d.ty, d.i, d.tm, d.o[0], d.o[1], d.o[2], d.yaw, d.pitch, d.v[0], d.v[1], d.pw, d.v[2] || 0, G.W);
   g.key = Math.random(); G.nades.push(g);
-  const m = gunMesh(d.ty); m.scale.setScalar(1.6); scene.add(m); nadeMeshes.set(g, m);
+  const m = nadeWorld[d.ty] ? nadeWorld[d.ty].clone() : gunMesh(d.ty); if (!nadeWorld[d.ty]) m.scale.setScalar(1.6); scene.add(m); nadeMeshes.set(g, m);
 }
 const nadeEv = [];
 function updateNades(dt) {
@@ -673,7 +673,7 @@ function onEvent(e) {
     case 'plant': hud.center('La bomba fue plantada en el sitio ' + e.site, 3000); A.sfxBeep([G.bomb.x, G.bomb.y, G.bomb.z], true); G.bomb.seen = true; break;
     case 'defst': A.sfxDefuse([G.bomb.x, G.bomb.y, G.bomb.z]); break;
     case 'defused': hud.center('Desactivaron la bomba', 3000); break;
-    case 'boom': fx.explosion([e.x, e.y, e.z], true); A.sfxExplosion([e.x, e.y, e.z], true); shakeFrom([e.x, e.y, e.z], 60, 1.2); break;
+    case 'boom': { fx.explosion([e.x, e.y, e.z], true); A.sfxExplosion([e.x, e.y, e.z], true); shakeFrom([e.x, e.y, e.z], 70, 2.2); if (M.pl) { const d = Math.hypot(M.pl.x - e.x, M.pl.y - e.y, M.pl.z - e.z); if (d < 35) M.blind = Math.max(M.blind, 0.9 * (1 - d / 35)); } break; }
     case 'bombdrop': if (P && P.team === 'T') hud.center('Se cayó la bomba', 1600); break;
     case 'bombpick': if (e.p === myId) { hud.center('Agarraste la bomba (5)', 1600); A.sfxPickup(); } break;
     case 'deny': hud.center(e.why, 1500); A.sfxDeny(); if (P && P.team === 'SPEC') openTeamSel(true, true); break;
@@ -935,7 +935,7 @@ async function loadGame(id) {
   buildEnvironment(scene, W, id, QUALITY);
   renderer.shadowMap.needsUpdate = true;
   fx = makeFx(scene); fx.floorAt = (x, z, y) => floorAt(G.W, x, z, y + 0.2);
-  radarImg = radarImage(W, G.nav);
+  radarImg = radarImage(W, G.nav); preloadVMs(); preloadNades();
   try { const c = document.createElement('canvas'); c.width = c.height = 320; c.getContext('2d').drawImage(radarImg, 0, 0, 320, 320); store.set('ls:ov:' + id, c.toDataURL('image/jpeg', 0.8)); } catch (e) { /* sin lugar: no pasa nada */ }
   clearInterval(showLoadInfo.t);
   for (const p of G.players.values()) { if (p.model) { p.model = null; p.tag = null; } }
@@ -1057,7 +1057,7 @@ function updateDrops(dt) {
   }
   for (const [id, m] of dropMeshes) if (!G.drops.has(id)) { scene.remove(m); dropMeshes.delete(id); }
   const b = G.bomb;
-  if (!bombMesh) { bombMesh = new THREE.Group(); const proc = gunMesh('c4'); proc.scale.setScalar(1.6); bombMesh.add(proc); c4World(false).then(m => { m.scale.setScalar(1.3); bombMesh.remove(proc); bombMesh.add(m); }).catch(() => {}); scene.add(bombMesh); bombLight = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: '#ff2020' })); bombLight.position.set(-0.05, 0.05, 0.03); bombMesh.add(bombLight); }
+  if (!bombMesh) { bombMesh = new THREE.Group(); const proc = gunMesh('c4'); proc.scale.setScalar(1.6); bombMesh.add(proc); c4World().then(m => { m.scale.setScalar(1.3); bombMesh.remove(proc); bombMesh.add(m); }).catch(() => {}); scene.add(bombMesh); bombLight = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: '#ff2020' })); bombLight.position.set(-0.05, 0.05, 0.03); bombMesh.add(bombLight); }
   bombMesh.visible = b.state === 'planted' || b.state === 'dropped' || b.state === 'defused';
   if (bombMesh.visible) bombMesh.position.set(b.x, b.y + 0.05, b.z);
   if (b.state === 'planted') {
@@ -1177,11 +1177,19 @@ function sendBots(dt) {
 
 // ---------------- modelos de primera persona originales ----------------
 let srcCur = null; const srcVMs = {};
+function buildSrcVM(wid, fin = 0) {
+  const name = VMAP[wid], key = wid + ':' + fin; if (!name || srcVMs[key]) return;
+  srcVMs[key] = 'loading';
+  loadVModel(name).then(def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { if (wid === 'dualies') { attachGun(v, gunGeo(wid, fin), null, /_R_/); attachGun(v, gunGeo(wid, fin), null, /_L_/); } else if (!(fin === 0 && nativeGun(v, wid)) && gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; });
+}
+// precarga de todos los modelos de primera persona al entrar (de a uno, sin trabar): así al comprar o cambiar de
+// arma ya están listos y no aparece por un instante el modelo de repuesto
+function preloadVMs() { const ids = Object.keys(VMAP); let k = 0; const step = () => { if (k >= ids.length) return; buildSrcVM(ids[k++], 0); setTimeout(step, 60); }; step(); }
 function srcVM(wid, dt) {
   const name = VMAP[wid]; if (!name) { srcCur = null; return null; }
   const P = me(), fin = P ? finOf(P.fin, wid) : 0, key = wid + ':' + fin;
   let V = srcVMs[key];
-  if (!V) { srcVMs[key] = 'loading'; Promise.all([loadVModel(name), wid === 'knife' ? loadKnife(1).catch(() => null) : null]).then(([def, kn]) => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; if (kn) { attachGun(v, kn.g, kn.mat); srcVMs[key] = v; return; } try { if (!(fin === 0 && nativeGun(v, wid)) && gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; }); return null; }
+  if (!V) { buildSrcVM(wid, fin); return null; }
   if (typeof V === 'string') return null;
   const unsil = wid === 'm4a4' || wid === 'p2000';
   if (srcCur !== V) { if (srcCur) srcCur.holder.visible = false; srcCur = V; playSeq(V, 'draw', { unsil }); V.wid = wid; }
@@ -1561,4 +1569,4 @@ async function boot() {
 }
 boot();
 // para pruebas automáticas
-window.__ls = { G, M, me, req, get H() { return H; }, get BOTS() { return BOTS; }, get camera() { return camera; }, get vm() { return vm; }, get scene() { return scene; }, keys, look, onKey, traceShot, targets, shotDir, setMouse(l, r) { mouseL = l; mouseR = !!r; if (r) secondary(); } };
+window.__ls = { G, M, me, req, get fx() { return fx; }, get H() { return H; }, get BOTS() { return BOTS; }, get camera() { return camera; }, get vm() { return vm; }, get scene() { return scene; }, keys, look, onKey, traceShot, targets, shotDir, setMouse(l, r) { mouseL = l; mouseR = !!r; if (r) secondary(); } };

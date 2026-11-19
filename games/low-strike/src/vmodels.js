@@ -79,29 +79,37 @@ export function makeVModel(def) {
 // alineado con la del modelo de Source (largo, cañón hacia el fogonazo, arriba = arriba). La malla del arma
 // de Source se oculta; los brazos y sus animaciones quedan.
 const hidden = new THREE.MeshBasicMaterial({ visible: false });
-export function attachGun(V, gunGeo, mat) {
+export function attachGun(V, gunGeo, mat, pick) {
   const def = V.def, g = def.g, B = def.meta.bones;
   const pos = g.attributes.position, sj = g.attributes.skinIndex, sw = g.attributes.skinWeight, idx = g.index.array;
   const isGun = new Uint8Array(pos.count);
   def.meta.groups.forEach((gr, k) => { if (!/hands/i.test(gr.tex)) for (let i = gr.s; i < gr.s + gr.c; i++) isGun[idx[i]] = 1; });
   // hueso con más vértices del arma
   const cnt = new Map(); for (let i = 0; i < pos.count; i++) if (isGun[i]) { const b = sj.getX(i); cnt.set(b, (cnt.get(b) || 0) + 1); }
-  let wb = -1, best = 0; for (const [b, c] of cnt) if (c > best) { best = c; wb = b; }
+  let wb = -1, best = 0; for (const [b, c] of cnt) if (c > best && (!pick || pick.test(B[b].n))) { best = c; wb = b; }
   if (wb < 0) return null;
+  // raíz del arma: subir desde el hueso con más vértices mientras el padre no sea de la mano/brazo; después se
+  // toman todas las piezas que cuelgan de esa raíz (corredera, cargador…) para el centro y el largo. En las
+  // Dual Berettas cada pistola tiene su raíz, así que se usa una sola.
+  const isArm = n => /Bip01|hand|finger|arm|ulna|wrist|clavicle|camera/i.test(n);
+  let root = wb; while (B[root].p >= 0 && !isArm(B[B[root].p].n)) root = B[root].p;
+  const under = new Uint8Array(B.length); for (let k = 0; k < B.length; k++) { let x = k; while (x >= 0 && x !== root) x = B[x].p; under[k] = x === root ? 1 : 0; }
   const inv = V.mesh.skeleton.boneInverses[wb], v = new THREE.Vector3(), pts = [];
-  for (let i = 0; i < pos.count; i++) if (isGun[i] && sj.getX(i) === wb) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(inv).clone());
+  for (let i = 0; i < pos.count; i++) if (isGun[i] && under[sj.getX(i)]) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(inv).clone());
   const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
   const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)], ext = [size.x, size.y, size.z];
-  const ai = ext.indexOf(Math.max(...ext)); const fwd = axes[ai].clone();
-  // sentido: hacia el fogonazo (hueso 'flash'/'muzzle'), si no, hacia donde mira la cámara en reposo (+x de Source)
-  const fl = B.findIndex(b => /flash|muzzle/i.test(b.n));
+  // sentido del cañón: hacia el fogonazo (hueso 'flash'/'muzzle') de esta arma; si no hay, el eje más largo hacia +x de Source
+  const fl = B.findIndex((b, k) => /flash|muzzle/i.test(b.n) && under[k]);
   const ref = fl >= 0 ? new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(V.mesh.skeleton.boneInverses[fl]).invert()).applyMatrix4(inv).sub(ctr) : new THREE.Vector3(1, 0, 0).transformDirection(inv);
+  let ai = ext.indexOf(Math.max(...ext));
+  const fwd = axes[ai].clone();
   if (ref.dot(fwd) < 0) fwd.negate();
   const upW = new THREE.Vector3(0, 0, 1).transformDirection(inv); upW.addScaledVector(fwd, -upW.dot(fwd)).normalize();
   // nuestra arma: adelante = -z, arriba = +y
   const gb = new THREE.Box3().setFromBufferAttribute(gunGeo.attributes.position), gs = gb.getSize(new THREE.Vector3()), gc = gb.getCenter(new THREE.Vector3());
   const sc = ext[ai] / gs.z;
-  const side = new THREE.Vector3().crossVectors(upW, fwd); // derecha del arma (en Source: adelante × arriba = izquierda → se invierte)
+  const side = new THREE.Vector3().crossVectors(upW, fwd);
+  if (new THREE.Matrix3().setFromMatrix4(inv).determinant() < 0) side.negate(); // hueso espejado (mano izquierda): que el arma no quede dada vuelta // derecha del arma (en Source: adelante × arriba = izquierda → se invierte)
   const R = new THREE.Matrix4().makeBasis(side.clone().negate(), upW, fwd.clone().negate()); // columnas: x → -izq = derecha, y → arriba, z → atrás
   const m = new THREE.Mesh(gunGeo, mat || V.gunMats || null);
   const M = new THREE.Matrix4().compose(ctr, new THREE.Quaternion().setFromRotationMatrix(R), new THREE.Vector3(sc, sc, sc)).multiply(new THREE.Matrix4().makeTranslation(-gc.x, -gc.y, -gc.z));
@@ -192,9 +200,11 @@ export function loadKnife(skin = 1, base = 'viewmodels/') {
     return { g, mat: new THREE.MeshStandardMaterial({ map, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide }) };
   });
 }
-// bomba en el mundo (plantada / tirada): la malla del C4 de primera persona, con su textura, apoyada en el piso
-export async function c4World(flip = false) {
-  const def = await loadVModel('v_c4'); const G = def.meta.groups;
+// mallas de mundo sacadas de los modelos de primera persona (pose de reposo, sin brazos), con su textura:
+// bomba plantada/tirada y granadas en vuelo
+const worldCache = {};
+async function staticFromV(vname, tex, opts = {}) {
+  const def = await loadVModel(vname); const G = def.meta.groups;
   let k = -1, best = 0; G.forEach((g, i) => { if (!/hands/i.test(g.tex) && g.c > best) { best = g.c; k = i; } });
   const gr = G[k], src = def.g, ix = src.index.array.slice(gr.s, gr.s + gr.c);
   const used = [...new Set(ix)], remap = new Map(used.map((v, i) => [v, i]));
@@ -202,10 +212,19 @@ export async function c4World(flip = false) {
   used.forEach((v, i) => { P[i * 3] = -pa[v * 3 + 1] * 0.0254; P[i * 3 + 1] = pa[v * 3 + 2] * 0.0254; P[i * 3 + 2] = -pa[v * 3] * 0.0254; U[i * 2] = ua[v * 2]; U[i * 2 + 1] = ua[v * 2 + 1]; });
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.BufferAttribute(U, 2));
   g.setIndex(Array.from(ix, v => remap.get(v))); g.computeBoundingBox();
-  // el eje más corto queda vertical
-  const s = g.boundingBox.getSize(new THREE.Vector3()), ax = [s.x, s.y, s.z].indexOf(Math.min(s.x, s.y, s.z));
-  if (ax === 0) g.rotateZ(Math.PI / 2 * (flip ? -1 : 1)); else if (ax === 2) g.rotateX(Math.PI / 2 * (flip ? -1 : 1)); else if (flip) g.rotateX(Math.PI);
-  g.computeBoundingBox(); const c = g.boundingBox.getCenter(new THREE.Vector3()); g.translate(-c.x, -g.boundingBox.min.y, -c.z); g.computeVertexNormals();
-  if (!texMats.c4) { const map = tl.load('viewmodels/tex/c4.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; texMats.c4 = new THREE.MeshStandardMaterial({ map, roughness: 0.7, metalness: 0.1 }); }
-  return new THREE.Mesh(g, texMats.c4);
+  if (opts.flat) { // el eje más corto queda vertical, apoyado en el piso
+    const s = g.boundingBox.getSize(new THREE.Vector3()), ax = [s.x, s.y, s.z].indexOf(Math.min(s.x, s.y, s.z));
+    if (ax === 0) g.rotateZ(Math.PI / 2); else if (ax === 2) g.rotateX(Math.PI / 2);
+    g.computeBoundingBox(); const c = g.boundingBox.getCenter(new THREE.Vector3()); g.translate(-c.x, -g.boundingBox.min.y, -c.z);
+  } else { const c = g.boundingBox.getCenter(new THREE.Vector3()); g.translate(-c.x, -c.y, -c.z); }
+  g.computeVertexNormals();
+  if (!texMats[tex]) {
+    if (tex[0] === '#') texMats[tex] = new THREE.MeshStandardMaterial({ color: tex, roughness: 0.45, metalness: 0.6 });
+    else { const map = tl.load('viewmodels/tex/' + tex + '.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; texMats[tex] = new THREE.MeshStandardMaterial({ map, roughness: 0.6, metalness: 0.2 }); }
+  }
+  return new THREE.Mesh(g, texMats[tex]);
 }
+export function c4World() { return (worldCache.c4 ||= staticFromV('v_c4', 'c4', { flat: true })).then(m => m.clone()); }
+const NADE_V = { he: ['v_eq_fraggrenade', 'he'], smoke: ['v_eq_smokegrenade', 'smoke'], flash: ['v_eq_flashbang', '#7a7f74'], decoy: ['v_eq_flashbang', '#6d6250'] };
+export const nadeWorld = {};
+export function preloadNades() { for (const [k, [v, t]] of Object.entries(NADE_V)) staticFromV(v, t).then(m => { nadeWorld[k] = m; }).catch(() => {}); }

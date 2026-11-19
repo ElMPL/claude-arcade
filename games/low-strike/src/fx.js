@@ -90,13 +90,39 @@ export function makeFx(scene) {
   fx.muzzleMesh = () => { const m = new THREE.Mesh(flashGeo, flashMat); m.visible = false; m.scale.set(0.05, 0.05, 0.14); return m; };
   const light = new THREE.PointLight('#ffcf80', 0, 7, 2); scene.add(light);
   let lightT = 0;
-  fx.flashLight = (p, k = 1) => { light.position.set(p[0], p[1], p[2]); light.intensity = 6 * k; lightT = 0.05; };
-  // ---------- humo (bolas opacas low-poly) ----------
+  fx.flashLight = (p, k = 1) => { light.position.set(p[0], p[1], p[2]); light.intensity = 6 * k; light.distance = 7; lightT = 0.05; };
+  // ---------- humo: núcleo de esferas suaves (tapa la vista) + nubes en billboard con textura de humo ----------
   const SMAX = 10 * 66;
-  const sg = new THREE.IcosahedronGeometry(1, 0);
-  const sm = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: '#b9bcc0', flatShading: true }), SMAX);
+  const sg = new THREE.IcosahedronGeometry(1, 2);
+  const sm = new THREE.InstancedMesh(sg, new THREE.MeshLambertMaterial({ color: '#aeb1b5' }), SMAX);
   sm.instanceMatrix.setUsage(THREE.DynamicDrawUsage); sm.count = 0; sm.frustumCulled = false; scene.add(sm);
   sm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SMAX * 3), 3);
+  // textura de bocanada: gradiente radial con ruido (generada, sin archivos)
+  const puffTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    const img = x.createImageData(128, 128), d = img.data;
+    const rnd = (i, j) => { const h = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return h - Math.floor(h); };
+    const vn = (u, v) => { const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, a = rnd(i, j), b = rnd(i + 1, j), cc = rnd(i, j + 1), dd = rnd(i + 1, j + 1), su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv); return a + (b - a) * su + (cc - a) * sv + (a - b - cc + dd) * su * sv; };
+    for (let y = 0; y < 128; y++) for (let X = 0; X < 128; X++) {
+      const u = (X - 63.5) / 63.5, v = (y - 63.5) / 63.5, r = Math.hypot(u, v);
+      let n = 0, f = 3, a = 0.5; for (let o = 0; o < 4; o++) { n += vn(X / 128 * f + o * 17, y / 128 * f) * a; f *= 2; a *= 0.5; }
+      const al = Math.max(0, 1 - r * (0.75 + n * 0.55)); const k = (y * 128 + X) * 4;
+      const sh = 205 + n * 50 - v * 25; d[k] = d[k + 1] = d[k + 2] = Math.min(255, sh); d[k + 3] = Math.min(255, Math.pow(al, 1.2) * 300);
+    }
+    x.putImageData(img, 0, 0); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const pg = new THREE.PlaneGeometry(1, 1);
+  const SP = 900;
+  const spm = new THREE.InstancedMesh(pg, new THREE.MeshBasicMaterial({ map: puffTex, transparent: true, depthWrite: false, color: '#ffffff' }), SP);
+  spm.instanceMatrix.setUsage(THREE.DynamicDrawUsage); spm.count = 0; spm.frustumCulled = false; spm.renderOrder = 2; scene.add(spm);
+  spm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SP * 3), 3);
+  // bocanadas sueltas (explosiones: bola de fuego aditiva y columna de humo)
+  const FP = 300;
+  const fpm = new THREE.InstancedMesh(pg, new THREE.MeshBasicMaterial({ map: puffTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: '#ffffff' }), FP);
+  fpm.instanceMatrix.setUsage(THREE.DynamicDrawUsage); fpm.count = 0; fpm.frustumCulled = false; fpm.renderOrder = 3; scene.add(fpm);
+  fpm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(FP * 3), 3);
+  const puffs = [];
+  fx.puff = (x, y, z, vx, vy, vz, s0, s1, life, c0, c1, add, drag = 1.2) => puffs.push({ x, y, z, vx, vy, vz, s0, s1, life, max: life, c0: new THREE.Color(c0), c1: new THREE.Color(c1), add, drag, rot: Math.random() * 6.28 });
   const smokes = [];
   fx.smoke = (g, W) => {
     const balls = [];
@@ -136,10 +162,15 @@ export function makeFx(scene) {
   fx.explosion = (p, big) => {
     const m = new THREE.Mesh(eg, new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.9, depthWrite: false }));
     m.position.set(p[0], p[1] + 0.3, p[2]); scene.add(m);
-    exps.push({ m, t: 0, life: big ? 1.1 : 0.45, size: big ? 9 : 2.6 });
-    for (let i = 0; i < (big ? 70 : 30); i++) { const a = Math.random() * 6.28, e = Math.random() * 1.4, s = (big ? 12 : 7) * (0.4 + Math.random()); fx.particle(p[0], p[1] + 0.3, p[2], Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s, Math.sin(a) * Math.cos(e) * s, 0.06 + Math.random() * 0.08, 0.6 + Math.random() * 0.6, Math.random() < 0.5 ? '#ffb347' : '#3a3530', 9); }
-    for (let i = 0; i < (big ? 24 : 10); i++) fx.particle(p[0] + (Math.random() - 0.5) * 2, p[1] + 0.5 + Math.random(), p[2] + (Math.random() - 0.5) * 2, (Math.random() - 0.5), 1 + Math.random(), (Math.random() - 0.5), 0.5, 2 + Math.random() * 1.5, '#4a4642', -0.3, big ? 1.6 : 0.8);
-    fx.flashLight(p, big ? 6 : 3); lightT = big ? 0.35 : 0.15;
+    exps.push({ m, t: 0, life: big ? 0.5 : 0.35, size: big ? 7 : 2.2 });
+    const S = big ? 1 : 0.35, y0 = p[1] + 0.4;
+    // bola de fuego: bocanadas aditivas que se expanden rápido y se apagan
+    for (let i = 0; i < (big ? 46 : 16); i++) { const a = Math.random() * 6.28, e = Math.random() * 1.2, v = (big ? 9 : 5) * Math.random(); fx.puff(p[0], y0, p[2], Math.cos(a) * Math.cos(e) * v, Math.sin(e) * v + 1, Math.sin(a) * Math.cos(e) * v, 1.5 * S + 0.6, (big ? 7 : 2.6) * (0.6 + Math.random() * 0.5), 0.3 + Math.random() * (big ? 0.5 : 0.25), '#fff1c0', '#b8400c', true, 3.5); }
+    // humo negro/gris que sube y queda flotando (más largo en la bomba)
+    for (let i = 0; i < (big ? 60 : 14); i++) { const a = Math.random() * 6.28, r = Math.random() * (big ? 4 : 1.2); fx.puff(p[0] + Math.cos(a) * r, y0 + Math.random() * (big ? 3 : 1), p[2] + Math.sin(a) * r, Math.cos(a) * (big ? 2 : 1), (big ? 2.2 : 1) + Math.random() * (big ? 3 : 1), Math.sin(a) * (big ? 2 : 1), 1.4 * S + 0.6, (big ? 9 : 3) * (0.7 + Math.random() * 0.6), (big ? 4.5 : 2) + Math.random() * 2.5, '#5a524a', '#8d8a86', false, 0.6); }
+    // chispas y escombros
+    for (let i = 0; i < (big ? 120 : 30); i++) { const a = Math.random() * 6.28, e = Math.random() * 1.4, s2 = (big ? 16 : 7) * (0.4 + Math.random()); fx.particle(p[0], y0, p[2], Math.cos(a) * Math.cos(e) * s2, Math.sin(e) * s2, Math.sin(a) * Math.cos(e) * s2, 0.04 + Math.random() * 0.08, 0.6 + Math.random() * (big ? 1.4 : 0.6), Math.random() < 0.6 ? '#ffc86a' : '#2e2a26', 9); }
+    fx.flashLight(p, big ? 14 : 3); lightT = big ? 0.6 : 0.15; light.distance = big ? 40 : 7;
   };
   fx.flashPop = (p) => { fx.flashLight(p, 8); lightT = 0.08; for (let i = 0; i < 14; i++) fx.particle(p[0], p[1], p[2], (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 0.04, 0.25, '#ffffff', 0); };
 
@@ -182,11 +213,35 @@ export function makeFx(scene) {
         if (n >= SMAX) break;
         const k = grow * fade;
         tmpO.position.set(g.x + (b.x - g.x) * (0.3 + 0.7 * grow), g.y + (b.y - g.y) * (0.3 + 0.7 * grow) + Math.sin(time * 0.6 + b.ph) * 0.08, g.z + (b.z - g.z) * (0.3 + 0.7 * grow));
-        tmpO.rotation.set(b.ph, time * 0.05 + b.ph, 0); tmpO.scale.setScalar(Math.max(0.01, b.s * k * 1.25)); tmpO.updateMatrix();
+        tmpO.rotation.set(b.ph, time * 0.05 + b.ph, 0); tmpO.scale.setScalar(Math.max(0.01, b.s * k * 1.05)); tmpO.updateMatrix();
         sm.setMatrixAt(n, tmpO.matrix); tmpC.setScalar(b.c); sm.setColorAt(n, tmpC); n++;
       }
     }
     sm.count = n; sm.instanceMatrix.needsUpdate = true; if (sm.instanceColor) sm.instanceColor.needsUpdate = true;
+    // nubes del humo en billboard (mirando a la cámara) por encima del núcleo
+    n = 0; const cq = cam ? cam.quaternion : null;
+    for (const s2 of smokes) {
+      const g = s2.g, age = NADE.smokeLife - g.life, grow = Math.min(1, age / 1.2), fade = Math.min(1, g.life / 1.5);
+      for (const b of s2.balls) {
+        if (n >= SP) break;
+        const k = grow * fade;
+        tmpO.position.set(g.x + (b.x - g.x) * (0.3 + 0.7 * grow), g.y + (b.y - g.y) * (0.3 + 0.7 * grow) + Math.sin(time * 0.5 + b.ph) * 0.1, g.z + (b.z - g.z) * (0.3 + 0.7 * grow));
+        if (cq) tmpO.quaternion.copy(cq); tmpO.rotateZ(b.ph + time * 0.04 * (b.ph > 3 ? 1 : -1)); tmpO.scale.setScalar(Math.max(0.01, b.s * k * 3.1)); tmpO.updateMatrix();
+        spm.setMatrixAt(n, tmpO.matrix); tmpC.setScalar(0.72 + b.c * 0.3); spm.setColorAt(n, tmpC); n++;
+      }
+    }
+    // bocanadas de explosiones
+    let nf = 0;
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const q = puffs[i]; q.life -= dt; if (q.life <= 0) { puffs.splice(i, 1); continue; }
+      const k = 1 - q.life / q.max; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; const dr = Math.exp(-dt * q.drag); q.vx *= dr; q.vy *= dr; q.vz *= dr;
+      tmpO.position.set(q.x, q.y, q.z); if (cq) tmpO.quaternion.copy(cq); tmpO.rotateZ(q.rot + k); tmpO.scale.setScalar(q.s0 + (q.s1 - q.s0) * Math.sqrt(k)); tmpO.updateMatrix();
+      tmpC.copy(q.c0).lerp(q.c1, Math.min(1, k * 1.6));
+      if (q.add) { if (nf < FP) { tmpC.multiplyScalar(Math.pow(1 - k, 2.2)); fpm.setMatrixAt(nf, tmpO.matrix); fpm.setColorAt(nf, tmpC); nf++; } }
+      else if (n < SP) { const fo = Math.min(1, (1 - k) * 2.5); tmpC.multiplyScalar(0.55 + 0.45 * fo); spm.setMatrixAt(n, tmpO.matrix); spm.setColorAt(n, tmpC); n++; }
+    }
+    spm.count = n; spm.instanceMatrix.needsUpdate = true; spm.instanceColor.needsUpdate = true;
+    fpm.count = nf; fpm.instanceMatrix.needsUpdate = true; fpm.instanceColor.needsUpdate = true;
     // fuego
     n = 0; let fl = 0, lp = null;
     for (let i = fires.length - 1; i >= 0; i--) {
