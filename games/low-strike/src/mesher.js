@@ -670,6 +670,7 @@ export function buildFromBsp(bsp, info) {
     mat.uniforms.map.value = map; mat.uniforms.lmap.value = lmap;
     if (p.kind === 'water') { mat.transparent = true; }
     const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; m.receiveShadow = false; m.castShadow = p.kind !== 'water';
+    if (p.brk !== undefined) m.userData.brk = p.brk;
     group.add(m); tris += n / 3;
   }
   group.matrixAutoUpdate = false;

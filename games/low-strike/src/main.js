@@ -27,6 +27,7 @@ import * as A from './audio.js';
 import { makeMenu } from './menu.js';
 import { makeSettings, styleCrosshair } from './settings.js';
 import { iconURL } from './icons.js';
+import { makeBreakables } from './breakables.js';
 import { hud, radarImage, drawRadar, renderBoard, buildBuy, refreshBuy, buyCats, weaponInfo, showWeaponInfo, WNAME } from './ui.js';
 
 const U = 0.0254, D2R = Math.PI / 180;
@@ -393,6 +394,7 @@ function shotFx(sid, wid, eye, ends, imps, hits, w) {
   // polvo del color de lo que se golpeó: piso (arena/baldosas) o pared (revoque/arenisca)
   const dustC = G.cfg.map === 'mirage' ? ['#d9d2c4', '#e8e1d2'] : ['#c9a776', '#d8c09a'];
   if (imps.length) A.sfxImpact([imps[0][0], imps[0][1], imps[0][2]], Math.random() < 0.15 ? 'metal' : 'concrete');
+  if (BRK) for (const im of imps) { const b = BRK.at(im[0], im[1], im[2]); if (b >= 0) breakIt(b); }
   for (const im of imps) { fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]], im[4] > 0.7 ? dustC[0] : dustC[1]); if (mine && G.cfg.mode === 'practice') fx.debugBox(im); }
   for (const h of hits) {
     const d = [h[1][0] - eye[0], h[1][1] - eye[1], h[1][2] - eye[2]], L = Math.hypot(...d) || 1, dn = d.map(v => v / L);
@@ -440,7 +442,7 @@ function knife(stab) {
   const r = traceShot(G.W, G.nades, myId, eye[0], eye[1], eye[2], d[0], d[1], d[2], wk, targets());
   if (r.hit) { const t = G.players.get(r.hit.id); if (t) { const back = Math.cos(angDiff(t.yaw, p.yaw)) > 0.5; if (back) r.hit.dmg = stab ? 180 : 90; } }
   if (r.hit) { req('hit', { t: r.hit.id, w: 'knife', part: 'chest', d: r.hit.dmg }); fx.blood(r.hit.pos, d, false); A.sfxHit(false); }
-  else if (r.impacts.length) { const im = r.impacts[0]; fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]]); A.sfxClick(im, 1800, 0.5); }
+  else if (r.impacts.length) { const im = r.impacts[0]; fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]]); A.sfxClick(im, 1800, 0.5); const b = BRK ? BRK.at(im[0], im[1], im[2], 0.3) : -1; if (b >= 0) { breakIt(b); send('brk', { i: b }); } }
   else A.sfxThrow();
   M.fireT = stab ? 1.0 : 0.45; M.kick = 1; M.knife2 = stab; M.vmEv = { kind: stab ? 'stab_hit' : 'stab_miss' };
   send('sh', { i: myId, w: 'knife', o: eye, e: [r.end], m: [], h: r.hit ? [[r.hit.id, r.hit.pos, 0]] : [] });
@@ -545,6 +547,7 @@ function onMsg(type, d, from, meta) {
   switch (type) {
     case 'st': applySt(d); break;
     case 'rs': roundStart(d); break;
+    case 'brk': breakIt(d.i); break;
     case 'ev': onEvent(d); break;
     case 'p': { const p = G.players.get(from); if (p && from !== myId) netPos(p, d); break; }
     case 'pb': if (!isHost()) for (const b of d) { const p = G.players.get(b[0]); if (p) netPos(p, b.slice(1)); } break;
@@ -586,7 +589,16 @@ function applySt(s) {
   }
   if (buyOpen) refreshBuy(P, buySel);
 }
+// rompibles: se rompen igual en todos los clientes (cada uno procesa los mismos impactos); el cuchillo avisa
+let BRK = null;
+function breakIt(i) {
+  if (!BRK || !BRK.break(i)) return;
+  const c = BRK.center(i);
+  for (let k = 0; k < 26; k++) fx.particle(c[0] + (Math.random() - 0.5) * 0.6, c[1] + (Math.random() - 0.5) * 0.8, c[2] + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 4, Math.random() * 3, (Math.random() - 0.5) * 4, 0.04 + Math.random() * 0.06, 0.8 + Math.random() * 0.8, Math.random() < 0.5 ? '#6b4a2b' : '#8a6a44', 9);
+  A.sfxImpact(c, 'wood'); A.sfxImpact(c, 'wood');
+}
 function roundStart(d) {
+  if (BRK) BRK.reset();
   fx.clearSmokes(); fx.clearDecals();
   for (const m of nadeMeshes.values()) scene.remove(m); nadeMeshes.clear(); G.nades.length = 0;
   planting.clear();
@@ -929,6 +941,9 @@ async function loadGame(id) {
   trajLine = null; pings.length = 0;
   if (mapMesh) mapMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   const built = data.bsp ? buildFromBsp(data.bsp, data.info) : data.mesh ? buildFromModel(W, data.mesh, data.info, id, G.nav) : buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
+  // mapas de GoldSrc: sus túneles/ventiletas miden 48 u (pensados para el hull agachado de 36 u): agachado más bajo
+  PM.hCrouch = (data.bsp ? 44 : 54) * 0.0254; PM.eyeCrouch = (data.bsp ? 38 : 46) * 0.0254;
+  try { BRK = makeBreakables(W, data.info, mapMesh); } catch (e) { BRK = null; console.warn('rompibles', e); }
   if (wing && wing.cells.length) mapMesh.add(wingmanMesh(W, wing.cells));
   if (G.props && G.props.length) scene.add(propsMesh(G.props));
   if (data.mesh && !data.bsp) { try { scene.add(buildDecor(W, G.nav, id, data.info)); } catch (e) { console.warn('decor', e); } }

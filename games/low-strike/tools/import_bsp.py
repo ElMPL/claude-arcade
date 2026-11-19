@@ -27,7 +27,8 @@ for e in ents:
   if not m.startswith('*'): continue
   k = int(m[1:]); cl = e.get('classname', '')
   org = tuple(float(x) for x in e.get('origin', '0 0 0').split())
-  if cl in SOLID_ENT: models[k] = ('solid', e, org)
+  if cl == 'func_breakable': models[k] = ('brk', e, org)
+  elif cl in SOLID_ENT: models[k] = ('solid', e, org)
   elif cl in VISUAL_ENT: models[k] = ('visual', e, org)
   elif cl in ('func_bomb_target', 'func_buyzone', 'func_ladder') or cl.startswith('trigger'): models[k] = ('zone', e, org)
 
@@ -72,7 +73,7 @@ for mi, (kind, e, org) in models.items():
     solid = kind != 'visual' and k != 'water'
     if solid:
       for j in range(1, len(P) - 1): col.append(tr(np.stack([P[0], P[j + 1], P[j]])))  # Quake: horario visto de frente → invertir
-    render.append((P, s / max(1, mt['w']), t / max(1, mt['h']), ti[8], lmu, k))
+    render.append((P, s / max(1, mt['w']), t / max(1, mt['h']), ti[8], lmu, k, mi if kind == 'brk' else -1))
 col = np.array(col)
 print(mid, 'caras render', len(render), 'tris colisión', len(col), 'lightmaps', len(lm_imgs))
 
@@ -139,14 +140,27 @@ def player_clips():
     for dzu in (38, 46, 54):
       pts = np.stack([X / U, -Zg / U, Yg / U + dzu], 1)
       clip &= gs_contents(B, 1, pts) == -2
-    cz, cx = zz[clip], xx[clip]
-    TOP[l][cz, cx] = TOP[l][cz, cx] + 4.0; cls[l][cz, cx] = 3; marked += int(clip.sum())
+    # clip que es una rampa (los mappers tapan escaleras con clip para que se suban lisas): buscar a qué altura
+    # el hull vuelve a estar libre; si es poco (≤ 40 u), es piso más alto, no pared
+    ci = np.nonzero(clip)[0]; rise = np.full(len(ci), -1.0)
+    for h in range(40, 40 + 44, 4):
+      pend = rise < 0
+      if not pend.any(): break
+      k = ci[pend]; pts = np.stack([X[k] / U, -Zg[k] / U, Yg[k] / U + h], 1)
+      free = gs_contents(B, 1, pts) != -2
+      r = rise[pend]; r[free] = h - 36; rise[pend] = r
+    ramp = rise >= 0
+    rz, rx = zz[ci[ramp]], xx[ci[ramp]]; TOP[l][rz, rx] = TOP[l][rz, rx] + rise[ramp] * U
+    wall = ci[~ramp]; cz, cx = zz[wall], xx[wall]; clip = np.zeros_like(clip); clip[wall] = True
+    TOP[l][cz, cx] = TOP[l][cz, cx] + 4.0; cls[l][cz, cx] = 3; marked += int(clip.sum()); dbg_clip.extend(zip(cx.tolist(), cz.tolist(), [l] * len(cx)))
   for l in range(L):
     t = np.clip(np.round((TOP[l] + 2) * 100), 0, 65535).astype(np.int32)
     im[2 * l * N:(2 * l + 1) * N, :, 0] = np.where(has[l], cls[l] + 1, 0); im[2 * l * N:(2 * l + 1) * N, :, 1] = t >> 8; im[2 * l * N:(2 * l + 1) * N, :, 2] = t & 255
   Image.fromarray(im.astype(np.uint8), 'RGB').save(f'../maps/{mid}.png', optimize=True)
-  print('clip del jugador: celdas de piso bloqueadas', marked)
+  print('clip del jugador: celdas de piso bloqueadas', marked, 'rampas', dbg_ramp[0])
+dbg_clip = []; dbg_ramp = [0]
 player_clips()
+json.dump(dbg_clip, open(f'/tmp/ls/{mid}_clipcells.json', 'w'))
 
 # ---------- atlas de texturas (con 2 px de borde repetido para el filtrado) ----------
 used = sorted({r[3] for r in render})
@@ -188,7 +202,9 @@ Image.fromarray(lmA, 'RGB').save(f'../maps/{mid}_lm.webp', quality=92, method=6)
 # ---------- malla de render: por grupo (opaco / alpha / agua) ----------
 # vértice: pos (u16 cm ×3) | uv de textura (f32 ×2, en repeticiones) | tile (u16) | uv del lightmap (u16 ×2, /65535)
 groups = {'opaque': [], 'alpha': [], 'water': []}
-for P, s, t, texi, lmu, k in render:
+brk_ids = sorted({b for *_, b in render if b >= 0})
+for P, s, t, texi, lmu, k, bm in render:
+  if bm >= 0: k = (k, brk_ids.index(bm)); groups.setdefault(k, [])
   W3 = tr(P) + off
   for j in range(1, len(P) - 1):
     tri = [0, j, j + 1]
@@ -206,10 +222,15 @@ for k, vs in groups.items():
   tl = np.array([v[3] for v in vs], '<u2')
   lm = np.clip(np.round(np.array([[v[4], v[5]] for v in vs]) * 65535), 0, 65535).astype('<u2')
   blob = pos.tobytes() + uv.tobytes() + tl.tobytes() + lm.tobytes()
-  blobs.append(blob); parts.append({'kind': k, 'verts': n})
+  blobs.append(blob); parts.append({'kind': k[0], 'verts': n, 'brk': k[1]} if isinstance(k, tuple) else {'kind': k, 'verts': n})
 open(f'../maps/{mid}.bin', 'wb').write(b''.join(blobs))
 info['format'] = 'spans'; info['render'] = 'bsp'; info['parts'] = parts
 info['atlas'] = {'tex': f'{mid}_tex.webp', 'w': AW, 'h': AH, 'tiles': [[tiles[i][0], tiles[i][1], tiles[i][2], tiles[i][3]] for i in used], 'names': [MT[i]['name'] for i in used], 'lm': f'{mid}_lm.webp', 'lmw': LMW, 'lmh': LMH}
+# rompibles (func_breakable): caja en metros del juego; se rompen de un tiro o un cuchillazo
+def brk_box(m):
+  a, b = tr(np.array(MD[m][0:3], float)) + off, tr(np.array(MD[m][3:6], float)) + off
+  return [round(float(min(a[q], b[q])), 3) for q in range(3)] + [round(float(max(a[q], b[q])), 3) for q in range(3)]
+info['breakables'] = [{'box': brk_box(m), 'mat': int(next((e for e in ents if e.get('model') == '*%d' % m), {}).get('material', 1) or 1)} for m in brk_ids]
 info['sky'] = next((e.get('skyname') for e in ents if e.get('classname') == 'worldspawn'), None)
 json.dump(info, open(f'../maps/{mid}.json', 'w'))
 print('render', {p['kind']: p['verts'] // 3 for p in parts}, 'atlas', AW, AH, 'lm', LMW, LMH, 'bin MB', round(sum(len(b) for b in blobs) / 1e6, 2))

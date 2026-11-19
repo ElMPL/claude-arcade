@@ -47,7 +47,7 @@ export async function loadMap(id, base = 'maps/') {
       const uvB = buf.slice(o, o + n * 8); o += n * 8; const uv = new Float32Array(uvB);
       const tile = new Uint16Array(buf.slice(o, o + n * 2)); o += n * 2;
       const lm = new Uint16Array(buf.slice(o, o + n * 4)); o += n * 4;
-      parts.push({ kind: p.kind, n, pos, uv, tile, lm }); allPos.push(pos);
+      parts.push({ kind: p.kind, brk: p.brk, n, pos, uv, tile, lm }); allPos.push(pos);
     }
     const tot = allPos.reduce((a, b) => a + b.length, 0), mesh = new Uint16Array(tot); let k = 0; for (const a of allPos) { mesh.set(a, k); k += a.length; }
     out.bsp = { parts, base }; out.mesh = mesh;
