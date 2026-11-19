@@ -8,7 +8,8 @@ export const VMAP = {
   ak47: 'v_rif_ak47', m4a4: 'v_rif_m4a1', m4a1s: 'v_rif_m4a1', famas: 'v_rif_famas', galil: 'v_rif_galil', aug: 'v_rif_aug', sg553: 'v_rif_sg552',
   awp: 'v_snip_awp', ssg08: 'v_snip_scout', g3sg1: 'v_snip_g3sg1', scar20: 'v_snip_sg550',
   glock: 'v_pist_glock18', usp: 'v_pist_usp', p2000: 'v_pist_usp', deagle: 'v_pist_deagle', p250: 'v_pist_p228', fiveseven: 'v_pist_fiveseven', dualies: 'v_pist_elite',
-  mac10: 'v_smg_mac10', mp9: 'v_smg_tmp', mp5sd: 'v_smg_mp5', ump: 'v_smg_ump45', p90: 'v_smg_p90',
+  mac10: 'v_smg_mac10', mp9: 'v_smg_tmp', mp5sd: 'v_smg_mp5', mp5: 'v_smg_mp5', mp7: 'v_smg_mp5', bizon: 'v_smg_mp5',
+  tec9: 'v_pist_glock18', cz75: 'v_pist_p228', r8: 'v_pist_deagle', zeus: 'v_pist_p228', sawedoff: 'v_shot_m3super90', mag7: 'v_smg_ump45', negev: 'v_mach_m249para', ump: 'v_smg_ump45', p90: 'v_smg_p90',
   xm1014: 'v_shot_xm1014', nova: 'v_shot_m3super90', m249: 'v_mach_m249para',
   knife: 'v_knife_t', c4: 'v_c4', flash: 'v_eq_flashbang', he: 'v_eq_fraggrenade', smoke: 'v_eq_smokegrenade', decoy: 'v_eq_flashbang', molotov: 'v_eq_fraggrenade', incendiary: 'v_eq_fraggrenade',
 };
@@ -112,12 +113,51 @@ export function attachGun(V, gunGeo, mat, pick) {
   if (new THREE.Matrix3().setFromMatrix4(inv).determinant() < 0) side.negate(); // hueso espejado (mano izquierda): que el arma no quede dada vuelta // derecha del arma (en Source: adelante × arriba = izquierda → se invierte)
   const R = new THREE.Matrix4().makeBasis(side.clone().negate(), upW, fwd.clone().negate()); // columnas: x → -izq = derecha, y → arriba, z → atrás
   const m = new THREE.Mesh(gunGeo, mat || V.gunMats || null);
-  const M = new THREE.Matrix4().compose(ctr, new THREE.Quaternion().setFromRotationMatrix(R), new THREE.Vector3(sc, sc, sc)).multiply(new THREE.Matrix4().makeTranslation(-gc.x, -gc.y, -gc.z));
+  let M = new THREE.Matrix4().compose(ctr, new THREE.Quaternion().setFromRotationMatrix(R), new THREE.Vector3(sc, sc, sc)).multiply(new THREE.Matrix4().makeTranslation(-gc.x, -gc.y, -gc.z));
+  try { const M2 = fitShape(pts, gunGeo, M, inv, ref, ctr); if (M2) M = M2; } catch (e) { }
   m.matrixAutoUpdate = false; m.matrix.copy(M); m.renderOrder = 10; m.frustumCulled = false;
   V.bones[wb].add(m);
   V.mesh.material = def.meta.groups.map(gr => /hands/i.test(gr.tex) ? V.mesh.material[def.meta.groups.indexOf(gr)] : hidden);
   V.gun = m;
   return m;
+}
+// Ajuste por forma: prueba las 24 rotaciones de ejes del arma de CS2 contra la malla del arma de Source (la que
+// el modelo agarra de verdad) y se queda con la que mejor se superpone (distancia de Chamfer), con escala por
+// tamaño medio y unos pasos de ICP para la posición. Así una MP9 encaja en la mano de la TMP aunque tengan otras
+// proporciones (antes se usaba el eje más largo, que en armas con cargador largo apuntaba para arriba).
+function sample(arr, n) { if (arr.length <= n) return arr; const out = [], st = arr.length / n; for (let i = 0; i < n; i++) out.push(arr[Math.floor(i * st)]); return out; }
+function chamfer(A, B) {
+  let s = 0; for (const a of A) { let b = 1e9; for (const q of B) { const d = (a.x - q.x) ** 2 + (a.y - q.y) ** 2 + (a.z - q.z) ** 2; if (d < b) b = d; } s += Math.sqrt(b); }
+  let t = 0; for (const q of B) { let b = 1e9; for (const a of A) { const d = (a.x - q.x) ** 2 + (a.y - q.y) ** 2 + (a.z - q.z) ** 2; if (d < b) b = d; } t += Math.sqrt(b); }
+  return s / A.length + t / B.length;
+}
+const ROTS = (() => { const out = [], P = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]; for (const p of P) for (let sg = 0; sg < 8; sg++) { const m = new THREE.Matrix4(), e = new Array(16).fill(0); for (let r = 0; r < 3; r++) e[r * 4 + p[r]] = (sg >> r) & 1 ? -1 : 1; e[15] = 1; m.fromArray(e); out.push(m); } return out; })();
+function fitShape(tgtAll, geo, M0, inv, ref, ctr) {
+  const T = sample(tgtAll, 220); if (T.length < 20) return null;
+  const pa = geo.attributes.position, G = []; const st = Math.max(1, Math.floor(pa.count / 220)); for (let i = 0; i < pa.count; i += st) G.push(new THREE.Vector3().fromBufferAttribute(pa, i));
+  const gc = new THREE.Vector3(); G.forEach(p => gc.add(p)); gc.divideScalar(G.length);
+  const tc = new THREE.Vector3(); T.forEach(p => tc.add(p)); tc.divideScalar(T.length);
+  const rms = (A, c) => Math.sqrt(A.reduce((s, p) => s + p.distanceToSquared(c), 0) / A.length);
+  const sc = rms(T, tc) / rms(G, gc);
+  const want = Math.sign(new THREE.Matrix3().setFromMatrix4(inv).determinant()) || 1;
+  const muzzle = new THREE.Vector3(0, 0, -1);
+  let best = null, bestE = Infinity;
+  const tryM = (Mx, bonus = 1) => { const P = G.map(p => p.clone().applyMatrix4(Mx)); const e = chamfer(P, T) * bonus; if (e < bestE) { bestE = e; best = Mx; } };
+  tryM(M0, 0.78); // la alineación de antes gana salvo que otra encaje claramente mejor
+  for (const R of ROTS) {
+    if (Math.sign(new THREE.Matrix3().setFromMatrix4(R).determinant()) !== want) continue;
+    if (ref && ref.lengthSq() > 1e-6) { const f = muzzle.clone().applyMatrix4(R); if (f.dot(ref) <= 0) continue; } // la boca hacia el fogonazo
+    const Mx = new THREE.Matrix4().makeTranslation(tc.x, tc.y, tc.z).multiply(R).multiply(new THREE.Matrix4().makeScale(sc, sc, sc)).multiply(new THREE.Matrix4().makeTranslation(-gc.x, -gc.y, -gc.z));
+    tryM(Mx);
+  }
+  // ICP de traslación
+  for (let it = 0; it < 6; it++) {
+    const P = G.map(p => p.clone().applyMatrix4(best)), d = new THREE.Vector3();
+    for (const q of T) { let bi = 0, b = 1e9; P.forEach((p, i) => { const e = p.distanceToSquared(q); if (e < b) { b = e; bi = i; } }); d.add(q.clone().sub(P[bi])); }
+    d.divideScalar(T.length); if (d.lengthSq() < 1e-8) break;
+    best = new THREE.Matrix4().makeTranslation(d.x, d.y, d.z).multiply(best);
+  }
+  return best;
 }
 // reproducir una secuencia (por nombre o por tipo: idle, draw, shoot, reload); vuelve sola al idle
 export function playSeq(V, kind, opts = {}) {
@@ -151,7 +191,7 @@ export function updateVModel(V, dt, unsil) {
 const IKF = {
   rifle: [[0, 0, 0, 0, 0], [0.16, 0.9, -0.2, 0.45, 1], [0.4, 1.0, -0.25, 0.5, 1], [0.54, 0.2, -0.1, 0.3, 1], [0.7, -0.8, -0.15, 0.25, 1], [0.86, -0.85, -0.15, 0.25, 1], [1, 0, 0, 0, 0]],
   pistol: [[0, 0, 0, 0, 0], [0.2, 1.1, -0.2, 0.45, 1], [0.46, 1.2, -0.25, 0.5, 1], [0.66, -0.9, -0.15, 0.3, 1], [0.86, -0.95, -0.15, 0.3, 1], [1, 0, 0, 0, 0]],
-  knife: [[0, 0, 0, 0, 0], [0.18, 0.6, -0.25, 0.5, 1], [0.42, 3.1, -0.3, 0.55, 1], [0.62, 3.25, -0.2, 0.45, 1], [0.84, 6.283, -0.05, 0.1, 1], [1, 6.283, 0, 0, 0]],
+  knife: [[0, 0, 0, 0, 0], [0.2, 1.15, -0.2, 0.45, 1], [0.45, 1.25, -0.25, 0.5, 1], [0.62, -1.05, -0.1, 0.35, 1], [0.84, -1.1, -0.1, 0.35, 1], [1, 0, 0, 0, 0]],
 };
 const _q = new THREE.Quaternion(), _r = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'ZYX');
 function rotRoot(bone, x, y, z) {

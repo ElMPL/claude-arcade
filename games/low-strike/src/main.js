@@ -1344,7 +1344,8 @@ function updateCamera(dt) {
       const [bx, by, bz, brx, bry, brz] = base0;
       sv.holder.position.set((S.vmX ?? 1) * U + (bx - b[0]) * 0.5, (S.vmZ ?? -1) * U + (by - b[1]) * 0.5, -(S.vmY ?? 1) * U + (bz - b[2]) * 0.4);
       sv.holder.rotation.set(brx * 0.35, bry * 0.35, brz * 0.2);
-    } else { for (const c of vm.children) if (c.name !== 'srcvm') c.visible = true; if (srcCur) srcCur.holder.visible = false; }
+    } else if (VMAP[wid]) { for (const c of vm.children) c.visible = false; } // cargando su modelo: nada (antes asomaban los brazos de repuesto)
+    else { for (const c of vm.children) if (c.name !== 'srcvm') c.visible = true; if (srcCur) srcCur.holder.visible = false; }
     { const f = sv ? vmFovSrc : vmFovProc; if (Math.abs(vmCam.fov - f) > 0.01) { vmCam.fov = f; vmCam.updateProjectionMatrix(); } }
     vm.position.copy(camera.position); vm.quaternion.copy(camera.quaternion);
     vmCam.position.copy(camera.position); vmCam.quaternion.copy(camera.quaternion);
