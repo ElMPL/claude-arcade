@@ -14,10 +14,18 @@ export function inaccuracy(w, st) {
   // st: { speed, onGround, duck, scoped, shots }
   let a = w.scope && w.cat === 'sniper' ? (st.scoped ? w.scoped : w.spread) : w.spread;
   const max = w.speed * U * (st.scoped && w.cat === 'sniper' ? 0.5 : 1);
-  const mv = Math.max(0, Math.min(1, (st.speed - max * 0.34) / (max * 0.66)));
+  // como CWeaponCSBase::GetInaccuracy de CS:GO: la velocidad 2D se mapea de 34 % (velocidad agachado) a 95 % de
+  // la velocidad máxima del arma a 0–1, con curva x^0.25 (MOVEMENT_CURVE01_EXPONENT): apenas pasás el umbral la
+  // imprecisión sube mucho, por eso hay que frenar (counter-strafe) o caminar con Shift para tirar.
+  let mv = Math.max(0, Math.min(1, (st.speed - max * 0.34) / (max * 0.95 - max * 0.34)));
+  if (mv > 0) mv = Math.pow(mv, 0.25);
   a += w.move * mv;
-  // en el aire: depende del arma y de la velocidad horizontal (quieto en el punto alto del salto la SSG es precisa)
-  if (!st.onGround) { const j = w.jump ?? JUMP[w.cat] ?? 0.12, hs = Math.min(1, st.speed / Math.max(1, max)); a += j * (0.25 + 0.75 * hs); }
+  // en el aire: imprecisión inicial de salto + otra parte según la velocidad vertical (raíz, de 25 % a 100 % del
+  // impulso de salto), tope 2× la inicial (kMaxFallingPenalty)
+  if (!st.onGround) {
+    const j = w.jump ?? JUMP[w.cat] ?? 0.12, sImp = Math.sqrt(301.993), sV = Math.sqrt(Math.abs(st.vy || 0) / U);
+    a += j + Math.max(0, Math.min(j, (sV - sImp * 0.25) / (sImp * 0.75) * j));
+  }
   else if (st.sinceLand !== undefined && st.sinceLand < 0.35) a += (w.jump ?? JUMP[w.cat] ?? 0.12) * 0.5 * (1 - st.sinceLand / 0.35); // al caer
   if (st.duck > 0.5 && st.onGround) a *= w.crouch ?? 0.8;
   if (w.auto && w.pellets === 1) a += Math.min(0.022, st.shots * 0.0016);
@@ -54,7 +62,7 @@ export function recoilStep(w, k, rnd) {
 }
 // dirección de la bala con mira (yaw, pitch en radianes) + punch (grados) + cono de imprecisión
 export function shotDir(yaw, pitch, pp, py, inacc, rnd) {
-  const a = rnd() * Math.PI * 2, r = inacc * (rnd() * 0.6 + rnd() * 0.4);
+  const a = rnd() * Math.PI * 2, r = inacc * rnd(); // radio uniforme como en CS:GO (más tiros cerca del centro)
   const p = pitch + pp * D2R + Math.sin(a) * r, y = yaw - py * D2R + Math.cos(a) * r;
   return [-Math.sin(y) * Math.cos(p), Math.sin(p), -Math.cos(y) * Math.cos(p)];
 }

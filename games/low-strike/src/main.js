@@ -415,7 +415,7 @@ function fireLocal() {
   if (slot && M.ammo[slot][0] <= 0) { if (!M.trig) { A.sfxClick(null, 2600, 0.35); M.trig = true; } reload(); return; }
   M.trig = true; M.inspect = 0;
   if (admin('ls.aim')) aimbot();
-  const st = { speed: Math.hypot(p.vx, p.vz), onGround: p.onGround, duck: p.duck, scoped: M.scope > 0, shots: M.shots, sinceLand: p.sinceLand };
+  const st = { speed: Math.hypot(p.vx, p.vz), vy: p.vy, onGround: p.onGround, duck: p.duck, scoped: M.scope > 0, shots: M.shots, sinceLand: p.sinceLand };
   const inacc = admin('ls.norecoil') ? w.spread * 0.2 : inaccuracy(w, st);
   const eye = [p.x, p.y + eyeH(p), p.z];
   const pp = admin('ls.norecoil') ? 0 : M.pp, py = admin('ls.norecoil') ? 0 : M.py;
@@ -776,7 +776,7 @@ function toggleBuy(force) {
     if (!P.alive) return;
     if (!canBuyNow()) { hud.center(G.phase === 'live' ? 'Se terminó el tiempo de compra' : 'No podés comprar ahora', 1400); return; }
     const style = 'grid';
-    if (builtFor !== P.team + style) { builtFor = P.team + style; buildBuy(P.team, iconOf, id => req('buy', { i: id }), id => showWeaponInfo(id), style, (c) => { buySel = c; refreshBuy(me(), buySel); }); }
+    if (builtFor !== P.team + style) { builtFor = P.team + style; buildBuy(P.team, iconOf, id => doBuy(id), id => showWeaponInfo(id), style, (c) => { buySel = c; refreshBuy(me(), buySel); }); }
     buySel = -1; refreshBuy(P, buySel);
     buyOpen = true; $('buy').hidden = false; document.exitPointerLock && document.exitPointerLock();
   } else { buyOpen = false; $('buy').hidden = true; showWeaponInfo(null); if (!isTouch) lockPointer(); }
@@ -793,15 +793,34 @@ function canBuyNow() {
   const s = G.spawns ? G.spawns[P.team] : null;
   return !s || Math.hypot(M.pl.x - s.cx, M.pl.z - s.cz) < 22 || !!(zoneAt(G.W, M.pl.x, M.pl.z) & (P.team === 'T' ? 16 : 32));
 }
+// compras de la ronda (para RECOMPRAR ANTERIOR) y auto-compra: chaleco+casco, el mejor rifle que alcance, kit y granadas
+const buyLog = { round: -1, cur: [], prev: [] };
+function doBuy(id) {
+  const r = G.round ?? 0; if (buyLog.round !== r) { if (buyLog.cur.length) buyLog.prev = buyLog.cur; buyLog.cur = []; buyLog.round = r; }
+  buyLog.cur.push(id); req('buy', { i: id });
+}
+function autoBuy() {
+  const P = me(); if (!P) return; let m = P.money; const t = P.team, want = [];
+  const take = (id) => { const w = WEAPONS[id]; if (w && m >= w.price) { want.push(id); m -= w.price; return true; } return false; };
+  if (P.ar < 100 || !P.helm) take('vesthelm') || take('vest');
+  if (!P.inv.p) for (const id of (t === 'T' ? ['ak47', 'galil', 'mac10'] : ['m4a1s', 'm4a4', 'famas', 'mp9'])) if (take(id)) break;
+  if (t === 'CT' && !P.inv.kit) take('defuser');
+  for (const id of ['smoke', 'flash', t === 'T' ? 'molotov' : 'incendiary', 'he']) take(id);
+  for (const id of want) doBuy(id);
+}
+function reBuy() { const r = G.round ?? 0; const list = buyLog.round === r ? buyLog.prev : buyLog.cur.length ? buyLog.cur : buyLog.prev; for (const id of list.slice()) if (WEAPONS[id] && (WEAPONS[id].side === 'both' || !WEAPONS[id].side || WEAPONS[id].side === me().team)) doBuy(id); }
+for (const b of document.querySelectorAll('.buy-foot [data-act]')) b.onclick = () => { const a = b.dataset.act; if (a === 'cancel') toggleBuy(false); else if (a === 'auto') autoBuy(); else reBuy(); setTimeout(() => refreshBuy(me(), buySel), 80); };
 function buyKey(e) {
   if (e.code === 'KeyB') { toggleBuy(false); return; }
+  if (e.code === 'KeyA') { autoBuy(); setTimeout(() => refreshBuy(me(), buySel), 80); return; }
+  if (e.code === 'KeyR') { reBuy(); setTimeout(() => refreshBuy(me(), buySel), 80); return; }
   if (e.code === 'Escape' || e.code === 'Digit0') { toggleBuy(false); return; }
   const n = parseInt(e.key, 10);
   if (!(n >= 1 && n <= 9)) return;
   const P = me();
   const cats = buyCats();
   if (buySel < 0) { if (n <= cats.length) buySel = n - 1; }
-  else { const list = cats[buySel].items[P.team]; if (list[n - 1]) req('buy', { i: list[n - 1] }); buySel = -1; }
+  else { const list = cats[buySel].items[P.team]; if (list[n - 1]) doBuy(list[n - 1]); buySel = -1; }
   refreshBuy(P, buySel);
 }
 $('buy').addEventListener('mousedown', e => e.stopPropagation());
@@ -1226,9 +1245,11 @@ function updateCamera(dt) {
     let ox = b[0] + Math.cos(bob) * 0.008 * ba + M.sway[0] * 0.02, oy = b[1] + Math.abs(Math.sin(bob)) * 0.01 * ba - M.sway[1] * 0.02, oz = b[2] + (w && w.cat === 'knife' ? M.kick * 0.045 : 0);
     { const S = settings.S, U = 0.0254; ox += ((S.vmX ?? 1) - 1) * U; oz -= ((S.vmY ?? 1) - 1) * U; oy += ((S.vmZ ?? -1) + 1) * U; } // viewmodel_offset_x/y/z
     let rx = M.kick * 0.12, ry = 0, rz = 0;
+    // el modelo de Source ya trae su animación de disparo (el retroceso visual del juego original): el resorte
+    // propio sólo se usa con los brazos de repuesto
+    const base0 = [ox, oy, oz, rx, ry, rz];
     if (P.alive && w && w.cat !== 'knife') { const r = M.rk; oz += r * 0.18; oy += r * 0.02; rx += r * 0.45; rz += r * M.rkR; ry += r * M.rkY * 0.4; }
     vm.userData.reloadK = 0;
-    const base0 = [ox, oy, oz, rx, ry, rz]; // el modelo de Source trae recarga, sacada e inspección propias
     if (P.alive && M.reloadT > 0) {
       const rw = WEAPONS[curId()], k = 1 - M.reloadT / rw.reload, e = Math.sin(Math.min(1, k) * Math.PI);
       // el arma se inclina hacia la izquierda y arriba para dejar ver el cambio de cargador; al final, golpe de palanca
@@ -1284,7 +1305,7 @@ function updateCamera(dt) {
   $('scope').hidden = !sniperScope;
   const showX = !sniperScope && (P.alive || M.spec) && !(w && w.cat === 'sniper');
   let gap = CFG.xGap;
-  if (!CFG.xStatic && P.alive && w && w.dmg) gap = CFG.xGap + Math.max(0, inaccuracy(w, { speed: Math.hypot(M.pl.vx, M.pl.vz), onGround: M.pl.onGround, duck: M.pl.duck, scoped: M.scope > 0, shots: M.shots }) * 900 - 1);
+  if (!CFG.xStatic && P.alive && w && w.dmg) gap = CFG.xGap + Math.max(0, inaccuracy(w, { speed: Math.hypot(M.pl.vx, M.pl.vz), vy: M.pl.vy, onGround: M.pl.onGround, duck: M.pl.duck, scoped: M.scope > 0, shots: M.shots }) * 900 - 1);
   hud.crosshair(Math.min(60, gap), showX, CFG);
 }
 let hudT = 0, radarT = 0;

@@ -145,7 +145,7 @@ export function buildBuy(team, icon, onBuy, onHover) {
     col.innerHTML = `<h5><b>${ci + 1}</b>${cat.name}</h5>`;
     cat.items[team].forEach((id, ii) => {
       const w = WEAPONS[id], it = document.createElement('div'); it.className = 'bit'; it.dataset.id = id;
-      it.innerHTML = `<span class="k">${ii + 1}</span><span class="n">${esc(w.name)}</span><img src="${iconURL(id, 200, 64)}"><span class="p">$${w.price}</span>`;
+      it.innerHTML = `<span class="k">${ii + 1}</span><span class="n">${esc(w.name)}</span><i class="ic" style="--m:url(${iconURL(id, 200, 64)})"></i><span class="p">$${w.price}</span>`;
       it.onclick = () => onBuy(id); it.onmouseenter = () => onHover(id); it.onmouseleave = () => onHover(null);
       col.appendChild(it);
     });

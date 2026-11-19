@@ -348,7 +348,7 @@ export function makeBots(G, H) {
   }
   function fire(p, b, w, wid, D, dist) {
     const pl = p.pl;
-    const st = { speed: Math.hypot(pl.vx, pl.vz), onGround: pl.onGround, duck: pl.duck, scoped: p.scoped, shots: b.shots };
+    const st = { speed: Math.hypot(pl.vx, pl.vz), vy: pl.vy, onGround: pl.onGround, duck: pl.duck, scoped: p.scoped, shots: b.shots };
     const inacc = inaccuracy(w, st);
     const [rp, ry] = recoilStep(w, b.shots, rnd);
     const eye = [pl.x, pl.y + eyeH(pl), pl.z];

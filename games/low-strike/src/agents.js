@@ -71,7 +71,7 @@ export function makeAgent(team) {
   const holder = new THREE.Group();
   for (let i = 0; i < D.n; i++) { const p = D.B[i].p; (p >= 0 ? bones[p] : holder).add(bones[i]); }
   const mesh = new THREE.SkinnedMesh(D.g, D.mats);
-  mesh.castShadow = true; mesh.frustumCulled = true;
+  mesh.castShadow = false; mesh.receiveShadow = true; mesh.frustumCulled = true; // el mapa de sombras es estático (se calcula una vez): si los jugadores lo proyectaran quedarían sombras fantasma
   holder.add(mesh);
   holder.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(bones, D.inv.map(m => m.clone())), new THREE.Matrix4());

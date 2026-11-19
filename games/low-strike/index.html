@@ -46,9 +46,11 @@
 
 <!-- MENÚ DE COMPRA (como CS2) -->
 <div id="buy" hidden>
-  <div class="buy-head"><div class="bm">$<span id="buyMoney">0</span></div><div class="btime">Tiempo de compra <b id="buyTime">0:20</b></div></div>
-  <div id="buyCols"></div>
-  <div class="buy-foot"><span>[ESC] VOLVER</span><span>[B] CERRAR</span><span>1-5 CATEGORÍA · 1-5 ARMA</span></div>
+  <div class="buy-title"><span class="bm">$<span id="buyMoney">0</span></span><b>MENÚ DE COMPRA</b><span class="btime">Tiempo de compra <b id="buyTime">0:20</b></span></div>
+  <div class="buy-panel">
+    <div id="buyCols"></div>
+    <div class="buy-foot"><button data-act="cancel"><b>0</b> CANCELAR</button><button data-act="auto"><b>A</b> AUTO-COMPRA</button><button data-act="rebuy"><b>R</b> RECOMPRAR ANTERIOR</button></div>
+  </div>
   <div id="buyInfo" hidden><div class="bi-top"><b id="biName"></b><span id="biPrice"></span></div><div id="biLine"></div><div id="biStats"></div></div>
 </div>
 
