@@ -21,6 +21,11 @@ export async function loadAgents(base = 'agents/') {
       const uv = new Float32Array(buf, o, nv * 2); o += nv * 8;
       const sj = new Uint8Array(buf, o, nv * 4); o += nv * 4;
       const sw = new Uint8Array(buf, o, nv * 4); o += nv * 4;
+      // vértices pegados a la raíz del esqueleto (mosquetón, correas): pasan a la pelvis, si no quedan parados en el
+      // aire cuando el cuerpo cae
+      { const BB = meta.bones, pel = BB.findIndex(b => /pelvis|hips/i.test(b.n));
+        const off = new Set(); BB.forEach((b, i) => { let x = i; while (x >= 0 && x !== pel) x = BB[x].p; if (x !== pel) off.add(i); }); // huesos que no cuelgan de la pelvis
+        if (pel >= 0) for (let k = 0; k < nv * 4; k++) if (sw[k] && off.has(sj[k])) sj[k] = pel; }
       const ix = meta.i32 ? new Uint32Array(buf, o, meta.i) : new Uint16Array(buf, o, meta.i);
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));

@@ -665,14 +665,16 @@ const sh = new THREE.Vector3(), tg = new THREE.Vector3(), el = new THREE.Vector3
 export function poseModel(root, o, dt) {
   const u = root.userData;
   u.phase += dt * Math.min(o.speed, 6) * 2.4;
-  const amp = Math.min(1, o.speed / 3) * 0.6, sw = Math.sin(u.phase) * amp;
   const d = o.duck;
-  u.hips.position.y = 0.92 - d * 0.36;
+  // agachado como en CS:GO: cadera ~0.34 m más baja, muslos adelante, rodillas flexionadas sin que los pies se
+  // hundan, torso un poco inclinado; caminando agachado el paso es más corto
+  const amp = Math.min(1, o.speed / 3) * 0.6 * (1 - d * 0.55), sw = Math.sin(u.phase) * amp;
+  u.hips.position.y = 0.92 - d * 0.34;
   const [L, R] = u.legs;
-  L.hip.rotation.x = sw - d * 1.2; R.hip.rotation.x = -sw - d * 1.2;
-  L.knee.rotation.x = Math.max(0, -Math.sin(u.phase) * amp) * 1.2 + d * 2.0; R.knee.rotation.x = Math.max(0, Math.sin(u.phase) * amp) * 1.2 + d * 2.0;
+  L.hip.rotation.x = sw - d * (1.05 - 0.15); R.hip.rotation.x = -sw - d * (1.05 + 0.15);
+  L.knee.rotation.x = Math.max(0, -Math.sin(u.phase) * amp) * 1.2 + d * 1.55; R.knee.rotation.x = Math.max(0, Math.sin(u.phase) * amp) * 1.2 + d * 1.85;
   if (!o.onGround) { L.hip.rotation.x = -0.6; R.hip.rotation.x = 0.2; L.knee.rotation.x = 0.9; R.knee.rotation.x = 0.4; }
-  u.chest.rotation.x = d * 0.2;
+  u.chest.rotation.x = d * 0.32;
   const p = Math.max(-1.2, Math.min(1.2, o.pitch));
   u.neck.rotation.x = p * 0.55;
   const info = u.info, cat = u.wid ? (WEAPONS[u.wid]?.cat || u.wid) : null;

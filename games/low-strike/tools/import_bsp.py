@@ -230,6 +230,7 @@ info['atlas'] = {'tex': f'{mid}_tex.webp', 'w': AW, 'h': AH, 'tiles': [[tiles[i]
 def brk_box(m):
   a, b = tr(np.array(MD[m][0:3], float)) + off, tr(np.array(MD[m][3:6], float)) + off
   return [round(float(min(a[q], b[q])), 3) for q in range(3)] + [round(float(max(a[q], b[q])), 3) for q in range(3)]
+info['ladders'] = [brk_box(int(e['model'][1:])) for e in ents if e.get('classname') == 'func_ladder' and e.get('model', '').startswith('*')]
 info['breakables'] = [{'box': brk_box(m), 'mat': int(next((e for e in ents if e.get('model') == '*%d' % m), {}).get('material', 1) or 1)} for m in brk_ids]
 info['sky'] = next((e.get('skyname') for e in ents if e.get('classname') == 'worldspawn'), None)
 json.dump(info, open(f'../maps/{mid}.json', 'w'))

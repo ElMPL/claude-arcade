@@ -80,7 +80,8 @@ export function makeFx(scene) {
   const dbgGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06), dbgMat = new THREE.MeshBasicMaterial({ color: '#ff3030', depthTest: false, transparent: true, opacity: 0.85 });
   fx.debugBox = (p) => { const m = new THREE.Mesh(dbgGeo, dbgMat); m.position.set(p[0], p[1], p[2]); m.renderOrder = 25; scene.add(m); dbg.push({ m, t: 8 }); if (dbg.length > 120) scene.remove(dbg.shift().m); };
   fx.tickDebug = (dt) => { for (let i = dbg.length - 1; i >= 0; i--) { dbg[i].t -= dt; if (dbg[i].t <= 0) { scene.remove(dbg[i].m); dbg.splice(i, 1); } } };
-  fx.muzzleSmoke = (p) => { for (let i = 0; i < 2; i++) fx.particle(p[0], p[1], p[2], (Math.random() - 0.5) * 0.3, 0.25 + Math.random() * 0.2, (Math.random() - 0.5) * 0.3, 0.05, 0.6 + Math.random() * 0.4, '#bdbab4', -0.2, 0.22); };
+  // humito del caño como en CS:GO: bocanadas suaves que salen, se agrandan, suben un poco y se disipan
+  fx.muzzleSmoke = (p, big = false) => { if (!fx.puff) return; for (let i = 0; i < (big ? 3 : 2); i++) fx.puff(p[0], p[1], p[2], (Math.random() - 0.5) * 0.25, 0.18 + Math.random() * 0.25, (Math.random() - 0.5) * 0.25, 0.03, (big ? 0.42 : 0.26) * (0.8 + Math.random() * 0.4), 0.55 + Math.random() * 0.5, '#d6d4cf', '#9c9a96', false, 2.2); };
   fx.dust = (p) => { for (let i = 0; i < 2; i++) fx.particle(p[0] + (Math.random() - 0.5) * 0.3, p[1] + 0.03, p[2] + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.4, 0.2, (Math.random() - 0.5) * 0.4, 0.05, 0.5, '#d8c4a0', 0.2, 0.15); };
   fx.blood = (p, dir, head) => {
     const n = head ? 10 : 6;
@@ -240,7 +241,7 @@ export function makeFx(scene) {
       tmpO.position.set(q.x, q.y, q.z); if (cq) tmpO.quaternion.copy(cq); tmpO.rotateZ(q.rot + k); tmpO.scale.setScalar(q.s0 + (q.s1 - q.s0) * Math.sqrt(k)); tmpO.updateMatrix();
       tmpC.copy(q.c0).lerp(q.c1, Math.min(1, k * 1.6));
       if (q.add) { if (nf < FP) { tmpC.multiplyScalar(Math.pow(1 - k, 2.2)); fpm.setMatrixAt(nf, tmpO.matrix); fpm.setColorAt(nf, tmpC); nf++; } }
-      else if (n < SP) { const fo = Math.min(1, (1 - k) * 2.5); tmpC.multiplyScalar(0.55 + 0.45 * fo); spm.setMatrixAt(n, tmpO.matrix); spm.setColorAt(n, tmpC); n++; }
+      else if (n < SP) { const fo = Math.min(1, (1 - k) * 2.5); tmpC.multiplyScalar(0.55 + 0.45 * fo); if (fo < 1) { tmpO.scale.multiplyScalar(0.35 + 0.65 * fo); tmpO.updateMatrix(); } spm.setMatrixAt(n, tmpO.matrix); spm.setColorAt(n, tmpC); n++; }
     }
     spm.count = n; spm.instanceMatrix.needsUpdate = true; spm.instanceColor.needsUpdate = true;
     fpm.count = nf; fpm.instanceMatrix.needsUpdate = true; fpm.instanceColor.needsUpdate = true;

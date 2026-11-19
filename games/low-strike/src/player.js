@@ -68,6 +68,21 @@ export function movePlayer(W, p, inp, dt, maxSpeed) {
   // hueco sin salida (entra el jugador pero no se puede mover hacia ningún lado): después de un rato se lo saca
   if ((inp.f || inp.s) && p.onGround && pocket(W, p)) { p.pocketT = (p.pocketT || 0) + dt; if (p.pocketT > 0.6) { unpocket(W, p); p.pocketT = 0; } } else p.pocketT = 0;
 
+  // escaleras (func_ladder del mapa): con adelante/atrás se sube o baja según adonde mires, sin gravedad (200 u/s)
+  const lad = ladderAt(W, p);
+  if (lad && (inp.f || !p.onGround)) {
+    const dir = (inp.f || 0) * ((p.pitch || 0) < -0.45 ? -1 : 1);
+    if (inp.jump && !p.jumpHeld) { p.vy = PM.jump * 0.6; p.onGround = false; p.jumpHeld = true; }
+    else {
+      const y0 = p.y; p.vy = dir * 200 * U; p.y += p.vy * dt;
+      const c = ceiling(W, p.x, p.z, y0); if (p.y + p.h > c) p.y = Math.max(y0, c - p.h);
+      const gl = ground(W, p.x, p.z, y0 + STEP, PM.r - 0.02);
+      if (p.y <= gl) { p.y = gl; p.onGround = true; } else p.onGround = false;
+      p.vy = 0; p.vx *= Math.exp(-dt * 6); p.vz *= Math.exp(-dt * 6); p.onLadder = true;
+      return 0;
+    }
+  }
+  p.onLadder = false;
   // vertical
   const g = ground(W, p.x, p.z, p.y, PM.r - 0.02);
   if (p.onGround) {
@@ -168,4 +183,10 @@ export function rayPlayer(p, ox, oy, oz, dx, dy, dz, maxT) {
     if (t <= maxT && (!best || t < best.t)) best = { t, part: hb.part };
   }
   return best;
+}
+
+export function ladderAt(W, p) {
+  const L = W.ladders; if (!L) return null; const m = PM.r + 0.18;
+  for (const b of L) { const [x0, y0, z0, x1, y1, z1] = b; if (p.x > x0 - m && p.x < x1 + m && p.z > z0 - m && p.z < z1 + m && p.y > y0 - 0.75 && p.y < y1 + 0.05) return b; }
+  return null;
 }

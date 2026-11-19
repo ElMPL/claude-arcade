@@ -14,6 +14,10 @@ export function makeBreakables(W, info, mapMesh) {
         if (bt >= y0 - M && t <= y1 + M) b.cells.push([i, l, t, bt, NaN, bt]); // el tramo es sólo el rompible
         else if (bt < y0 - M && t > y0 && t <= y1 + M) b.cells.push([i, l, t, bt, y0, bt]); // pared abajo: se corta arriba
         else if (t > y1 + M && bt < y1 && bt >= y0 - M) b.cells.push([i, l, t, bt, t, y1]); // pared arriba: se corta abajo
+        else if (bt < y0 - M && t > y1 + M) { // pared abajo y arriba (agujero en un muro): se parte en dos usando un nivel libre
+          let free = -1; for (let q = 0; q < W.L; q++) if (isNaN(W.top[q][i])) { free = q; break; }
+          if (free >= 0) { b.cells.push([i, l, t, bt, y0, bt]); b.cells.push([i, free, NaN, NaN, t, y1, 3]); }
+        }
       }
     }
   }
@@ -24,10 +28,10 @@ export function makeBreakables(W, info, mapMesh) {
     break(i) {
       const b = list[i]; if (!b || b.broken) return false; b.broken = true;
       for (const m of b.meshes) m.visible = false;
-      for (const [k, l, , , nt, nb] of b.cells) { W.top[l][k] = nt; W.bot[l][k] = nb; }
+      for (const e of b.cells) { const [k, l, , , nt, nb, nc] = e; W.top[l][k] = nt; W.bot[l][k] = nb; if (nc !== undefined) { e.oc = W.cls[l][k]; W.cls[l][k] = nc; } }
       return true;
     },
-    reset() { for (const b of list) { if (!b.broken) continue; b.broken = false; for (const m of b.meshes) m.visible = true; for (const [k, l, t, bt] of b.cells) { W.top[l][k] = t; W.bot[l][k] = bt; } } },
+    reset() { for (const b of list) { if (!b.broken) continue; b.broken = false; for (const m of b.meshes) m.visible = true; for (const e of b.cells) { const [k, l, t, bt] = e; W.top[l][k] = t; W.bot[l][k] = bt; if (e.oc !== undefined) W.cls[l][k] = e.oc; } } },
     center(i) { const [x0, y0, z0, x1, y1, z1] = list[i].box; return [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2]; },
   };
   return B;

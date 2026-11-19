@@ -394,7 +394,7 @@ function shotFx(sid, wid, eye, ends, imps, hits, w) {
     if (P && P.model) { P.flashT = 0.05; P.kickT = 0.12; }
     if (mine || spec) M.flashT = 0.05;
     if (from && w.cat !== 'equip') {
-      fx.muzzleSmoke(from);
+      if (!w.silent || Math.random() < 0.5) fx.muzzleSmoke(from, w.cat === 'sniper' || w.pellets > 1);
       const yaw = P ? (P.id === myId && M.pl ? M.pl.yaw : P.yaw || 0) : 0;
       if (!(wid === 'nova' || wid === 'sawedoff' || wid === 'mag7' || wid === 'awp' || wid === 'ssg08' || wid === 'r8')) { fx.shell([from[0] + Math.sin(yaw) * 0.25, from[1] - 0.05, from[2] + Math.cos(yaw) * 0.25], Math.cos(yaw), -Math.sin(yaw), w.pellets > 1); if (Math.random() < 0.5) A.sfxShell([from[0], from[1] - 1.4, from[2]]); }
     }
@@ -1073,13 +1073,19 @@ const dropMeshes = new Map(); let bombMesh = null, bombLight = null, beepT = 0;
 function updateDrops(dt) {
   for (const [id, d] of G.drops) {
     let m = dropMeshes.get(id);
-    if (!m) { m = gunMesh(d.w); m.scale.setScalar(1.2); m.userData.ry = Math.random() * 6; m.rotation.set(0, m.userData.ry, Math.PI / 2 * 0.98); scene.add(m); dropMeshes.set(id, m); }
+    if (!m) {
+      // apoyada en el piso: el lado más delgado del modelo queda vertical (antes algunas quedaban paradas)
+      const g = gunMesh(d.w); g.geometry.computeBoundingBox(); const sz = g.geometry.boundingBox.getSize(new THREE.Vector3()), mn = Math.min(sz.x, sz.y, sz.z);
+      if (mn === sz.x) g.rotation.z = Math.PI / 2; else if (mn === sz.z) g.rotation.x = Math.PI / 2;
+      g.updateMatrix(); const bb = new THREE.Box3().setFromObject(g); g.position.y = -bb.min.y;
+      m = new THREE.Group(); m.add(g); m.scale.setScalar(1.2); m.userData.ry = Math.random() * 6; scene.add(m); dropMeshes.set(id, m);
+    }
     const u = d.s && d.T ? Math.min(1, (performance.now() - (d.t0 || 0)) / 1000 / d.T) : 1;
     if (u < 1) { // en vuelo: arco entre la mano y donde cae, girando
       const h = Math.max(0.25, d.s[1] - d.y) * 0.35 + 0.3;
       m.position.set(d.s[0] + (d.x - d.s[0]) * u, d.s[1] + (d.y + 0.04 - d.s[1]) * u + h * 4 * u * (1 - u), d.s[2] + (d.z - d.s[2]) * u);
-      m.rotation.set(u * 5, m.userData.ry + u * 3, Math.PI / 2 * 0.98 * u);
-    } else { m.position.set(d.x, d.y + 0.04, d.z); m.rotation.set(0, m.userData.ry, Math.PI / 2 * 0.98); }
+      m.rotation.set(u * 5 * (1 - u), m.userData.ry + u * 3, 0);
+    } else { m.position.set(d.x, d.y + 0.01, d.z); m.rotation.set(0, m.userData.ry, 0); }
   }
   for (const [id, m] of dropMeshes) if (!G.drops.has(id)) { scene.remove(m); dropMeshes.delete(id); }
   const b = G.bomb;
@@ -1287,8 +1293,8 @@ function updateCamera(dt) {
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   A.setListener(x, y, z, yaw);
   // arma en primera persona
-  const sniperScope = scoped && w && w.cat === 'sniper';
-  vm.visible = !!wid && !sniperScope && (P.alive || M.spec);
+  const sniperScope = scoped && w && w.cat === 'sniper', rifleScope = scoped && w && w.cat === 'rifle';
+  vm.visible = !!wid && !sniperScope && !rifleScope && (P.alive || M.spec);
   if (vm.visible) {
     setViewGun(vm, wid, team, vsk, vfin);
     const u = vm.userData, b = u.base || [0.13, -0.14, -0.36];
@@ -1359,8 +1365,8 @@ function updateCamera(dt) {
     muzzleV.set(0, gi.muzzle[1], -gi.muzzle[0]).applyMatrix4(u.gun.matrixWorld);
   }
   // HUD de mira
-  $('scope').hidden = !sniperScope;
-  const showX = !sniperScope && (P.alive || M.spec) && !(w && w.cat === 'sniper');
+  $('scope').hidden = !sniperScope; $('rscope').hidden = !rifleScope;
+  const showX = !sniperScope && !rifleScope && (P.alive || M.spec) && !(w && w.cat === 'sniper');
   let gap = CFG.xGap;
   if (!CFG.xStatic && P.alive && w && w.dmg) gap = CFG.xGap + Math.max(0, inaccuracy(w, { speed: Math.hypot(M.pl.vx, M.pl.vz), vy: M.pl.vy, onGround: M.pl.onGround, duck: M.pl.duck, scoped: M.scope > 0, shots: M.shots }) * 900 - 1);
   hud.crosshair(Math.min(60, gap), showX, CFG);

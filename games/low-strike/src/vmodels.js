@@ -213,7 +213,7 @@ export function inspectPose(V, k, cat) {
 // Armas que existen en CS:Source: se usa la malla original de primera persona (brazos y arma animados juntos,
 // agarre exacto) con las texturas de CS:S de cada pieza (viewmodels/tex/css_<material>.webp). Las de CS:GO que no
 // están en CS:S (MP9, Tec-9, Negev…) siguen con el modelo de CS2 pegado a la mano.
-export const NATIVE = new Set(['ak47', 'm4a1s', 'm4a4', 'aug', 'famas', 'galil', 'sg553', 'awp', 'g3sg1', 'glock', 'usp', 'p2000', 'deagle', 'fiveseven', 'dualies', 'p250', 'mac10', 'ump', 'p90', 'xm1014', 'm249', 'knife', 'he', 'smoke', 'flash', 'decoy', 'c4']);
+export const NATIVE = new Set(['ak47', 'm4a1s', 'm4a4', 'aug', 'famas', 'galil', 'sg553', 'awp', 'g3sg1', 'glock', 'usp', 'p2000', 'deagle', 'fiveseven', 'dualies', 'p250', 'mac10', 'ump', 'p90', 'xm1014', 'm249', 'he', 'smoke', 'flash', 'decoy', 'c4']);
 const CSS_TEX = new Set(['c4', 'c4_light', 'flashbang', 'fraggrenade', 'smokegrenade', 'knife_t', 'mach_m249para', 'deagle_skin1', 'pist_elite', 'pist_fiveseven', 'glock18', 'pist_p228_1', 'pist_usp', 'rif_ak47skin1', 'rif_aug', 'rif_famas', 'rif_galil', 'rif_m4a1', 'rif_sg552', 'shot_m3super90', 'shot_xm1014', 'smg_mac10_1', 'mp5_1', 'smg_p90', 'smg_p90_sight', 'smg_tmp', 'smg_ump45', 'v_awp', 'v_awp_scope', 'snip_g3sg1', 'snip_scout', 'snip_sg550']);
 const TEX_ALIAS = { w_smg_mp5: 'mp5_1', handle: 'knife_t' };
 const texMats = {};
