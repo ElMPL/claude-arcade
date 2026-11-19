@@ -47,10 +47,11 @@ export function radarImage(W, nav) {
   return cv;
 }
 export function drawRadar(cv, img, W, view, list, bomb, meTeam) {
-  const x = cv.getContext('2d'), S = cv.width, sc = 1.25; // celdas por píxel del radar
+  const x = cv.getContext('2d'), S = cv.width, sc = 1.25 * (view.zoom || 1); // celdas por píxel del radar (zoom de la configuración)
+  const rot = view.rot !== false;
   x.clearRect(0, 0, S, S);
   x.save(); x.beginPath(); x.rect(0, 0, S, S); x.clip();
-  x.translate(S / 2, S / 2); x.rotate(view.yaw); x.scale(sc, sc);
+  x.translate(S / 2, S / 2); if (rot) x.rotate(view.yaw); x.scale(sc, sc);
   const cx = view.x / W.cell, cz = view.z / W.cell;
   { const R = Math.ceil(S * 0.75 / sc) + 2, sx = Math.max(0, Math.floor(cx - R)), sz = Math.max(0, Math.floor(cz - R)), sw = Math.min(img.width, Math.ceil(cx + R)) - sx, sh = Math.min(img.height, Math.ceil(cz + R)) - sz; if (sw > 0 && sh > 0) x.drawImage(img, sx, sz, sw, sh, sx - cx, sz - cz, sw, sh); } // solo el pedazo visible
   const dot = (px, pz, col, r = 3.4) => { x.fillStyle = col; x.beginPath(); x.arc(px / W.cell - cx, pz / W.cell - cz, r / sc, 0, 7); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1 / sc; x.stroke(); };
@@ -58,7 +59,8 @@ export function drawRadar(cv, img, W, view, list, bomb, meTeam) {
   for (const p of list) { if (p.ping) { x.strokeStyle = p.col; x.lineWidth = 2 / sc; x.beginPath(); x.arc(p.x / W.cell - cx, p.z / W.cell - cz, 6 / sc, 0, 7); x.stroke(); continue; } dot(p.x, p.z, p.col, p.me ? 0 : 3.4); }
   x.restore();
   // yo: flecha en el centro
-  x.fillStyle = '#fff'; x.beginPath(); x.moveTo(S / 2, S / 2 - 7); x.lineTo(S / 2 + 5, S / 2 + 5); x.lineTo(S / 2, S / 2 + 2); x.lineTo(S / 2 - 5, S / 2 + 5); x.closePath(); x.fill();
+  x.save(); x.translate(S / 2, S / 2); if (!rot) x.rotate(-view.yaw); x.translate(-S / 2, -S / 2);
+  x.fillStyle = '#fff'; x.beginPath(); x.moveTo(S / 2, S / 2 - 7); x.lineTo(S / 2 + 5, S / 2 + 5); x.lineTo(S / 2, S / 2 + 2); x.lineTo(S / 2 - 5, S / 2 + 5); x.closePath(); x.fill(); x.restore();
 }
 
 // ---------- HUD ----------

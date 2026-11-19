@@ -34,6 +34,8 @@ function samp(o, key, vol = 1, rate = 1, at = 0) {
   const s = ctx.createBufferSource(); s.buffer = buf[L[Math.floor(Math.random() * L.length)]]; s.playbackRate.value = rate * (0.96 + Math.random() * 0.08);
   const g = ctx.createGain(); g.gain.value = vol; s.connect(g); g.connect(o); s.start(ctx.currentTime + at); return true;
 }
+let musicVol = 0.6 / 0.6;
+export function setMusic(v) { musicVol = v / 0.6; }
 export function setVolume(v) { vol0 = v; if (master) master.gain.value = v; }
 export function setListener(x, y, z, yaw) { L.x = x; L.y = y; L.z = z; L.yaw = yaw; }
 // destino con volumen por distancia y paneo
@@ -135,7 +137,7 @@ export function sfxRoundStart() { if (!ctx) return; const t = ctx.currentTime; c
 function chord(o, t, notes, dur, type = 'triangle', vol = 0.18) { for (const f of notes) { tone(o, t, dur, f, f, type, vol, 0.02); tone(o, t, dur, f * 1.003, f * 1.003, 'sawtooth', vol * 0.18, 0.02); } }
 // melodía corta de "kit de música" al empezar la ronda (en el congelamiento)
 export function musicRoundStart() {
-  if (!ctx) return; const t = ctx.currentTime, o = out(null, 0.22);
+  if (!ctx) return; const t = ctx.currentTime, o = out(null, 0.22 * musicVol);
   const prog = [[220, 277, 330], [196, 247, 294], [175, 220, 262], [196, 247, 330]];
   prog.forEach((c, i) => chord(o, t + i * 0.55, c, 0.6, 'triangle', 0.12));
   [440, 494, 523, 587, 659, 587, 523, 494].forEach((f, i) => tone(o, t + i * 0.275, 0.25, f, f, 'square', 0.05, 0.01));
@@ -144,7 +146,7 @@ export function musicRoundStart() {
 }
 // fanfarria del MVP
 export function musicMVP(mine) {
-  if (!ctx) return; const t = ctx.currentTime, o = out(null, mine ? 0.32 : 0.2);
+  if (!ctx) return; const t = ctx.currentTime, o = out(null, (mine ? 0.32 : 0.2) * musicVol);
   const mel = [523, 659, 784, 1047, 988, 1047, 1175, 1319];
   mel.forEach((f, i) => tone(o, t + i * 0.16, 0.3, f, f, 'triangle', 0.22, 0.01));
   [[262, 330, 392], [294, 370, 440], [330, 415, 494], [349, 440, 523]].forEach((c, i) => chord(o, t + i * 0.32, c, 0.36, 'sawtooth', 0.05));

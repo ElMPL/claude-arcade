@@ -88,20 +88,22 @@
     <span><kbd>B</kbd> comprar</span><span><kbd>E</kbd> desactivar / agarrar</span><span><kbd>G</kbd> tirar arma</span><span><kbd>Tab</kbd> tabla</span><span><kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> radio</span><span><kbd>V</kbd> marcar</span><span><kbd>F</kbd> inspeccionar</span>
   </div>
   <div id="modeSel" class="fn-overlay" hidden>
-    <div class="ms-box">
-      <h2>ELEGÍ EL MODO</h2>
-      <div id="gmodes" class="gmodes"></div>
-      <h3>JUGADORES POR EQUIPO</h3>
-      <div id="modes" class="modes"></div>
-      <div id="botsSeg" class="seg big"></div>
-      <h3>MAPA</h3>
-      <div id="maps" class="mapgrid"></div>
-      <div class="row2">
-        <div><h3>DURACIÓN</h3><div id="len" class="seg"></div></div>
-        <div><h3>NIVEL DE LOS BOTS</h3><div id="diff" class="seg"></div></div>
+    <div class="ms-box ms-grid">
+      <div class="ms-head"><h2>MODO DE JUEGO</h2><p class="note ro-note">Solo el host puede cambiar el modo.</p></div>
+      <div class="ms-col">
+        <h3>MODO</h3>
+        <div id="gmodes" class="gmodes"></div>
+        <h3>JUGADORES POR EQUIPO</h3>
+        <div id="modes" class="modes"></div>
+        <div id="botsSeg" class="seg"></div>
       </div>
-      <p class="note ro-note">Solo el host puede cambiar el modo.</p>
-      <button id="modeClose" class="fn-play small">LISTO</button>
+      <div class="ms-col">
+        <h3>MAPA</h3>
+        <div id="maps" class="mapgrid"></div>
+        <h3>DURACIÓN</h3><div id="len" class="seg"></div>
+        <h3>NIVEL DE LOS BOTS</h3><div id="diff" class="seg"></div>
+      </div>
+      <div class="ms-foot"><button id="modeClose" class="fn-play small">LISTO</button></div>
     </div>
   </div>
 </div>

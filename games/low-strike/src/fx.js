@@ -14,7 +14,9 @@ export function makeFx(scene) {
   pm.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PMAX * 3), 3);
   scene.add(pm);
   const parts = [];
+  fx.quality = 2;
   fx.particle = (x, y, z, vx, vy, vz, size, life, color, grav = 9.8, grow = 0, floorY = null) => {
+    if (fx.quality < 2 && Math.random() < (fx.quality === 0 ? 0.65 : 0.35)) return; // menos partículas en calidad baja/media
     if (parts.length >= PMAX) parts.shift();
     const p = { x, y, z, vx, vy, vz, s: size, life, max: life, c: new THREE.Color(color), g: grav, grow, fy: floorY };
     parts.push(p); return p;

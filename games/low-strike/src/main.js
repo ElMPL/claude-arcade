@@ -74,8 +74,16 @@ const M = {
 const me = () => G.players.get(myId);
 
 // ---------------- entrada ----------------
-const settings = makeSettings(store, S => { A.setVolume(S.vol * 0.7); applyView(); });
-const CFG = settings.S; A.setVolume(CFG.vol * 0.7);
+const settings = makeSettings(store, S => { A.setVolume(S.vol * 0.7); A.setMusic(S.music ?? 0.6); applyView(); applyPrefs(); });
+const CFG = settings.S; A.setVolume(CFG.vol * 0.7); A.setMusic(CFG.music ?? 0.6);
+// opciones de la configuración que no son del render: HUD, FPS, brillo del mapa
+let fpsEl = null, fpsAcc = 0, fpsN = 0;
+function applyPrefs() {
+  document.documentElement.style.setProperty('--hud-scale', CFG.hudScale ?? 1);
+  if (CFG.showFps && !fpsEl) { fpsEl = document.createElement('div'); fpsEl.id = 'fpsMeter'; document.body.appendChild(fpsEl); }
+  if (fpsEl) fpsEl.hidden = !CFG.showFps;
+  if (typeof mapMesh !== 'undefined' && mapMesh) mapMesh.traverse(o => { const u = o.material && o.material.uniforms; if (u && u.bright) u.bright.value = 1.45 * (CFG.bright ?? 1); });
+}
 const keys = new Set(); let mouseL = false, mouseR = false, locked = false, lockAt = 0, mAvg = 6;
 const touchState = { mx: 0, mz: 0, fire: false, look: null };
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -102,8 +110,8 @@ function goFullscreen() {
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && ['KeyW', 'KeyS', 'KeyD', 'KeyA', 'KeyR', 'KeyQ', 'KeyE', 'KeyG', 'KeyB', 'KeyF'].includes(e.code) && G.phase !== 'lobby') e.preventDefault(); }, true);
 addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'KeyE' && M.defusing) stopDefuse(); });
 // sonidos de UI de CS:GO en todos los botones de menús
-document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) { A.initAudio(); A.sfxUI(false); } }, true);
-let lastHov = null; document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('button'); if (b && b !== lastHov) A.sfxUI(true); lastHov = b; });
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) { A.initAudio(); if (CFG.uiSnd !== false) A.sfxUI(false); } }, true);
+let lastHov = null; document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('button'); if (b && b !== lastHov && CFG.uiSnd !== false) A.sfxUI(true); lastHov = b; });
 addEventListener('blur', () => { keys.clear(); mouseL = mouseR = false; });
 addEventListener('mousedown', e => {
   A.initAudio();
@@ -122,7 +130,7 @@ addEventListener('mousemove', e => {
   if (now - lockAt < 80) return;
   if (m > 120 && m > mAvg * 7) return;
   mAvg = mAvg * 0.85 + Math.min(m, 150) * 0.15;
-  const z = M.scope ? zoomOf() : 1, sens = CFG.sens / 1000;
+  const z = M.scope ? zoomOf() / (CFG.zoomSens ?? 1) : 1, sens = CFG.sens / 1000;
   look(mx * sens / z, my * sens / z * (CFG.invert ? -1 : 1));
 });
 addEventListener('wheel', e => { if (locked && G.phase !== 'lobby' && !buyOpen) cycleSlot(e.deltaY > 0 ? 1 : -1); }, { passive: true });
@@ -841,6 +849,7 @@ $('buy').addEventListener('mousedown', e => e.stopPropagation());
 // relación de aspecto (16:9, 4:3 con barras o 4:3 estirado, como en CS) y campo de visión del arma (viewmodel_fov)
 function applyView() {
   if (!renderer) return;
+  { const pr = Math.min(devicePixelRatio, isTouch ? 1 : 1.5) * (CFG.rscale ?? 1); if (Math.abs(renderer.getPixelRatio() - pr) > 0.01) renderer.setPixelRatio(pr); }
   const S = settings.S, W = innerWidth, H = innerHeight, cv = renderer.domElement;
   let asp = W / H;
   if (S.aspect === '4:3b') { const w = Math.min(W, Math.round(H * 4 / 3)); renderer.setSize(w, H); cv.style.marginLeft = ((W - w) / 2) + 'px'; asp = w / H; }
@@ -858,7 +867,7 @@ function applyView() {
 let vmFovProc = 66, vmFovSrc = 46.8;
 function initRender() {
   renderer = new THREE.WebGLRenderer({ antialias: QUALITY > 1 && !isTouch, stencil: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5) * (CFG.rscale ?? 1));
   renderer.setSize(innerWidth, innerHeight);
   renderer.autoClear = false;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
@@ -943,6 +952,7 @@ async function loadGame(id) {
   const built = data.bsp ? buildFromBsp(data.bsp, data.info) : data.mesh ? buildFromModel(W, data.mesh, data.info, id, G.nav) : buildMeshes(W, id); mapMesh = built.mesh; scene.add(mapMesh);
   // mapas de GoldSrc: sus túneles/ventiletas miden 48 u (pensados para el hull agachado de 36 u): agachado más bajo
   PM.hCrouch = (data.bsp ? 44 : 54) * 0.0254; PM.eyeCrouch = (data.bsp ? 38 : 46) * 0.0254;
+  applyPrefs();
   try { BRK = makeBreakables(W, data.info, mapMesh); } catch (e) { BRK = null; console.warn('rompibles', e); }
   if (wing && wing.cells.length) mapMesh.add(wingmanMesh(W, wing.cells));
   if (G.props && G.props.length) scene.add(propsMesh(G.props));
@@ -1192,6 +1202,28 @@ function sendBots(dt) {
 
 // ---------------- modelos de primera persona originales ----------------
 let srcCur = null; const srcVMs = {};
+// ventanita de vista previa del arma en la configuración: el mismo modelo de primera persona con el FOV y los
+// offsets elegidos (viewmodel_fov se toma horizontal en 4:3, como en CS)
+settings.hooks.vmPreview = (cv, S) => {
+  const w = cv.clientWidth || 600, h = cv.clientHeight || 230;
+  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }); r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); r.setSize(w, h, false); r.setClearColor(0, 0);
+  r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
+  const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight('#fff4e0', '#5a4a38', 1.6)); const dl = new THREE.DirectionalLight('#ffffff', 2.2); dl.position.set(-1, 2, 1); sc.add(dl);
+  const cam = new THREE.PerspectiveCamera(50, w / h, 0.01, 10);
+  const P = me(); let wid = (P && P.alive && curId()) || 'ak47'; if (!VMAP[wid]) wid = 'ak47';
+  let V = null, raf = 0, last = performance.now(), dead = false;
+  loadVModel(VMAP[wid]).then(def => { if (dead) return; V = makeVModel(def); V.gunMats = GMAT; try { if (!nativeGun(V, wid) && gunGeo(wid, 0)) attachGun(V, gunGeo(wid, 0)); } catch (e) { } sc.add(V.holder); playSeq(V, 'idle'); }).catch(() => {});
+  const loop = () => {
+    if (dead) return; raf = requestAnimationFrame(loop);
+    const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (V) { updateVModel(V, dt); const U = 0.0254, t = now / 1000, bb = (S.bob ?? 1); V.holder.position.set((S.vmX ?? 1) * U + Math.cos(t * 3) * 0.004 * bb, (S.vmZ ?? -1) * U + Math.abs(Math.sin(t * 3)) * 0.005 * bb, -(S.vmY ?? 1) * U); }
+    // FOV vertical para 4:3 a partir de viewmodel_fov; si la ventanita es más ancha se ve igual de alto que en el juego
+    cam.fov = 2 * Math.atan(Math.tan((S.vmFov || 60) * Math.PI / 360) * 0.75) * 180 / Math.PI; cam.aspect = w / h; cam.updateProjectionMatrix();
+    r.render(sc, cam);
+  };
+  loop();
+  return { update() {}, stop() { dead = true; cancelAnimationFrame(raf); r.dispose(); try { r.forceContextLoss(); } catch (e) { } } };
+};
 function buildSrcVM(wid, fin = 0) {
   const name = VMAP[wid], key = wid + ':' + fin; if (!name || srcVMs[key]) return;
   srcVMs[key] = 'loading';
@@ -1265,7 +1297,7 @@ function updateCamera(dt) {
     { // resorte del retroceso visual (sub-pasos para que sea estable)
       const n = Math.ceil(dt / 0.004), h = dt / n; for (let k = 0; k < n; k++) { const acc = -650 * M.rk - 38 * M.rkV; M.rkV += acc * h; M.rk += M.rkV * h; } }
     const bob = P.alive ? M.bob : G.time * 2, ba = P.alive ? Math.min(1, Math.hypot(M.pl.vx, M.pl.vz) / 5) : 0.3;
-    let ox = b[0] + Math.cos(bob) * 0.008 * ba + M.sway[0] * 0.02, oy = b[1] + Math.abs(Math.sin(bob)) * 0.01 * ba - M.sway[1] * 0.02, oz = b[2] + (w && w.cat === 'knife' ? M.kick * 0.045 : 0);
+    let ox = b[0] + Math.cos(bob) * 0.008 * ba * (CFG.bob ?? 1) + M.sway[0] * 0.02, oy = b[1] + Math.abs(Math.sin(bob)) * 0.01 * ba * (CFG.bob ?? 1) - M.sway[1] * 0.02, oz = b[2] + (w && w.cat === 'knife' ? M.kick * 0.045 : 0);
     { const S = settings.S, U = 0.0254; ox += ((S.vmX ?? 1) - 1) * U; oz -= ((S.vmY ?? 1) - 1) * U; oy += ((S.vmZ ?? -1) + 1) * U; } // viewmodel_offset_x/y/z
     let rx = M.kick * 0.12, ry = 0, rz = 0;
     // el modelo de Source ya trae su animación de disparo (el retroceso visual del juego original): el resorte
@@ -1336,7 +1368,7 @@ const radarDots = [];
 function drawRadarNow(P) {
   if (!radarImg || !M.pl) return;
   const S = M.spec && !P.alive ? G.players.get(M.spec) : P;
-  const view = S && S !== P ? { x: S.x, z: S.z, yaw: S.yaw } : { x: M.pl.x, z: M.pl.z, yaw: M.pl.yaw };
+  const view = S && S !== P ? { x: S.x, z: S.z, yaw: S.yaw } : { x: M.pl.x, z: M.pl.z, yaw: M.pl.yaw }; view.zoom = CFG.radarZoom ?? 1; view.rot = CFG.radarRot !== false;
   radarDots.length = 0;
   for (const p of G.players.values()) {
     if (!p.alive) continue;
@@ -1424,7 +1456,8 @@ function frame(now) {
     const ff = (window.__ls && window.__ls.ff) || 0;
     for (let k = 0; k < ff; k++) simulate(0.05);
     simulate(dt);
-    fx.update(dt, G.time, camera); updatePings(); fx.tickDebug(dt); updateTraj();
+    fx.quality = CFG.fx ?? 2; fx.update(dt, G.time, camera);
+    if (fpsEl && CFG.showFps) { fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fpsEl.textContent = Math.round(fpsN / fpsAcc) + ' FPS'; fpsAcc = 0; fpsN = 0; } } updatePings(); fx.tickDebug(dt); updateTraj();
     updateCamera(dt);
     updateHud(dt);
     if (window.__ls.cam) { const c = window.__ls.cam; camera.position.set(c[0], c[1], c[2]); camera.lookAt(c[3], c[4], c[5]); if (camera.fov !== 74) { camera.fov = 74; camera.updateProjectionMatrix(); } vm.visible = false; }
@@ -1543,7 +1576,7 @@ function becomeHost() {
 async function boot() {
   hud.init();
   await Promise.all([loadGunModels(), loadAgents(), loadArms()]);
-  initRender();
+  initRender(); applyPrefs();
   setupTouch();
   requestAnimationFrame(frame);
   ctx = await Arcade.ready();
