@@ -21,7 +21,7 @@ import { makeFx } from './fx.js';
 import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT, GMAT } from './models.js';
 import { loadAgents } from './agents.js';
 import { loadArms } from './vmarms.js';
-import { VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun } from './vmodels.js';
+import { VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun, inspectPose, nativeGun, loadKnife, c4World } from './vmodels.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
@@ -100,6 +100,9 @@ function goFullscreen() {
 }
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && ['KeyW', 'KeyS', 'KeyD', 'KeyA', 'KeyR', 'KeyQ', 'KeyE', 'KeyG', 'KeyB', 'KeyF'].includes(e.code) && G.phase !== 'lobby') e.preventDefault(); }, true);
 addEventListener('keyup', e => { keys.delete(e.code); if (e.code === 'KeyE' && M.defusing) stopDefuse(); });
+// sonidos de UI de CS:GO en todos los botones de menús
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) { A.initAudio(); A.sfxUI(false); } }, true);
+let lastHov = null; document.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('button'); if (b && b !== lastHov) A.sfxUI(true); lastHov = b; });
 addEventListener('blur', () => { keys.clear(); mouseL = mouseR = false; });
 addEventListener('mousedown', e => {
   A.initAudio();
@@ -249,7 +252,7 @@ function pick(slot, force) {
   if (slot !== M.slot) M.lastSlot = M.slot;
   M.slot = slot; M.inspect = 0; M.vmEv = { kind: 'draw' }; M.drawT = slot === 'k' ? 0.35 : 0.6; M.reloadT = 0; M.scope = 0; M.plantT = 0; M.nadeHold = 0;
   if (M.defusing) stopDefuse();
-  A.sfxClick(null, 1400, 0.25); hud.showSlots();
+  A.sfxSelect(); hud.showSlots();
 }
 function cycleSlot(d) {
   const order = ['p', 's', 'k', 'z', 'g', 'c4'].filter(s => slotWeapon(s));
@@ -298,7 +301,7 @@ function dropCurrent() { // G: tira el arma que tenés en la mano (no el cuchill
   else if (s === 'c4') req('drop', { ...base, s: 'c4' });
   else if (s === 'g' && !M.nadeHold) { const w = slotWeapon('g'); if (w) req('drop', { ...base, s: 'g', w }); }
   else return;
-  M.pickCd = 1.0; A.sfxClick(null, 500, 0.3);
+  M.pickCd = 1.0; A.sfxDrop(null);
 }
 function use() {
   const P = me(); if (!P || !P.alive || !M.pl) return;
@@ -384,11 +387,12 @@ function shotFx(sid, wid, eye, ends, imps, hits, w) {
     if (from && w.cat !== 'equip') {
       fx.muzzleSmoke(from);
       const yaw = P ? (P.id === myId && M.pl ? M.pl.yaw : P.yaw || 0) : 0;
-      if (!(wid === 'nova' || wid === 'sawedoff' || wid === 'mag7' || wid === 'awp' || wid === 'ssg08' || wid === 'r8')) fx.shell([from[0] + Math.sin(yaw) * 0.25, from[1] - 0.05, from[2] + Math.cos(yaw) * 0.25], Math.cos(yaw), -Math.sin(yaw), w.pellets > 1);
+      if (!(wid === 'nova' || wid === 'sawedoff' || wid === 'mag7' || wid === 'awp' || wid === 'ssg08' || wid === 'r8')) { fx.shell([from[0] + Math.sin(yaw) * 0.25, from[1] - 0.05, from[2] + Math.cos(yaw) * 0.25], Math.cos(yaw), -Math.sin(yaw), w.pellets > 1); if (Math.random() < 0.5) A.sfxShell([from[0], from[1] - 1.4, from[2]]); }
     }
   }
   // polvo del color de lo que se golpeó: piso (arena/baldosas) o pared (revoque/arenisca)
   const dustC = G.cfg.map === 'mirage' ? ['#d9d2c4', '#e8e1d2'] : ['#c9a776', '#d8c09a'];
+  if (imps.length) A.sfxImpact([imps[0][0], imps[0][1], imps[0][2]], Math.random() < 0.15 ? 'metal' : 'concrete');
   for (const im of imps) { fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]], im[4] > 0.7 ? dustC[0] : dustC[1]); if (mine && G.cfg.mode === 'practice') fx.debugBox(im); }
   for (const h of hits) {
     const d = [h[1][0] - eye[0], h[1][1] - eye[1], h[1][2] - eye[2]], L = Math.hypot(...d) || 1, dn = d.map(v => v / L);
@@ -460,10 +464,11 @@ function throwNade(power) {
   if (!WEAPONS[id] || WEAPONS[id].cat !== 'grenade' || M.nadeCd > 0) return;
   const eye = [p.x, p.y + eyeH(p), p.z];
   const data = { i: myId, ty: id, tm: P.team, o: eye.map(v => +v.toFixed(3)), yaw: +p.yaw.toFixed(4), pitch: +p.pitch.toFixed(4), v: [+p.vx.toFixed(3), +p.vz.toFixed(3), +(p.onGround ? 0 : p.vy).toFixed(3)], pw: power };
+  const n0 = P.inv.g.length;
   addNade(data); send('nd', data); req('nade', { type: id });
   M.nadeCd = 0.6; A.sfxThrow();
-  // sacar la granada de la lista local ya (el host confirma)
-  const i = P.inv.g.indexOf(id); if (i >= 0) { P.inv.g = P.inv.g.slice(); P.inv.g.splice(i, 1); }
+  // sacar la granada de la lista local ya (el host confirma); si el host es local ya la sacó
+  if (P.inv.g.length === n0) { const i = P.inv.g.indexOf(id); if (i >= 0) { P.inv.g = P.inv.g.slice(); P.inv.g.splice(i, 1); } }
   setTimeout(() => { M.throwT = 0; if (!slotWeapon('g')) pick(bestSlot(), true); else pick('g', true); }, 380);
 }
 
@@ -624,7 +629,7 @@ function onEvent(e) {
     case 'hurt': {
       { const key = e.a + '>' + e.v, v = dmgLog.get(key) || [0, 0]; v[0] += e.n | 0; v[1]++; dmgLog.set(key, v); }
       if (e.v === myId) {
-        A.sfxHurt(); hurtFlash = Math.min(1, hurtFlash + e.n / 60);
+        A.sfxHurt(e.hs, P && P.ar > 0); hurtFlash = Math.min(1, hurtFlash + e.n / 60);
         const a = G.players.get(e.a);
         if (a && a.id !== myId && M.pl) { const ang = Math.atan2(-(a.x - M.pl.x), -(a.z - M.pl.z)) - M.pl.yaw; hud.dmgDir(-ang); }
         // tagging: al recibir balas te frenás un rato (más con armas fuertes)
@@ -641,6 +646,7 @@ function onEvent(e) {
         if (k && k !== v) { const a = Math.atan2(-(k.x - v.x), -(k.z - v.z)), rel = angDiff(a, v.yaw || 0); v.deadDir = Math.abs(rel) < Math.PI / 2 ? 1 : -1; v.deadSide = Math.sin(rel) * 0.8; }
         else { v.deadDir = 1; v.deadSide = (Math.random() - 0.5); }
       }
+      if (v && v.id !== myId) A.sfxDie([v.x, v.y + 1, v.z]);
       if (v) hud.feed(k, v, e.w, e.hs, e.wb, e.k === myId || e.v === myId, { sm: e.sm, bl: e.bl, ns: e.ns });
       if (e.k === myId && e.v !== myId) A.sfxKill();
       if (e.v === myId) { M.deadT = 0.001; M.scope = 0; M.defusing = false; hud.progress(null); showDeathCard(e); }
@@ -1032,7 +1038,7 @@ function updateDrops(dt) {
   }
   for (const [id, m] of dropMeshes) if (!G.drops.has(id)) { scene.remove(m); dropMeshes.delete(id); }
   const b = G.bomb;
-  if (!bombMesh) { bombMesh = gunMesh('c4'); bombMesh.scale.setScalar(1.6); scene.add(bombMesh); bombLight = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: '#ff2020' })); bombLight.position.set(-0.05, 0.05, 0.03); bombMesh.add(bombLight); }
+  if (!bombMesh) { bombMesh = new THREE.Group(); const proc = gunMesh('c4'); proc.scale.setScalar(1.6); bombMesh.add(proc); c4World(false).then(m => { m.scale.setScalar(1.3); bombMesh.remove(proc); bombMesh.add(m); }).catch(() => {}); scene.add(bombMesh); bombLight = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: '#ff2020' })); bombLight.position.set(-0.05, 0.05, 0.03); bombMesh.add(bombLight); }
   bombMesh.visible = b.state === 'planted' || b.state === 'dropped' || b.state === 'defused';
   if (bombMesh.visible) bombMesh.position.set(b.x, b.y + 0.05, b.z);
   if (b.state === 'planted') {
@@ -1072,7 +1078,7 @@ function updateLocal(dt) {
     const dx = p.x - q.x, dz = p.z - q.z, d = Math.hypot(dx, dz);
     if (d < 0.62 && d > 1e-4) { const k = (0.62 - d) / d; const nx = p.x + dx * k, nz = p.z + dz * k; if (!blocked(G.W, nx, nz, p.y, p.h, PM.r)) { p.x = nx; p.z = nz; } }
   }
-  if (fall) { const dmg = fallDamage(fall); if (dmg > 0) req('fall', { d: dmg }); A.sfxLand(null); }
+  if (fall) { const dmg = fallDamage(fall); if (dmg > 0) req('fall', { d: dmg }); A.sfxLand(null, dmg > 0); }
   if (p.y < -20 && !M.voidSent) { M.voidSent = true; req('fall', { d: 999 }); }
   // pasos propios
   const sp = Math.hypot(p.vx, p.vz);
@@ -1156,12 +1162,13 @@ function srcVM(wid, dt) {
   const name = VMAP[wid]; if (!name) { srcCur = null; return null; }
   const P = me(), fin = P ? finOf(P.fin, wid) : 0, key = wid + ':' + fin;
   let V = srcVMs[key];
-  if (!V) { srcVMs[key] = 'loading'; loadVModel(name).then(def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; }); return null; }
+  if (!V) { srcVMs[key] = 'loading'; Promise.all([loadVModel(name), wid === 'knife' ? loadKnife(1).catch(() => null) : null]).then(([def, kn]) => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; if (kn) { attachGun(v, kn.g, kn.mat); srcVMs[key] = v; return; } try { if (!(fin === 0 && nativeGun(v, wid)) && gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; }); return null; }
   if (typeof V === 'string') return null;
   const unsil = wid === 'm4a4' || wid === 'p2000';
   if (srcCur !== V) { if (srcCur) srcCur.holder.visible = false; srcCur = V; playSeq(V, 'draw', { unsil }); V.wid = wid; }
   if (M.vmEv) { const e = M.vmEv; M.vmEv = null; if (playSeq(V, e.kind, { unsil, dur: e.dur }) === 0 && e.kind.startsWith('stab')) playSeq(V, 'shoot', { unsil }); }
   updateVModel(V, dt, unsil);
+  if (M.inspect && P && P.alive) { const c = (WEAPONS[wid] || {}).cat; inspectPose(V, 1 - M.inspect / (M.inspectDur || 3), c === 'knife' || c === 'pistol' ? c : 'rifle'); }
   return V;
 }
 // ---------------- cámara, arma en primera persona y HUD ----------------
@@ -1221,6 +1228,7 @@ function updateCamera(dt) {
     let rx = M.kick * 0.12, ry = 0, rz = 0;
     if (P.alive && w && w.cat !== 'knife') { const r = M.rk; oz += r * 0.18; oy += r * 0.02; rx += r * 0.45; rz += r * M.rkR; ry += r * M.rkY * 0.4; }
     vm.userData.reloadK = 0;
+    const base0 = [ox, oy, oz, rx, ry, rz]; // el modelo de Source trae recarga, sacada e inspección propias
     if (P.alive && M.reloadT > 0) {
       const rw = WEAPONS[curId()], k = 1 - M.reloadT / rw.reload, e = Math.sin(Math.min(1, k) * Math.PI);
       // el arma se inclina hacia la izquierda y arriba para dejar ver el cambio de cargador; al final, golpe de palanca
@@ -1257,8 +1265,9 @@ function updateCamera(dt) {
       sv.holder.visible = vm.userData.gun.visible !== false || !(M.throwT > 0);
       const S = settings.S, U = 0.0254;
       // offsets de CS2 (x derecha, y adelante, z arriba) + bob, retroceso y recarga del código de siempre (más suaves)
-      sv.holder.position.set((S.vmX ?? 1) * U + (ox - b[0]) * 0.5, (S.vmZ ?? -1) * U + (oy - b[1]) * 0.5, -(S.vmY ?? 1) * U + (oz - b[2]) * 0.4);
-      sv.holder.rotation.set(rx * 0.35, ry * 0.35, rz * 0.2);
+      const [bx, by, bz, brx, bry, brz] = base0;
+      sv.holder.position.set((S.vmX ?? 1) * U + (bx - b[0]) * 0.5, (S.vmZ ?? -1) * U + (by - b[1]) * 0.5, -(S.vmY ?? 1) * U + (bz - b[2]) * 0.4);
+      sv.holder.rotation.set(brx * 0.35, bry * 0.35, brz * 0.2);
     } else { for (const c of vm.children) if (c.name !== 'srcvm') c.visible = true; if (srcCur) srcCur.holder.visible = false; }
     { const f = sv ? vmFovSrc : vmFovProc; if (Math.abs(vmCam.fov - f) > 0.01) { vmCam.fov = f; vmCam.updateProjectionMatrix(); } }
     vm.position.copy(camera.position); vm.quaternion.copy(camera.quaternion);

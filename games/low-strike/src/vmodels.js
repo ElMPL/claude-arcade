@@ -79,7 +79,7 @@ export function makeVModel(def) {
 // alineado con la del modelo de Source (largo, cañón hacia el fogonazo, arriba = arriba). La malla del arma
 // de Source se oculta; los brazos y sus animaciones quedan.
 const hidden = new THREE.MeshBasicMaterial({ visible: false });
-export function attachGun(V, gunGeo) {
+export function attachGun(V, gunGeo, mat) {
   const def = V.def, g = def.g, B = def.meta.bones;
   const pos = g.attributes.position, sj = g.attributes.skinIndex, sw = g.attributes.skinWeight, idx = g.index.array;
   const isGun = new Uint8Array(pos.count);
@@ -103,7 +103,7 @@ export function attachGun(V, gunGeo) {
   const sc = ext[ai] / gs.z;
   const side = new THREE.Vector3().crossVectors(upW, fwd); // derecha del arma (en Source: adelante × arriba = izquierda → se invierte)
   const R = new THREE.Matrix4().makeBasis(side.clone().negate(), upW, fwd.clone().negate()); // columnas: x → -izq = derecha, y → arriba, z → atrás
-  const m = new THREE.Mesh(gunGeo, V.gunMats || null);
+  const m = new THREE.Mesh(gunGeo, mat || V.gunMats || null);
   const M = new THREE.Matrix4().compose(ctr, new THREE.Quaternion().setFromRotationMatrix(R), new THREE.Vector3(sc, sc, sc)).multiply(new THREE.Matrix4().makeTranslation(-gc.x, -gc.y, -gc.z));
   m.matrixAutoUpdate = false; m.matrix.copy(M); m.renderOrder = 10; m.frustumCulled = false;
   V.bones[wb].add(m);
@@ -131,6 +131,81 @@ export function playSeq(V, kind, opts = {}) {
   return V.until;
 }
 export function updateVModel(V, dt, unsil) {
+  // three sólo vuelve a escribir un hueso si la animación cambió su valor: deshacer lo que sumó la inspección
+  if (V._ins) { for (const [b, q, p] of V._ins) { b.quaternion.copy(q); b.position.copy(p); } V._ins = null; }
   V.mixer.update(dt);
   if (V.kind !== 'idle') { V.until -= dt; if (V.until <= 0) playSeq(V, 'idle', { unsil }); }
+}
+// Inspección (F) sobre los huesos: el antebrazo derecho gira desde el codo (fuera de pantalla) para traer el arma
+// al centro y la muñeca la rueda para mostrar un costado y después el otro; el antebrazo izquierdo baja mientras
+// tanto. Ejes de Source: x adelante, y izquierda, z arriba.
+// claves: [t, rodar muñeca (x), cabeceo antebrazo (y), guiñada antebrazo (z), cuánto baja el brazo izquierdo]
+const IKF = {
+  rifle: [[0, 0, 0, 0, 0], [0.16, 0.9, -0.2, 0.45, 1], [0.4, 1.0, -0.25, 0.5, 1], [0.54, 0.2, -0.1, 0.3, 1], [0.7, -0.8, -0.15, 0.25, 1], [0.86, -0.85, -0.15, 0.25, 1], [1, 0, 0, 0, 0]],
+  pistol: [[0, 0, 0, 0, 0], [0.2, 1.1, -0.2, 0.45, 1], [0.46, 1.2, -0.25, 0.5, 1], [0.66, -0.9, -0.15, 0.3, 1], [0.86, -0.95, -0.15, 0.3, 1], [1, 0, 0, 0, 0]],
+  knife: [[0, 0, 0, 0, 0], [0.18, 0.6, -0.25, 0.5, 1], [0.42, 3.1, -0.3, 0.55, 1], [0.62, 3.25, -0.2, 0.45, 1], [0.84, 6.283, -0.05, 0.1, 1], [1, 6.283, 0, 0, 0]],
+};
+const _q = new THREE.Quaternion(), _r = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'ZYX');
+function rotRoot(bone, x, y, z) {
+  _q.identity(); for (let p = bone.parent; p && p.isBone; p = p.parent) _q.premultiply(p.quaternion);
+  _r.setFromEuler(_e.set(x, y, z)); bone.quaternion.premultiply(_q.clone().invert().multiply(_r).multiply(_q));
+}
+export function inspectPose(V, k, cat) {
+  const B = V.def.meta.bones;
+  if (!V.ib) { const f = n => B.findIndex(b => b.n.endsWith(n)); V.ib = { rh: f('R_Hand'), rf: f('R_Forearm'), lf: f('L_Forearm') }; }
+  const KF = IKF[cat] || IKF.rifle;
+  let i = 0; while (i < KF.length - 2 && k > KF[i + 1][0]) i++;
+  const A0 = KF[i], A1 = KF[i + 1], t = Math.max(0, Math.min(1, (k - A0[0]) / (A1[0] - A0[0]))), e = t * t * (3 - 2 * t), L = j => A0[j] + (A1[j] - A0[j]) * e;
+  const fb = V.bones[V.ib.rf], hb = V.bones[V.ib.rh], lb = V.bones[V.ib.lf];
+  V._ins = [fb, hb, lb].filter(Boolean).map(b => [b, b.quaternion.clone(), b.position.clone()]);
+  if (fb) rotRoot(fb, 0, L(2) * 0.5, L(3) * 0.5);
+  if (hb) rotRoot(hb, L(1), 0, 0);
+  if (lb) { const d = L(4); lb.position.z -= d * 14; lb.position.x -= d * 4; lb.position.y += d * 3; }
+}
+// Armas cuya malla de primera persona de Source tiene los mismos UV que las texturas de CS:GO subidas
+// (comprobado renderizando cada una): se usa la malla original texturizada en vez de pegarle el modelo de CS2.
+// Así queda exactamente en la mano y con las piezas animadas (cargador, cerrojo, anilla de la granada).
+export const NATIVE = { ak47: 'ak47', awp: 'awp', g3sg1: 'g3sg1', he: 'he', smoke: 'smoke', flash: '#7a7f74', c4: 'c4' };
+const texMats = {};
+export function nativeGun(V, wid, base = 'viewmodels/') {
+  const t = NATIVE[wid]; if (!t) return false;
+  if (!texMats[t] && t[0] === '#') texMats[t] = new THREE.MeshStandardMaterial({ color: t, roughness: 0.45, metalness: 0.6 });
+  if (!texMats[t]) { const map = tl.load(base + 'tex/' + t + '.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.anisotropy = 8; texMats[t] = new THREE.MeshStandardMaterial({ map, roughness: 0.6, metalness: 0.25 }); }
+  // sólo el grupo principal del arma; los chicos (mira, luz) quedan con el material liso
+  const G = V.def.meta.groups; let main = -1, best = 0; G.forEach((g, k) => { if (!/hands/i.test(g.tex) && g.c > best) { best = g.c; main = k; } });
+  V.mesh.material = G.map((g, k) => k === main ? texMats[t] : V.mesh.material[k]);
+  return true;
+}
+// cuchillo: la navaja (flip knife) del pack de CS:GO para 1.6, con su textura; la malla se pega al hueso del
+// cuchillo de Source (mismas animaciones de brazos). Las otras 9 terminaciones quedan en tex/knife_flip_N.webp.
+let knifeP = null;
+export function loadKnife(skin = 1, base = 'viewmodels/') {
+  if (!knifeP) knifeP = Promise.all([fetch(base + 'knife_flip.json').then(r => r.json()), fetch(base + 'knife_flip.bin').then(r => r.arrayBuffer())]).then(([m, b]) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b, 0, m.v * 3), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(b, m.v * 12, m.v * 2), 2));
+    g.setIndex(new THREE.BufferAttribute(new Uint16Array(b, m.v * 20, m.i), 1)); g.computeVertexNormals();
+    return g;
+  });
+  return knifeP.then(g => {
+    const map = tl.load(base + 'tex/knife_flip_' + skin + '.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.anisotropy = 8;
+    return { g, mat: new THREE.MeshStandardMaterial({ map, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide }) };
+  });
+}
+// bomba en el mundo (plantada / tirada): la malla del C4 de primera persona, con su textura, apoyada en el piso
+export async function c4World(flip = false) {
+  const def = await loadVModel('v_c4'); const G = def.meta.groups;
+  let k = -1, best = 0; G.forEach((g, i) => { if (!/hands/i.test(g.tex) && g.c > best) { best = g.c; k = i; } });
+  const gr = G[k], src = def.g, ix = src.index.array.slice(gr.s, gr.s + gr.c);
+  const used = [...new Set(ix)], remap = new Map(used.map((v, i) => [v, i]));
+  const P = new Float32Array(used.length * 3), U = new Float32Array(used.length * 2), pa = src.attributes.position.array, ua = src.attributes.uv.array;
+  used.forEach((v, i) => { P[i * 3] = -pa[v * 3 + 1] * 0.0254; P[i * 3 + 1] = pa[v * 3 + 2] * 0.0254; P[i * 3 + 2] = -pa[v * 3] * 0.0254; U[i * 2] = ua[v * 2]; U[i * 2 + 1] = ua[v * 2 + 1]; });
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+  g.setIndex(Array.from(ix, v => remap.get(v))); g.computeBoundingBox();
+  // el eje más corto queda vertical
+  const s = g.boundingBox.getSize(new THREE.Vector3()), ax = [s.x, s.y, s.z].indexOf(Math.min(s.x, s.y, s.z));
+  if (ax === 0) g.rotateZ(Math.PI / 2 * (flip ? -1 : 1)); else if (ax === 2) g.rotateX(Math.PI / 2 * (flip ? -1 : 1)); else if (flip) g.rotateX(Math.PI);
+  g.computeBoundingBox(); const c = g.boundingBox.getCenter(new THREE.Vector3()); g.translate(-c.x, -g.boundingBox.min.y, -c.z); g.computeVertexNormals();
+  if (!texMats.c4) { const map = tl.load('viewmodels/tex/c4.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; texMats.c4 = new THREE.MeshStandardMaterial({ map, roughness: 0.7, metalness: 0.1 }); }
+  return new THREE.Mesh(g, texMats.c4);
 }

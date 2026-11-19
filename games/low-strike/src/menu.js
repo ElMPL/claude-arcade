@@ -198,7 +198,7 @@ export function makeMenu(o) {
     const people = (ctx.players || []).map(p => ({ ...p, pr: G.prefs[p.id] || {} }));
     const per = G.cfg.bots ? Math.max(G.cfg.size, Math.ceil(people.length / 2)) : Math.ceil(people.length / 2);
     $('party').innerHTML = `<h4>GRUPO</h4>` + people.map(p => `<div class="pm ${p.id === me ? 'me' : ''}"><i></i><span>${esc(p.name)}</span><small>${p.id === ctx.hostId ? 'host · ' : ''}elige equipo al entrar</small></div>`).join('')
-      + (G.cfg.bots ? `<div class="pm bot"><i></i><span>${per * 2} bots</span><small>${o.DIFF[G.cfg.diff].name} · cada jugador reemplaza a uno</small></div>` : '');
+      ;
     // tarjeta de modo
     const map = o.MAPS.find(m => m.id === G.cfg.map) || o.MAPS[0];
     $('modeTitle').textContent = `${per} VS ${per}`; $('modeMapName').textContent = map.name;

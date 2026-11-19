@@ -1,4 +1,5 @@
-// Sonido sintetizado (sin archivos): disparos, pasos, granadas, bomba y avisos. Posicional en estéreo.
+// Sonido: muestras de CS:GO (pack de sonidos subido, en sounds/*.mp3) para pasos, impactos, muertes, explosiones,
+// vainas y UI; lo demás (disparos, granadas, bomba, avisos) sintetizado. Posicional 3D. Si una muestra no cargó, se sintetiza.
 let ctx = null, master = null, noiseBuf = null, vol0 = 0.55;
 const L = { x: 0, y: 0, z: 0, yaw: 0 };
 export function initAudio() {
@@ -10,7 +11,28 @@ export function initAudio() {
     master.connect(comp); comp.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    loadSamples();
   } catch (e) { ctx = null; }
+}
+const R = (b, n, s = '') => Array.from({ length: n }, (_, i) => b + (i + 1) + s);
+const SND = {
+  step: R('pl_step', 4), dirt: R('pl_dirt', 4), tile: R('pl_tile', 4), metal: R('pl_metal', 4), land: R('pl_jump', 2), fall: ['pl_fallpain1'],
+  flesh: R('bhit_flesh-', 3), helmet: ['bhit_helmet-1'], kevlar: ['bhit_kevlar-1'], hs: R('headshot', 3), pain: ['pl_pain2', 'pl_pain4', 'pl_pain5'],
+  die: ['die1', 'die2', 'die3', 'death6'], boom: ['explode3', 'explode4', 'explode5'], shell: R('sshell', 3),
+  impC: R('debris_concrete', 3), impM: R('debris_metal', 2), impW: R('debris_wood', 2),
+  drop: ['items_weapondrop1'], pickup: ['items_ammopickup2'], clip: ['items_9mmclip1'], select: ['common_wpn_select'], deny: ['common_wpn_denyselect'], move: ['common_wpn_moveselect'],
+  click: ['ui_buttonclick'], hover: ['ui_buttonrollover'],
+};
+const buf = {};
+function loadSamples() {
+  for (const n of new Set(Object.values(SND).flat()))
+    fetch('sounds/' + n + '.mp3').then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no))).then(a => { buf[n] = a; }).catch(() => {});
+}
+// reproduce una muestra al azar del grupo; devuelve false si no hay ninguna cargada (para sintetizar)
+function samp(o, key, vol = 1, rate = 1, at = 0) {
+  if (!o) return true; const L = (SND[key] || []).filter(n => buf[n]); if (!L.length) return false;
+  const s = ctx.createBufferSource(); s.buffer = buf[L[Math.floor(Math.random() * L.length)]]; s.playbackRate.value = rate * (0.96 + Math.random() * 0.08);
+  const g = ctx.createGain(); g.gain.value = vol; s.connect(g); g.connect(o); s.start(ctx.currentTime + at); return true;
 }
 export function setVolume(v) { vol0 = v; if (master) master.gain.value = v; }
 export function setListener(x, y, z, yaw) { L.x = x; L.y = y; L.z = z; L.yaw = yaw; }
@@ -67,23 +89,26 @@ export function sfxShot(cat, pos, silent, deagle) {
 // pasos según el piso: 1 arena, 2 piedra, 3 madera, 4 metal. Correr suena más fuerte y se oye más lejos.
 export function sfxStep(pos, vol = 1, surf = 2) {
   if (!ctx) return; const o = out(pos, 0.5 * vol, 9 + vol * 6); if (!o) return; const t = ctx.currentTime, r = Math.random();
+  if (samp(o, ['', 'dirt', 'step', 'tile', 'metal'][surf] || 'step', 0.9)) return;
   if (surf === 1) { noise(o, t, 0.11, 700 + r * 300, 180, 0.8, 'lowpass', 0.004, 0.75); noise(o, t + 0.02, 0.07, 3200, 1800, 1.5, 'bandpass', 0.004, 0.25); }
   else if (surf === 3) { tone(o, t, 0.07, 170 + r * 30, 110, 'triangle', 0.35); noise(o, t, 0.05, 1100, 400, 2, 'bandpass', 0.002, 0.6); }
   else if (surf === 4) { tone(o, t, 0.16, 760 + r * 80, 700, 'square', 0.06); tone(o, t, 0.12, 1310, 1250, 'sine', 0.08); noise(o, t, 0.04, 2600, 1200, 3, 'bandpass', 0.001, 0.6); }
   else { noise(o, t, 0.045, 2000 + r * 600, 900, 2.2, 'bandpass', 0.001, 0.85); tone(o, t, 0.04, 95, 60, 'sine', 0.25); }
 }
-export function sfxLand(pos) { if (!ctx) return; const o = out(pos, 0.6, 10); if (!o) return; const t = ctx.currentTime; noise(o, t, 0.1, 700, 120, 1, 'lowpass', 0.002, 0.9); }
+export function sfxLand(pos, hard) { if (!ctx) return; const o = out(pos, 0.6, 10); if (!o) return; const t = ctx.currentTime; if (hard && !pos) samp(o, 'fall', 0.8); if (samp(o, 'land', 0.9)) return; noise(o, t, 0.1, 700, 120, 1, 'lowpass', 0.002, 0.9); }
 export function sfxClick(pos, f = 2200, v = 0.4) { if (!ctx) return; const o = out(pos, v, 8); if (!o) return; const t = ctx.currentTime; noise(o, t, 0.03, f, f * 0.5, 3, 'bandpass', 0.001, 0.9); }
 export function sfxReload(pos) { if (!ctx) return; const t = ctx.currentTime; const o = out(pos, 0.45, 8); if (!o) return; noise(o, t, 0.04, 1500, 700, 3, 'bandpass', 0.001, 0.8); noise(o, t + 0.35, 0.05, 2600, 1300, 4, 'bandpass', 0.001, 0.9); noise(o, t + 0.8, 0.05, 1800, 900, 4, 'bandpass', 0.001, 0.9); }
 export function sfxHit(head, helmet) {
   if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.45);
+  if (samp(o, head ? (helmet ? 'helmet' : 'hs') : 'flesh', head ? 1.1 : 0.9)) return;
   if (head) { tone(o, t, helmet ? 0.25 : 0.12, helmet ? 2900 : 1500, helmet ? 2700 : 900, 'triangle', 0.5); }
   else noise(o, t, 0.07, 900, 300, 1, 'lowpass', 0.002, 0.6);
 }
-export function sfxHurt() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.6); noise(o, t, 0.12, 600, 150, 1, 'lowpass', 0.002, 0.9); tone(o, t, 0.1, 140, 70, 'sine', 0.6); }
+export function sfxHurt(head, armor) { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.6); if (samp(o, head ? 'hs' : armor ? 'kevlar' : 'flesh', 0.9)) { if (Math.random() < 0.5) samp(o, 'pain', 0.5, 1, 0.06); return; } noise(o, t, 0.12, 600, 150, 1, 'lowpass', 0.002, 0.9); tone(o, t, 0.1, 140, 70, 'sine', 0.6); }
 export function sfxKill() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.25); tone(o, t, 0.08, 1300, 1300, 'square', 0.25); tone(o, t + 0.07, 0.12, 1750, 1750, 'square', 0.25); }
 export function sfxExplosion(pos, big) {
   if (!ctx) return; const t = ctx.currentTime; const o = out(pos, big ? 1.6 : 1.2, big ? 200 : 70); if (!o) return;
+  if (samp(o, 'boom', big ? 1.5 : 1.1, big ? 0.85 : 1)) { if (big) tone(o, t, 1.4, 70, 28, 'sine', 0.7); return; }
   noise(o, t, big ? 2.4 : 1.2, 1800, 60, 0.6, 'lowpass', 0.004, 1); tone(o, t, big ? 1.4 : 0.7, 80, 30, 'sine', 1);
 }
 export function sfxFlash(pos) { if (!ctx) return; const t = ctx.currentTime; const o = out(pos, 1.1, 50); if (!o) return; noise(o, t, 0.4, 5000, 800, 0.7, 'lowpass', 0.002, 1); tone(o, t, 0.2, 120, 50, 'sine', 0.8); }
@@ -97,8 +122,8 @@ export function sfxBeep(pos, hi) { if (!ctx) return; const t = ctx.currentTime; 
 export function sfxPlantKey() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.3); tone(o, t, 0.06, 1400 + Math.random() * 600, 1400, 'square', 0.15); }
 export function sfxDefuse(pos) { if (!ctx) return; const t = ctx.currentTime; const o = out(pos, 0.6, 15); if (!o) return; noise(o, t, 0.2, 3000, 1500, 3, 'bandpass', 0.001, 0.8); tone(o, t + 0.1, 0.25, 600, 900, 'triangle', 0.3); }
 export function sfxBuy() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.35); tone(o, t, 0.06, 900, 900, 'triangle', 0.4); tone(o, t + 0.05, 0.08, 1350, 1350, 'triangle', 0.35); }
-export function sfxDeny() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.3); tone(o, t, 0.15, 220, 180, 'square', 0.25); }
-export function sfxPickup() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.35); noise(o, t, 0.08, 2000, 900, 2, 'bandpass', 0.002, 0.8); }
+export function sfxDeny() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.3); if (samp(o, 'deny', 1)) return; tone(o, t, 0.15, 220, 180, 'square', 0.25); }
+export function sfxPickup() { if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.35); if (samp(o, 'pickup', 1.2)) return; noise(o, t, 0.08, 2000, 900, 2, 'bandpass', 0.002, 0.8); }
 export function sfxSting(win) {
   if (!ctx) return; const t = ctx.currentTime; const o = out(null, 0.32);
   const notes = win ? [523, 659, 784, 1047] : [440, 415, 392, 330];
@@ -127,3 +152,10 @@ export function musicMVP(mine) {
 }
 export function sfxRadio() { if (!ctx) return; const t = ctx.currentTime, o = out(null, 0.28); noise(o, t, 0.08, 3000, 1500, 3, 'bandpass', 0.001, 0.6); tone(o, t + 0.05, 0.06, 1200, 1200, 'square', 0.12); noise(o, t + 0.45, 0.06, 2500, 1200, 3, 'bandpass', 0.001, 0.4); }
 export function sfxPing(pos) { if (!ctx) return; const t = ctx.currentTime, o = out(pos, 0.5, 80) || out(null, 0.3); tone(o, t, 0.12, 1568, 1568, 'sine', 0.35); tone(o, t + 0.1, 0.18, 2093, 2093, 'sine', 0.3); }
+// muestras nuevas: muerte (posicional), vaina cayendo, impacto de bala según material, tirar arma, cambiar de arma, UI
+export function sfxDie(pos) { if (!ctx) return; samp(out(pos, 0.8, 25), 'die', 1); }
+export function sfxShell(pos) { if (!ctx) return; const o = out(pos, 0.25, 6); if (!o) return; samp(o, 'shell', 1, 1, 0.25 + Math.random() * 0.2); }
+export function sfxImpact(pos, mat) { if (!ctx) return; const o = out(pos, 0.35, 10); if (!o) return; if (!samp(o, mat === 'metal' ? 'impM' : mat === 'wood' ? 'impW' : 'impC', 0.8)) noise(o, ctx.currentTime, 0.05, 2400, 900, 2, 'bandpass', 0.001, 0.6); }
+export function sfxDrop(pos) { if (!ctx) return; samp(out(pos, 0.6, 10), 'drop', 1); }
+export function sfxSelect() { if (!ctx) return; const o = out(null, 0.3); if (!samp(o, 'select', 1)) noise(o, ctx.currentTime, 0.03, 1400, 700, 3, 'bandpass', 0.001, 0.9); }
+export function sfxUI(hover) { if (!ctx) return; samp(out(null, hover ? 0.25 : 0.4), hover ? 'hover' : 'click', 1); }
