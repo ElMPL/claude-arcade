@@ -45,10 +45,10 @@ export function loadVModel(name, base = 'viewmodels/') {
     // animaciones: [frame][hueso][x y z qx qy qz qw] → clips de three
     const nb = meta.bones.length, clips = {};
     for (const a of meta.anims) {
-      const fr = new Float32Array(buf, a.o, a.n * nb * 7), times = Float32Array.from({ length: a.n }, (_, i) => i / a.fps), tracks = [];
+      const fr = new Int16Array(buf.slice(a.o, a.o + a.n * nb * 14)), times = Float32Array.from({ length: a.n }, (_, i) => i / a.fps), tracks = [];
       for (let b = 0; b < nb; b++) {
         const P = new Float32Array(a.n * 3), Q = new Float32Array(a.n * 4);
-        for (let f = 0; f < a.n; f++) { const s = (f * nb + b) * 7; P.set(fr.subarray(s, s + 3), f * 3); Q.set(fr.subarray(s + 3, s + 7), f * 4); }
+        for (let f = 0; f < a.n; f++) { const s = (f * nb + b) * 7; for (let k = 0; k < 3; k++) P[f * 3 + k] = fr[s + k] / 200; for (let k = 0; k < 4; k++) Q[f * 4 + k] = fr[s + 3 + k] / 32767; }
         tracks.push(new THREE.VectorKeyframeTrack(`b${b}.position`, times, P), new THREE.QuaternionKeyframeTrack(`b${b}.quaternion`, times, Q));
       }
       clips[a.name] = new THREE.AnimationClip(a.name, a.n > 1 ? (a.n - 1) / a.fps : 0.1, tracks);

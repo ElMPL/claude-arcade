@@ -162,7 +162,9 @@ def export(m, out):
   if len(idx) % 2: blob.append(b'\0\0')
   aoff = sum(len(b) for b in blob); alist = []
   for a in m['anims']:
-    fr = a['frames'].astype('<f4'); alist.append({'name': a['name'], 'fps': a['fps'], 'n': int(fr.shape[0]), 'o': aoff}); blob.append(fr.tobytes()); aoff += fr.nbytes
+    fr = a['frames'].copy()  # cuantizado a int16: posición /200 (pulgadas), cuaternión ×32767
+    q = np.empty(fr.shape, '<i2'); q[..., :3] = np.clip(np.round(fr[..., :3] * 200), -32767, 32767); q[..., 3:] = np.clip(np.round(fr[..., 3:] * 32767), -32767, 32767)
+    alist.append({'name': a['name'], 'fps': a['fps'], 'n': int(fr.shape[0]), 'o': aoff}); blob.append(q.tobytes()); aoff += q.nbytes
   open(out + '.bin', 'wb').write(b''.join(blob))
   meta = {'v': nv, 'i': int(len(idx)), 'groups': gl,
           'bones': [{'n': b['name'], 'p': b['parent'], 't': [round(x, 5) for x in b['pos']], 'q': [round(x, 6) for x in b['quat']], 'inv': [round(x, 6) for x in b['p2b']]} for b in m['bones']],
