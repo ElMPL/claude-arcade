@@ -419,7 +419,12 @@ export function solidAt(W, x, y, z) {
   return false;
 }
 // celdas de zonas (bit 4 = A, 8 = B, 16 = spawn T, 32 = spawn CT)
-export function zoneAt(W, x, z) { const i = W.idx(x, z); return i < 0 ? 0 : W.flags[i]; }
+export function zoneAt(W, x, z, y) {
+  const i = W.idx(x, z); if (i < 0) return 0; let f = W.flags[i];
+  const Y = W.info && W.info.zonesY; // sitios uno encima del otro (Nuke): también cuenta la altura
+  if (Y && y !== undefined) { if ((f & 4) && Y.A && (y < Y.A[0] - 0.6 || y > Y.A[1] + 0.6)) f &= ~4; if ((f & 8) && Y.B && (y < Y.B[0] - 0.6 || y > Y.B[1] + 0.6)) f &= ~8; }
+  return f;
+}
 export function zoneCells(W, bit) {
   const out = [];
   for (let i = 0; i < W.n * W.n; i++) if (W.flags[i] & bit) out.push(i);

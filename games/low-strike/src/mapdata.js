@@ -40,7 +40,9 @@ export async function loadMap(id, base = 'maps/') {
   const data = x.getImageData(0, 0, img.width, img.height).data;
   const out = { info, layers: decodeMap(info, data, img.width) };
   if (info.render === 'bsp') { // mapa de CS 1.6 con sus texturas y lightmaps (tools/import_bsp.py)
-    const buf = await (await fetch(base + info.mesh)).arrayBuffer(); let o = 0; const parts = [], allPos = [];
+    const res = await fetch(base + info.mesh);
+    const buf = info.mesh.endsWith('.gz') ? await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : await res.arrayBuffer();
+    let o = 0; const parts = [], allPos = [];
     for (const p of info.parts) {
       const n = p.verts;
       const pos = new Uint16Array(buf, o, n * 3); o += n * 6; o += (4 - o % 4) % 4 === 0 ? 0 : 0;
@@ -49,7 +51,9 @@ export async function loadMap(id, base = 'maps/') {
       const lm = new Uint16Array(buf.slice(o, o + n * 4)); o += n * 4;
       parts.push({ kind: p.kind, brk: p.brk, n, pos, uv, tile, lm }); allPos.push(pos);
     }
-    const tot = allPos.reduce((a, b) => a + b.length, 0), mesh = new Uint16Array(tot); let k = 0; for (const a of allPos) { mesh.set(a, k); k += a.length; }
+    const rs = info.rshift || [0, 0, 0]; // los mapas de Source guardan el render corrido (lo que queda fuera de la grilla de colisión)
+    const tot = allPos.reduce((a, b) => a + b.length, 0), mesh = rs.some(v => v) ? new Float32Array(tot) : new Uint16Array(tot); let k = 0;
+    for (const a of allPos) { if (mesh instanceof Uint16Array) mesh.set(a, k); else for (let i = 0; i < a.length; i++) mesh[k + i] = a[i] - rs[i % 3] * 100; k += a.length; }
     out.bsp = { parts, base }; out.mesh = mesh;
     return out;
   }

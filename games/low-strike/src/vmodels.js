@@ -168,7 +168,7 @@ export function playSeq(V, kind, opts = {}) {
   else if (kind === 'draw') s = pick('draw', 'deploy');
   else if (kind === 'reload') s = pick('reload', 'reload1', 'start_reload');
   else if (kind === 'shoot') { const opts2 = Object.keys(S).filter(k => /shoot|fire|stab|throw/.test(k) && !/last|empty|left|leftlast/.test(k) && (suf ? k.endsWith(suf) : !k.endsWith('_unsil'))); s = opts2.length ? S[opts2[Math.floor(Math.random() * opts2.length)]] : null; }
-  else s = S[kind] || null;
+  else s = S[kind] || S[{ stab: 'stab_hit', stab_hit: 'stab', midslash1: 'stab_miss', midslash2: 'stab_miss' }[kind]] || null;
   if (!s || !s.clip) return 0;
   const a = V.mixer.clipAction(s.clip);
   if (V.cur && V.cur !== a) V.cur.fadeOut(kind === 'shoot' ? 0.02 : 0.08);
@@ -200,7 +200,7 @@ function rotRoot(bone, x, y, z) {
 }
 export function inspectPose(V, k, cat) {
   const B = V.def.meta.bones;
-  if (!V.ib) { const f = n => B.findIndex(b => b.n.endsWith(n)); V.ib = { rh: f('R_Hand'), rf: f('R_Forearm'), lf: f('L_Forearm') }; }
+  if (!V.ib) { const f = (...ns) => { for (const n of ns) { const k = B.findIndex(b => b.n.endsWith(n)); if (k >= 0) return k; } return -1; }; V.ib = { rh: f('R_Hand', 'Right_Hand'), rf: f('R_Forearm', 'Right_Arm'), lf: f('L_Forearm', 'Left_Arm') }; } // el cuchillo de CS:S tiene otros nombres de huesos
   const KF = IKF[cat] || IKF.rifle;
   let i = 0; while (i < KF.length - 2 && k > KF[i + 1][0]) i++;
   const A0 = KF[i], A1 = KF[i + 1], t = Math.max(0, Math.min(1, (k - A0[0]) / (A1[0] - A0[0]))), e = t * t * (3 - 2 * t), L = j => A0[j] + (A1[j] - A0[j]) * e;

@@ -130,24 +130,44 @@ xs, ys, zs, kinds = [], [], [], []
 nrc = np.cross(T_col[:, 1] - T_col[:, 0], T_col[:, 2] - T_col[:, 0]); area = np.linalg.norm(nrc, axis=1); nrc /= (area[:, None] + 1e-9)
 kind = np.where(nrc[:, 1] > 0.5, 0, np.where(nrc[:, 1] < -0.5, 1, 2))  # 0 arriba, 1 abajo, 2 empinado
 edge = np.maximum.reduce([np.linalg.norm(T_col[:, 1] - T_col[:, 0], axis=1), np.linalg.norm(T_col[:, 2] - T_col[:, 1], axis=1), np.linalg.norm(T_col[:, 0] - T_col[:, 2], axis=1)])
-Ns = np.clip(np.ceil(edge / step).astype(int), 1, 3000)
-for n_ in np.unique(Ns):
-  idx = np.where(Ns == n_)[0]
-  i, j = np.mgrid[0:n_ + 1, 0:n_ + 1]; m = (i + j) <= n_
-  u = (i[m] / n_)[None, :, None]; v = (j[m] / n_)[None, :, None]
-  t = T_col[idx]
-  P = t[:, 0:1] + (t[:, 1:2] - t[:, 0:1]) * u + (t[:, 2:3] - t[:, 0:1]) * v
-  xs.append(P[:, :, 0].ravel()); ys.append(P[:, :, 1].ravel()); zs.append(P[:, :, 2].ravel())
-  kinds.append(np.repeat(kind[idx], P.shape[1]))
-xs = np.concatenate(xs); ys = np.concatenate(ys); zs = np.concatenate(zs); kinds = np.concatenate(kinds)
-ix = np.clip((xs / cell).astype(int), 0, N - 1); iz = np.clip((zs / cell).astype(int), 0, N - 1)
-ci = iz * N + ix
-order = np.lexsort((ys, ci)); ci = ci[order]; ys = ys[order]; kinds = kinds[order]
+# cada muestra se guarda como una sola clave entera (celda | altura en mm | tipo) y se ordena en el lugar: entra en memoria aunque sean cientos de millones
+# la grilla de muestras va por los dos lados que salen del vértice 0 (na × nb): los triángulos largos y finos no gastan de más
+L0 = np.linalg.norm(T_col[:, 2] - T_col[:, 1], axis=1); L1 = np.linalg.norm(T_col[:, 0] - T_col[:, 2], axis=1); L2 = np.linalg.norm(T_col[:, 1] - T_col[:, 0], axis=1)
+rot = np.argmax(np.stack([L0, L1, L2], 1), 1)  # el vértice 0 pasa a ser el opuesto al lado más largo
+T_col = np.stack([T_col[np.arange(len(T_col)), (rot + k) % 3] for k in range(3)], 1)
+e1 = np.linalg.norm(T_col[:, 1] - T_col[:, 0], axis=1); e2 = np.linalg.norm(T_col[:, 2] - T_col[:, 0], axis=1)
+NA = np.clip(np.ceil(e1 / step).astype(np.int64), 1, 3000); NB = np.clip(np.ceil(e2 / step).astype(np.int64), 1, 3000)
+pair = NA * 4096 + NB
+up_, inv = np.unique(pair, return_inverse=True)
+def lattice(na, nb):
+  i, j = np.mgrid[0:na + 1, 0:nb + 1]; m = i * nb + j * na <= na * nb
+  return (i[m] / na).astype(np.float32), (j[m] / nb).astype(np.float32)
+cnt = np.array([len(lattice(int(p // 4096), int(p % 4096))[0]) if (p // 4096) * (p % 4096) < 4_000_000 else 0 for p in up_])
+tot = int(np.bincount(inv, minlength=len(up_)) @ cnt)
+print('muestras previstas', tot)
+KEY = np.empty(tot, np.int64); w = 0
+order_g = np.argsort(inv, kind='stable'); bnd = np.searchsorted(inv[order_g], np.arange(len(up_) + 1))
+for g, p in enumerate(up_):
+  idx = order_g[bnd[g]:bnd[g + 1]]
+  if not len(idx) or cnt[g] == 0: continue
+  uu, vv = lattice(int(p // 4096), int(p % 4096)); u = uu[None, :, None]; v = vv[None, :, None]
+  ch = max(1, 2_000_000 // u.shape[1])
+  for q0 in range(0, len(idx), ch):
+    t = T_col[idx[q0:q0 + ch]].astype(np.float32)
+    P = t[:, 0:1] + (t[:, 1:2] - t[:, 0:1]) * u + (t[:, 2:3] - t[:, 0:1]) * v
+    c_ = np.clip((P[:, :, 2] / cell).astype(np.int64), 0, N - 1) * N + np.clip((P[:, :, 0] / cell).astype(np.int64), 0, N - 1)
+    yq = np.clip(np.round((P[:, :, 1] + 100) * 1000), 0, (1 << 18) - 1).astype(np.int64)
+    k_ = np.broadcast_to(kind[idx[q0:q0 + ch]][:, None], c_.shape).astype(np.int64)
+    kk = ((c_ << 20) | (yq << 2) | k_).ravel(); KEY[w:w + len(kk)] = kk; w += len(kk)
+    del P, t, c_, yq, k_, kk
+assert w == tot
+KEY.sort()
+ci = (KEY >> 20).astype(np.int32); ys = (((KEY >> 2) & ((1 << 18) - 1)).astype(np.float32) / 1000 - 100); kinds = (KEY & 3).astype(np.uint8); del KEY
 bounds = np.searchsorted(ci, np.arange(N * N + 1))
 print('samples', len(ci))
 
 # ---------- tramos sólidos por celda ----------
-LMAX = 3
+LMAX = int(os.environ.get('LMAX', 3))
 NOUP = np.full(N * N, np.nan, np.float32)  # celdas sin superficie hacia arriba (¿cable/viga colgando o pared?)
 TOP = np.full((LMAX, N * N), np.nan, np.float32); BOT = np.full((LMAX, N * N), np.nan, np.float32); CLS = np.zeros((LMAX, N * N), np.uint8)
 for c in range(N * N):
@@ -187,8 +207,9 @@ for c in range(N * N):
       if li + 1 < len(solids) and solids[li][1] >= solids[li + 1][0] - 0.3:
         solids[li][1] = solids[li + 1][1]; solids.pop(li + 1); wall.pop(li + 1)
       break
-  if len(solids) > LMAX:
-    solids = solids[:LMAX - 1] + [[solids[LMAX - 1][0], solids[-1][1]]]; wall = wall[:LMAX]
+  while len(solids) > LMAX:  # sobran tramos: se juntan los dos separados por el hueco más chico (el que menos se puede caminar)
+    k = min(range(len(solids) - 1), key=lambda q: solids[q + 1][0] - solids[q][1])
+    solids[k] = [solids[k][0], solids[k + 1][1]]; wall[k] = wall[k] or wall[k + 1]; solids.pop(k + 1); wall.pop(k + 1)
   for li, s_ in enumerate(solids):
     BOT[li, c] = s_[0]; TOP[li, c] = s_[1]
     free = (solids[li + 1][0] - s_[1]) if li + 1 < len(solids) else 99

@@ -79,6 +79,14 @@ export function buildNav(W) {
     const c = seeds[k]; const x = (c % W.n + 0.5) * W.cell, z = (Math.floor(c / W.n) + 0.5) * W.cell; const j = Math.floor(z / nav.c) * m + Math.floor(x / nav.c);
     for (let l = 0; l < W.L; l++) if (!isNaN(H[l][j])) { cand.push(l * N + j); break; }
   }
+  // mejor todavía: los spawns de verdad (en los mapas de Source hay techos de clip enormes que son más grandes que el mapa)
+  const sp = W.info && W.info.spawns, spSeeds = [];
+  if (sp) for (const t of ['CT', 'T']) for (const q of (sp[t] || []).slice(0, 4)) {
+    const j = Math.floor(q[2] / nav.c) * m + Math.floor(q[0] / nav.c); let bl = -1, bd = 1e9;
+    for (let l = 0; l < W.L; l++) { const h = H[l][j]; if (!isNaN(h) && Math.abs(h - q[1]) < bd && h < q[1] + 0.8) { bd = Math.abs(h - q[1]); bl = l; } }
+    if (bl >= 0 && bd < 2.5) spSeeds.push(bl * N + j);
+  }
+  if (spSeeds.length) cand.unshift(...spSeeds);
   if (!cand.length) { for (let i = 0; i < T; i++) if (!isNaN(H[Math.floor(i / N)][i % N])) { cand.push(i); break; } }
   let best = null, bestN = -1;
   for (const s0 of cand) {
@@ -90,7 +98,8 @@ export function buildNav(W) {
     while (st.length) { const c = st.pop(); const r = radj.get(c); if (!r) continue; for (const t of r) if (!bwd[t]) { bwd[t] = 1; st.push(t); } }
     const main = new Uint8Array(T); let n = 0;
     for (let i = 0; i < T; i++) if (fwd[i] & bwd[i]) { main[i] = 1; n++; }
-    if (n > bestN) { bestN = n; best = main; }
+    const hits = spSeeds.reduce((a, q) => a + main[q], 0), score = hits * 1e9 + n; // gana la que conecta más spawns
+    if (score > bestN) { bestN = score; best = main; }
   }
   nav.main = best;
   return nav;
@@ -164,7 +173,8 @@ export function zoneNodes(nav, bit) {
   for (const i of zoneCells(W, bit)) {
     const x = (i % W.n + 0.5) * W.cell, z = (Math.floor(i / W.n) + 0.5) * W.cell;
     const cx = Math.floor(x / nav.c), cz = Math.floor(z / nav.c), j = cz * nav.m + cx;
-    for (let l = W.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j]) { out.add(l * nav.N + j); break; } // el nivel más alto que sea transitable
+    const Y = W.info && W.info.zonesY && (bit === 4 ? W.info.zonesY.A : bit === 8 ? W.info.zonesY.B : null);
+    for (let l = W.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j] && (!Y || (nav.H[l][j] > Y[0] - 0.6 && nav.H[l][j] < Y[1] + 0.6))) { out.add(l * nav.N + j); break; } // el nivel más alto que sea transitable (en Nuke, el del sitio)
   }
   return [...out];
 }

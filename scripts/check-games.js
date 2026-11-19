@@ -9,6 +9,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const GAMES = path.join(ROOT, 'games');
 const MAX_MB = 25;
+// excepciones aprobadas: Counter Strika trae mapas de CS:Source completos (malla, texturas y lightmaps)
+const MAX_MB_GAME = { 'low-strike': 80 };
 const errors = [], warnings = [], ok = [];
 
 function dirSize(dir) {
@@ -60,7 +62,8 @@ function checkGame(id) {
   const files = walk(dir).map(f => path.relative(dir, f));
   if (files.some(f => /(^|\/)(server|app)\.js$/.test(f)) && files.some(f => f.endsWith('package.json'))) warn('parece tener un servidor propio: la guía pide usar solo el SDK');
   const mb = dirSize(dir) / 1024 / 1024;
-  if (mb > MAX_MB) err(`pesa ${mb.toFixed(1)} MB (máximo ${MAX_MB} MB)`);
+  const max = MAX_MB_GAME[id] || MAX_MB;
+  if (mb > max) err(`pesa ${mb.toFixed(1)} MB (máximo ${max} MB)`);
   ok.push(`✅ **${id}** — ${m.name || '?'} (${m.mode === 'multi' ? `${m.minPlayers}-${m.maxPlayers} jugadores` : '1 jugador'}, ${mb.toFixed(1)} MB)`);
 }
 

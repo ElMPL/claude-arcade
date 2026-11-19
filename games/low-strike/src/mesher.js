@@ -637,7 +637,7 @@ void main() {
   #include <fog_vertex>
 }`;
 const BSP_FS = `
-uniform sampler2D map; uniform sampler2D lmap; uniform float bright; uniform float alphaTest;
+uniform sampler2D map; uniform sampler2D lmap; uniform float bright; uniform float alphaTest; uniform float lmScale;
 varying vec2 vUv; varying vec4 vTile; varying vec2 vLm;
 #include <common>
 #include <fog_pars_fragment>
@@ -648,7 +648,7 @@ void main() {
   vec4 tx = textureGrad(map, vTile.xy + fract(vUv) * vTile.zw, dFdx(g), dFdy(g));
   if (tx.a < alphaTest) discard;
   vec3 lm = texture2D(lmap, vLm).rgb;
-  gl_FragColor = vec4(tx.rgb * pow(lm, vec3(0.85)) * bright, 1.0);
+  gl_FragColor = vec4(tx.rgb * pow(lm * lmScale, vec3(0.85)) * bright, 1.0);
   #include <fog_fragment>
 }`;
 export function buildFromBsp(bsp, info) {
@@ -659,14 +659,15 @@ export function buildFromBsp(bsp, info) {
   let tris = 0;
   for (const p of bsp.parts) {
     const n = p.n, pos = new Float32Array(n * 3), tr = new Float32Array(n * 4), uvL = new Float32Array(n * 2);
-    for (let i = 0; i < n * 3; i++) pos[i] = p.pos[i] / 100;
+    const rs = info.rshift || [0, 0, 0];
+    for (let i = 0; i < n * 3; i++) pos[i] = p.pos[i] / 100 - rs[i % 3];
     for (let i = 0; i < n; i++) { const t = tiles[p.tile[i]]; tr[i * 4] = t[0]; tr[i * 4 + 1] = t[1]; tr[i * 4 + 2] = t[2]; tr[i * 4 + 3] = t[3]; uvL[i * 2] = p.lm[i * 2] / 65535; uvL[i * 2 + 1] = p.lm[i * 2 + 1] / 65535; }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uvT', new THREE.BufferAttribute(p.uv, 2));
     g.setAttribute('tileR', new THREE.BufferAttribute(tr, 4)); g.setAttribute('uvL', new THREE.BufferAttribute(uvL, 2));
     g.computeBoundingSphere();
     const mat = new THREE.ShaderMaterial({ vertexShader: BSP_VS, fragmentShader: BSP_FS, fog: true, side: THREE.DoubleSide,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, lmap: { value: null }, bright: { value: 1.45 }, alphaTest: { value: p.kind === 'alpha' ? 0.5 : -1 } }]) });
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, lmap: { value: null }, bright: { value: info.source === 'css' ? 1.15 : 1.45 }, lmScale: { value: info.lmScale || 1 }, alphaTest: { value: p.kind === 'alpha' ? 0.5 : -1 } }]) });
     mat.uniforms.map.value = map; mat.uniforms.lmap.value = lmap;
     if (p.kind === 'water') { mat.transparent = true; }
     const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; m.receiveShadow = false; m.castShadow = p.kind !== 'water';

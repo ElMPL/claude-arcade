@@ -33,8 +33,10 @@ import { hud, radarImage, drawRadar, renderBoard, buildBuy, refreshBuy, buyCats,
 const U = 0.0254, D2R = Math.PI / 180;
 const $ = id => document.getElementById(id);
 const MAPS = [
-  { id: 'dust2', name: 'Dust II', sub: 'Desierto · clásico' },
+  { id: 'css_dust2', name: 'Dust II', sub: 'Desierto · CS:Source' },
   { id: 'mirage', name: 'Mirage', sub: 'Pueblo marroquí' },
+  { id: 'css_inferno', name: 'Inferno', sub: 'Pueblo italiano · CS:Source' },
+  { id: 'css_nuke', name: 'Nuke', sub: 'Planta nuclear · CS:Source' },
 ];
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } } };
 
@@ -42,8 +44,9 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? 
 const G = {
   players: new Map(), drops: new Map(), nades: [], bomb: { state: 'none', x: 0, y: 0, z: 0, t: 0 },
   phase: 'lobby', timeLeft: 0, round: 0, score: [0, 0], half: 0, time: 0,
-  cfg: { map: store.get('ls:map', 'dust2'), len: 'corta', size: 5, bots: true, diff: 'normal', mode: 'comp' }, prefs: {},
+  cfg: { map: store.get('ls:map', 'css_dust2'), len: 'corta', size: 5, bots: true, diff: 'normal', mode: 'comp' }, prefs: {},
 };
+if (!MAPS.some(m => m.id === G.cfg.map)) G.cfg.map = 'css_dust2'; // ids de mapas viejos
 let ctx = null, myId = 'local', H = null, BOTS = null, mapCache = {}, loaded = false;
 let renderer, scene, camera, vmScene, vmCam, vm, fx, mapMesh = null, radarImg = null;
 const isHost = () => !ctx || ctx.isHost || !ctx.online;
@@ -82,7 +85,7 @@ function applyPrefs() {
   document.documentElement.style.setProperty('--hud-scale', CFG.hudScale ?? 1);
   if (CFG.showFps && !fpsEl) { fpsEl = document.createElement('div'); fpsEl.id = 'fpsMeter'; document.body.appendChild(fpsEl); }
   if (fpsEl) fpsEl.hidden = !CFG.showFps;
-  if (typeof mapMesh !== 'undefined' && mapMesh) mapMesh.traverse(o => { const u = o.material && o.material.uniforms; if (u && u.bright) u.bright.value = 1.45 * (CFG.bright ?? 1); });
+  if (typeof mapMesh !== 'undefined' && mapMesh) mapMesh.traverse(o => { const u = o.material && o.material.uniforms; if (u && u.bright) u.bright.value = (G.info && G.info.source === 'css' ? 1.15 : 1.45) * (CFG.bright ?? 1); });
 }
 const keys = new Set(); let mouseL = false, mouseR = false, locked = false, lockAt = 0, mAvg = 6;
 const touchState = { mx: 0, mz: 0, fire: false, look: null };
@@ -453,7 +456,7 @@ function knife(stab) {
   else if (!r.impacts.length) A.sfxS('knife_slash', null, 0.6);
   else if (r.impacts.length) { const im = r.impacts[0]; fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]]); if (!A.sfxS('knife_wall', null, 0.7)) A.sfxClick(im, 1800, 0.5); const b = BRK ? BRK.at(im[0], im[1], im[2], 0.3) : -1; if (b >= 0) { breakIt(b); send('brk', { i: b }); } }
   else A.sfxThrow();
-  M.fireT = stab ? 1.0 : 0.45; M.kick = 1; M.knife2 = stab; M.vmEv = { kind: stab ? 'stab_hit' : 'stab_miss' };
+  M.fireT = stab ? 1.0 : 0.45; M.kick = 1; M.knife2 = stab; M.vmEv = { kind: stab ? (r.hit ? 'stab' : 'stab_miss') : (Math.random() < 0.5 ? 'midslash1' : 'midslash2') }; // las secuencias del cuchillo de CS:Source
   send('sh', { i: myId, w: 'knife', o: eye, e: [r.end], m: [], h: r.hit ? [[r.hit.id, r.hit.pos, 0]] : [] });
 }
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
@@ -930,7 +933,7 @@ async function loadGame(id) {
     if (data.layers.flags) L2.flags = data.layers.flags.slice();
     const W2 = buildWorld(data.info, L2);
     if (!data.bsp) applyFixes(W2, id); // los arreglos eran para los mapas anteriores
-    refineSites(W2);
+    if (!data.info.zonesY) refineSites(W2); // en los mapas de Source los sitios ya vienen exactos
     if (data.mesh) buildVis(W2, data.mesh);
     const props = data.mesh && !data.bsp ? placeProps(W2, buildNav(W2), id) : []; // los .bsp ya traen todo
     if (W2.vis) for (let l = 0; l < W2.L; l++) { const T = W2.top[l], Cc = W2.cls[l], V = W2.vis; for (let i = 0; i < T.length; i++) if (Cc[i] === 2 && !(V[i] >= T[i])) V[i] = T[i] + 0.05; } // props: sí chocan
@@ -1041,7 +1044,7 @@ function interpRemote(p, dt) {
 }
 // tipo de piso bajo un punto (para el sonido de los pasos)
 function surfAt(x, y, z) {
-  const S = G.W && G.W.surf; if (!S) return G.cfg.map === 'dust2' ? 1 : 2;
+  const S = G.W && G.W.surf; if (!S) return G.cfg.map === 'css_dust2' ? 1 : 2;
   const gx = Math.floor(x / S.sc), gz = Math.floor(z / S.sc); if (gx < 0 || gz < 0 || gx >= S.sm || gz >= S.sm) return 2;
   return S.surf[gz * S.sm + gx] || 2;
 }
@@ -1050,17 +1053,26 @@ function surfAt(x, y, z) {
 const SUN = new THREE.Vector3(0.45, 0.62, 0.3).normalize();
 const shScene = new THREE.Scene(), shRoot = new THREE.Group(); shRoot.matrixAutoUpdate = false; shScene.add(shRoot);
 const shMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, stencilWrite: true, stencilFunc: THREE.NotEqualStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
+// el aplastado va en el shader, después de la piel: si se aplastaba el grupo, el cuerpo (malla con esqueleto)
+// invertía una matriz sin volumen y desaparecía; por eso sólo se veía la sombra del arma
+const uFlat = { value: new THREE.Matrix4() };
+shMat.onBeforeCompile = sh => { sh.uniforms.uFlat = uFlat; sh.vertexShader = 'uniform mat4 uFlat;\n' + sh.vertexShader.replace('#include <project_vertex>', 'vec4 mvPosition = vec4( transformed, 1.0 );\n#ifdef USE_INSTANCING\nmvPosition = instanceMatrix * mvPosition;\n#endif\nmvPosition = viewMatrix * ( uFlat * ( modelMatrix * mvPosition ) );\ngl_Position = projectionMatrix * mvPosition;'); };
 function renderPlayerShadows() {
   const lx = SUN.x / SUN.y, lz = SUN.z / SUN.y; let ref = 1;
   shScene.overrideMaterial = shMat;
   for (const p of G.players.values()) {
     const m = p.model; if (!m || !m.visible || Math.hypot(m.position.x - camera.position.x, m.position.z - camera.position.z) > 45) continue;
     const h = m.position.y + 0.025, par = m.parent;
-    shRoot.matrix.set(1, -lx, 0, h * lx, 0, 0, 0, h, 0, -lz, 1, h * lz, 0, 0, 0, 1);
+    uFlat.value.set(1, -lx, 0, h * lx, 0, 0, 0, h, 0, -lz, 1, h * lz, 0, 0, 0, 1);
     const ch = m.userData.chest, chv = ch.visible, esp = p.esp, ev = esp && esp.visible, tag = p.tag, tv = tag && tag.visible, fl = p.mflash, fv = fl && fl.visible, bl = p.blob;
     ch.visible = true; if (esp) esp.visible = false; if (tag) tag.visible = false; if (fl) fl.visible = false; if (bl) bl.visible = false;
     shMat.stencilRef = ref++; shRoot.add(m);
+    // los cuerpos son mallas con esqueleto: su esfera de recorte es la de la pose de reposo y, aplastada contra el piso,
+    // three la descartaba (por eso se veía la sombra del arma pero no la del jugador)
+    const cul = m.userData.culls || (m.userData.culls = (() => { const a = []; m.traverse(o => { if (o.isMesh) a.push(o); }); return a; })());
+    const fc = cul.map(o => o.frustumCulled); cul.forEach(o => { o.frustumCulled = false; });
     renderer.render(shScene, camera);
+    cul.forEach((o, i) => { o.frustumCulled = fc[i]; });
     par.add(m); ch.visible = chv; if (esp) esp.visible = ev; if (tag) tag.visible = tv; if (fl) fl.visible = fv; if (bl) bl.visible = true;
     if (ref > 250) break;
   }
@@ -1152,7 +1164,7 @@ function updateLocal(dt) {
     }
     if (M.throwT > 0) { const prev = M.throwT; M.throwT -= dt; if (prev > 0.35 && M.throwT <= 0.35) throwNade(M.throwPow ?? 1); }
   } else if (id === 'c4') {
-    const site = zoneAt(G.W, p.x, p.z) & 12;
+    const site = zoneAt(G.W, p.x, p.z, p.y) & 12;
     if (mouseL && site && p.onGround && G.phase === 'live' && M.drawT <= 0) {
       if (!M.plantT) A.sfxPlantKey();
       const prev = M.plantT; M.plantT += dt;
@@ -1191,7 +1203,7 @@ function updateLocal(dt) {
   const ld = lookDrop();
   if (ld) hint = 'E · agarrar ' + WNAME(ld.w);
   if (P.team === 'CT' && G.bomb.state === 'planted' && Math.hypot(p.x - G.bomb.x, p.z - G.bomb.z) < 1.7 && !M.defusing) hint = 'Mantené E para desactivar';
-  if (id === 'c4' && (zoneAt(G.W, p.x, p.z) & 12) && !M.plantT && G.phase === 'live') hint = 'Mantené clic para plantar';
+  if (id === 'c4' && (zoneAt(G.W, p.x, p.z, p.y) & 12) && !M.plantT && G.phase === 'live') hint = 'Mantené clic para plantar';
   hud.hint(hint);
   // enviar estado
   sendT -= dt;
@@ -1435,7 +1447,7 @@ function updateHud(dt) {
   radarT -= 0.05;
   if (radarT <= 0 && radarImg) {
     radarT = 0.1;
-    const view = S && S !== P ? { x: S.x, z: S.z, yaw: S.yaw } : { x: M.pl.x, z: M.pl.z, yaw: M.pl.yaw };
+    const view = S && S !== P ? { x: S.x, y: S.y, z: S.z, yaw: S.yaw } : { x: M.pl.x, y: M.pl.y, z: M.pl.z, yaw: M.pl.yaw };
     const eye = [M.pl.x, M.pl.y + 1.6, M.pl.z];
     // detectar enemigos a la vista (para el radar)
     // un enemigo aparece en el radar si lo ve cualquier compañero vivo (dentro de su campo de visión), como en CS
@@ -1449,7 +1461,7 @@ function updateHud(dt) {
         if (canSee(G.W, G.nades, e, [p.x, p.y, p.z, 1])) { p.seenT = G.time; break; }
       }
     }
-    const z = zoneAt(G.W, view.x, view.z);
+    const z = zoneAt(G.W, view.x, view.z, view.y);
     hud.el.zoneName.textContent = z & 4 ? 'Sitio A' : z & 8 ? 'Sitio B' : z & 16 ? 'Base T' : z & 32 ? 'Base CT' : '';
   }
 }

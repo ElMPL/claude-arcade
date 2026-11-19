@@ -176,7 +176,7 @@ export function makeBots(G, H) {
             const e = D.err * D2R * (1 + side * 0.6);
             b.err = [(rnd() < 0.5 ? -1 : 1) * e * (0.6 + rnd() * 0.8), (rnd() - 0.35) * e * 0.8]; b.head = rnd() < D.hs;
             // avisa al equipo dónde vio al enemigo
-            const z = zoneAt(G.W, best.x, best.z); if (z & 4) team(p).seen = { site: 'A', t: 8 }; else if (z & 8) team(p).seen = { site: 'B', t: 8 };
+            const z = zoneAt(G.W, best.x, best.z, best.y); if (z & 4) team(p).seen = { site: 'A', t: 8 }; else if (z & 8) team(p).seen = { site: 'B', t: 8 };
           }
           b.lastKnown = [best.x, best.y, best.z]; b.lkT = 5;
         } else if (b.tgt) { b.tgt = null; }
@@ -245,11 +245,11 @@ export function makeBots(G, H) {
           if (bomb.state === 'dropped') { if (b.goalKind !== 'bomb' || b.repath <= 0) { goal = [bomb.x, bomb.y, bomb.z]; b.goalKind = 'bomb'; } if (Math.hypot(pl.x - bomb.x, pl.z - bomb.z) < 1.2) H.handle('take', { id: 'c4' }, p.id); }
           else if (bomb.state === 'planted') {
             // post-plant: cubrir la bomba desde distintos ángulos mirando por donde llegan los CT
-            if (b.goalKind !== 'post') { const a = rnd() * 6.28, r = 5 + rnd() * 7; goal = [bomb.x + Math.cos(a) * r, bomb.y, bomb.z + Math.sin(a) * r]; b.goalKind = 'post'; b.look = plan['ctEntry' + (zoneAt(G.W, bomb.x, bomb.z) & 8 ? 'B' : 'A')] || [bomb.x, bomb.y, bomb.z]; }
+            if (b.goalKind !== 'post') { const a = rnd() * 6.28, r = 5 + rnd() * 7; goal = [bomb.x + Math.cos(a) * r, bomb.y, bomb.z + Math.sin(a) * r]; b.goalKind = 'post'; b.look = plan['ctEntry' + (zoneAt(G.W, bomb.x, bomb.z, bomb.y) & 8 ? 'B' : 'A')] || [bomb.x, bomb.y, bomb.z]; }
           } else if (!plan.go && st) {
             if (b.goalKind !== 'stage') { goal = [st[0] + (rnd() - 0.5) * 5, st[1], st[2] + (rnd() - 0.5) * 5]; b.goalKind = 'stage'; b.look = plan.siteC[b.site]; }
           } else if (p.inv.c4) {
-            const inSite = zoneAt(G.W, pl.x, pl.z) & 12;
+            const inSite = zoneAt(G.W, pl.x, pl.z, pl.y) & 12;
             if (inSite && live && pl.onGround && !tgtNear(p)) {
               b.plantT += dt; stay = true; G.setPlanting(p.id, b.plantT);
               if (b.plantT >= 3.2) { b.plantT = 0; G.setPlanting(p.id, 0); H.handle('plant', { x: pl.x, y: pl.y, z: pl.z }, p.id); }

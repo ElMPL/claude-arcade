@@ -474,7 +474,7 @@ export function makeHost(G) {
         break;
       }
       case 'plant': {
-        const site = zoneAt(G.W, d.x, d.z) & 12;
+        const site = zoneAt(G.W, d.x, d.z, d.y) & 12;
         if (!p.alive || !p.inv.c4 || G.phase !== 'live' || !site || G.bomb.state === 'planted') return;
         p.inv.c4 = false; p.inv.v++;
         Object.assign(G.bomb, { state: 'planted', carrier: null, x: d.x, y: d.y, z: d.z, t: ROUND.bomb, site: site & 4 ? 'A' : 'B' });
