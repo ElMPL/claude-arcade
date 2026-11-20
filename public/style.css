@@ -178,3 +178,35 @@ input.invalid { outline: 2px solid var(--err); border-color: transparent; }
 .roomList .rc { font-weight: 800; color: var(--muted); }
 .lock { width: 15px; height: 15px; fill: currentColor; flex: none; display: inline-block; vertical-align: -2px; margin-right: 4px; }
 .roomName { font-weight: 800; margin-top: 4px; } .lockTag { color: var(--muted); font-weight: 700; }
+
+/* ---------- Cuentas ---------- */
+.modal { position: fixed; inset: 0; background: rgba(8, 5, 25, .72); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.modal[hidden] { display: none; }
+.modalCard { width: min(400px, 100%); display: flex; flex-direction: column; gap: 6px; }
+.modalCard form { display: flex; flex-direction: column; gap: 4px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; background: var(--bg2); padding: 4px; border-radius: 12px; }
+.tab { flex: 1; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 900; padding: 9px; border-radius: 9px; cursor: pointer; }
+.tab.on { background: var(--card); color: var(--text); }
+.hint { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.accWrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.accHead { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.accHead small { color: var(--muted); font-weight: 900; letter-spacing: 2px; }
+.accName { font-family: 'Bungee', sans-serif; font-size: 34px; }
+.accTotal { display: flex; align-items: baseline; gap: 8px; background: var(--bg2); border-radius: 16px; padding: 10px 18px; }
+.accTotal span { font-size: 28px; } .accTotal b { font-family: 'Bungee', sans-serif; font-size: 40px; color: var(--accent); } .accTotal small { color: var(--muted); font-weight: 800; }
+.accGrid { display: grid; grid-template-columns: 240px 1fr 240px; gap: 16px; align-items: start; }
+.accGrid h3 { margin: 0 0 10px; }
+.byGame, .hist, .topList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.byGame li, .topList li { display: flex; justify-content: space-between; background: var(--bg2); padding: 8px 12px; border-radius: 10px; font-weight: 800; }
+.topList { counter-reset: r; } .topList li::before { counter-increment: r; content: counter(r) '.'; color: var(--muted); margin-right: 8px; }
+.topList li span { flex: 1; } .topList li.me { outline: 2px solid var(--accent); }
+.hist { max-height: 60vh; overflow: auto; }
+.hist li { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; background: var(--bg2); padding: 10px 12px; border-radius: 10px; }
+.hist li b { grid-column: 2; } .hist li small { grid-column: 2; color: var(--muted); } .hist li time { grid-row: 1 / span 2; grid-column: 3; color: var(--muted); font-size: 12px; align-self: center; }
+.hist li .cr { grid-row: 1 / span 2; font-size: 22px; align-self: center; }
+.hist .none, .byGame .none, .topList .none { color: var(--muted); background: none; }
+.accActions { display: flex; justify-content: space-between; }
+.accTag { font-size: 11px; color: var(--accent); margin-left: 4px; }
+#inName:disabled { opacity: .8; }
+@media (max-width: 860px) { .accGrid { grid-template-columns: 1fr; } .accName { font-size: 26px; } }

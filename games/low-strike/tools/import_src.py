@@ -98,6 +98,8 @@ for e in ents:
 # ---------- caras → triángulos ----------
 render = []   # (P en unidades (n,3), s, t (normalizados por tamaño de textura), material, lightmap, kind, rompible, tris idx)
 col = []
+colsrc = []
+def tag(lbl): colsrc.extend([lbl] * (len(col) - len(colsrc)))
 lm_imgs = []
 DI = B.dispinfo(); DV = B.dispverts()
 def face_poly(f):
@@ -164,6 +166,7 @@ for mi, (kind, e, org) in models.items():
         lmu = (li, ls, lt)
     if kind in ('world', 'solid', 'brk') and colf:  # el mundo: sus caras visibles (el compilador ya sacó las tapadas)
       for a, b, c in tri: col.append(tr(np.stack([P[a], P[b], P[c]])))
+      tag(f'{kind}:{name}' + (f':disp' if disp >= 0 else ''))
     if k is None: continue
     render.append((P, s / tw, t / th, name, lmu, k, mi if kind == 'brk' else -1, tri))
 print(mid, 'caras render', len(render), 'materiales', len(MATS), 'lightmaps', len(lm_imgs))
@@ -205,12 +208,12 @@ nclip = ninv = 0
 for bi in sorted(world_brushes):
   cont = BR[bi][2]
   if cont & CONTENTS_PLAYERCLIP and not cont & CONTENTS_SOLID:
-    col += brush_tris(bi); nclip += 1; continue
+    col += brush_tris(bi); nclip += 1; tag(f'clip:{bi}'); continue
   if cont & (CONTENTS_SOLID | CONTENTS_WINDOW | CONTENTS_GRATE):
     sides = [side_name(k) for k in range(BR[bi][0], BR[bi][0] + BR[bi][1])]
     if any(fl & 0x6 or 'sky' in n for n, fl in sides): continue
     if all(n.startswith('tools/') or fl & 0x80 for n, fl in sides) and any('invisible' in n or 'clip' in n for n, fl in sides):
-      col += brush_tris(bi); ninv += 1
+      col += brush_tris(bi); ninv += 1; tag(f'inv:{bi}')
 print('clip del jugador', nclip, 'paredes invisibles', ninv)
 
 # ---------- props estáticos ----------
@@ -226,6 +229,12 @@ for i in range(ngl):
     q = o + k * sz
     ox, oy, oz, ap, ay, ar = struct.unpack_from('<6f', d, q); ptype, fl_, lc, solid, pflags, skin = struct.unpack_from('<HHHBBi', d, q + 24)
     props.append((names[ptype], (ox, oy, oz), (ap, ay, ar), solid, skin))
+# props de entidad (barriles, carros, macetas: prop_physics / prop_dynamic): en el juego quedan quietos y sólidos
+for e in ents:
+  if e.get('classname', '').startswith(('prop_physics', 'prop_dynamic')) and e.get('model', '').endswith('.mdl'):
+    if e.get('classname', '').startswith('prop_dynamic') and e.get('solid', '6') == '0' and e.get('disableshadows') is None: pass
+    o = tuple(float(x) for x in e.get('origin', '0 0 0').split()); a = tuple(float(x) for x in e.get('angles', '0 0 0').split())
+    props.append((e['model'], o, a, 0 if e.get('solid') == '0' else 6, int(e.get('skin', 0) or 0)))
 def rotm(p, y, r):
   p, y, r = map(math.radians, (p, y, r))
   cp, sp, cy, sy, cr, sr = math.cos(p), math.sin(p), math.cos(y), math.sin(y), math.cos(r), math.sin(r)
@@ -236,7 +245,11 @@ def rotm(p, y, r):
 cache = {}; nprop = 0; ptris = 0
 for name, org, ang, solid, skin in props:
   key = (name, skin)
-  if key not in cache: cache[key] = load_prop(fs, name, skin)
+  if key not in cache:
+    m0 = load_prop(fs, name, skin)
+    # props de CS:GO con muchos triángulos: se usa el LOD 1 (lo que el juego muestra a media distancia)
+    m1 = load_prop(fs, name, skin, 1) if m0 is not None and len(m0['T']) > 400 else None
+    cache[key] = m1 if m1 is not None and len(m1['T']) >= 60 else m0
   m = cache[key]
   if m is None: continue
   if in_sky(org): continue
@@ -252,7 +265,26 @@ for name, org, ang, solid, skin in props:
     k, img = mat_of(nm)
     if k is None: continue
     render.append((P, m['UV'][:, 0], m['UV'][:, 1], nm, None, k, -1, sel))
-  if solid:
+  # colisión: la del .phy (piezas convexas, lo que choca de verdad en Source); sin .phy el prop no es sólido,
+  # salvo los de caja (solid 2). Así las palmeras chocan sólo en el tronco y los cables/plantas no traban.
+  if solid and 'phy' not in m:
+    from srcphy import load_phy
+    m['phy'] = load_phy(fs.get(name[:-4] + '.phy'))
+  if solid and m.get('phy') is not None:
+    for a, b, c in m['phy']: col.append(tr(np.stack([R @ a + org, R @ b + org, R @ c + org])))
+    tag(f'phy:{name}')
+  elif solid == 2:
+    lo3, hi3 = m['P'].min(0), m['P'].max(0)
+    bx = np.array([[x, y, z] for x in (lo3[0], hi3[0]) for y in (lo3[1], hi3[1]) for z in (lo3[2], hi3[2])])
+    try:
+      h = ConvexHull(bx); ctr = bx.mean(0)
+      for s_ in h.simplices:
+        a, b, c = bx[s_]
+        if np.cross(b - a, c - a) @ (a - ctr) < 0: b, c = c, b
+        col.append(tr(np.stack([R @ a + org, R @ b + org, R @ c + org])))
+    except Exception: pass
+    tag(f'box:{name}')
+  if False:
     if 'vol' not in m:  # volumen con signo: si da negativo el modelo viene con la orientación al revés
       Q = m['P']; m['vol'] = float(np.einsum('ij,ij->i', Q[T[:, 0]], np.cross(Q[T[:, 1]], Q[T[:, 2]])).sum())
     TT = T if m['vol'] >= 0 else T[:, [0, 2, 1]]
@@ -265,6 +297,7 @@ lo_, hi_ = tr(DP).min(0) - 1.5, tr(DP).max(0) + 1.5
 # mejor: la malla de navegación de los bots (.nav) dice exactamente dónde se puede caminar
 navname = 'maps/' + os.path.basename(path).replace('.bsp', '.nav')
 nb = fs.get(navname)
+if nb is None and os.path.exists(path[:-4] + '.nav'): nb = open(path[:-4] + '.nav', 'rb').read()  # .nav suelto al lado del .bsp
 NAV = None
 if nb is not None:
   from srcnav import load_nav
@@ -273,7 +306,8 @@ if nb is not None:
   lo_ = np.maximum(lo_, NP.min(0) - np.array([7, 4, 7])); hi_ = np.minimum(hi_, NP.max(0) + np.array([7, 14, 7]))
   print('nav', len(NAV), 'áreas; recorte', lo_.round(1), hi_.round(1))
 cc = col.mean(1); keep = np.all((cc > lo_) & (cc < hi_), 1)
-col = np.clip(col[keep], lo_, hi_)
+col = np.clip(col[keep], lo_, hi_); colsrc = [colsrc[i] for i in np.where(keep)[0]]
+json.dump(colsrc, open(f'/tmp/ls/{mid}_colsrc.json', 'w'))
 print('tris colisión', len(col), 'caja', lo_.round(1), hi_.round(1))
 
 # ---------- entidades ----------

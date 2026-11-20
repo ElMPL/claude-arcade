@@ -13,6 +13,7 @@
     <a class="logo" href="/">Claude<span>Arcade</span></a>
     <div class="header-right">
       <span id="roomBadge" class="badge" hidden></span>
+      <button id="btnAccount" class="btn">👤 Iniciar sesión</button>
       <button id="btnOnline" class="btn primary">🎮 Jugar online</button>
     </div>
   </header>
@@ -62,6 +63,37 @@
       </div>
     </section>
 
+    <section id="viewAccount" hidden>
+      <div class="accWrap">
+        <div class="card accHead">
+          <div>
+            <small>CUENTA</small>
+            <div id="accName" class="accName"></div>
+            <div id="accSince" class="muted"></div>
+          </div>
+          <div class="accTotal"><span>👑</span><b id="accCrowns">0</b><small>coronas</small></div>
+        </div>
+        <div class="accGrid">
+          <div class="card">
+            <h3>Por juego</h3>
+            <ul id="accByGame" class="byGame"></ul>
+          </div>
+          <div class="card grow">
+            <h3>Historial de coronas</h3>
+            <ul id="accHistory" class="hist"></ul>
+          </div>
+          <div class="card">
+            <h3>Ranking</h3>
+            <ol id="accTop" class="topList"></ol>
+          </div>
+        </div>
+        <div class="accActions">
+          <button class="btn ghost back">← Volver al catálogo</button>
+          <button id="btnLogout" class="btn">Cerrar sesión</button>
+        </div>
+      </div>
+    </section>
+
     <section id="viewLobby" hidden>
       <div class="lobby">
         <div class="card side">
@@ -105,6 +137,27 @@
       </div>
     </div>
     <iframe id="frame" allow="fullscreen; gamepad; autoplay; clipboard-write" allowfullscreen></iframe>
+  </div>
+
+  <div id="accModal" class="modal" hidden>
+    <div class="card modalCard">
+      <div class="tabs"><button data-tab="login" class="tab on">Iniciar sesión</button><button data-tab="register" class="tab">Crear cuenta</button></div>
+      <form id="accForm" autocomplete="on">
+        <label class="field">Usuario
+          <input id="accUser" maxlength="16" autocomplete="username" required>
+        </label>
+        <label class="field">Contraseña
+          <input id="accPass" type="password" maxlength="64" autocomplete="current-password" required>
+        </label>
+        <label class="field" id="accPass2Row" hidden>Repetí la contraseña
+          <input id="accPass2" type="password" maxlength="64" autocomplete="new-password">
+        </label>
+        <p class="hint" id="accHint">Con tu cuenta, cada juego que ganes online suma una corona 👑 a tu historial.</p>
+        <p id="accErr" class="err"></p>
+        <button id="accSubmit" class="btn primary big" type="submit">Entrar</button>
+      </form>
+      <button id="accClose" class="btn ghost">Cancelar</button>
+    </div>
   </div>
 
   <div id="toast"></div>

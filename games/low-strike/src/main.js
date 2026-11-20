@@ -34,7 +34,7 @@ const U = 0.0254, D2R = Math.PI / 180;
 const $ = id => document.getElementById(id);
 const MAPS = [
   { id: 'css_dust2', name: 'Dust II', sub: 'Desierto · CS:Source' },
-  { id: 'mirage', name: 'Mirage', sub: 'Pueblo marroquí' },
+  { id: 'css_mirage', name: 'Mirage', sub: 'Pueblo marroquí · CS:GO' },
   { id: 'css_inferno', name: 'Inferno', sub: 'Pueblo italiano · CS:Source' },
   { id: 'css_nuke', name: 'Nuke', sub: 'Planta nuclear · CS:Source' },
 ];
@@ -403,7 +403,7 @@ function shotFx(sid, wid, eye, ends, imps, hits, w) {
     }
   }
   // polvo del color de lo que se golpeó: piso (arena/baldosas) o pared (revoque/arenisca)
-  const dustC = G.cfg.map === 'mirage' ? ['#d9d2c4', '#e8e1d2'] : ['#c9a776', '#d8c09a'];
+  const dustC = G.cfg.map === 'css_mirage' ? ['#d9d2c4', '#e8e1d2'] : ['#c9a776', '#d8c09a'];
   if (imps.length) A.sfxImpact([imps[0][0], imps[0][1], imps[0][2]], Math.random() < 0.15 ? 'metal' : 'concrete');
   if (BRK) for (const im of imps) { const b = BRK.at(im[0], im[1], im[2]); if (b >= 0) breakIt(b); }
   for (const im of imps) { fx.impact([im[0], im[1], im[2]], [im[3], im[4], im[5]], im[4] > 0.7 ? dustC[0] : dustC[1]); if (mine && G.cfg.mode === 'practice') fx.debugBox(im); }

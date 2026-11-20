@@ -19,7 +19,9 @@ def load_nav(buf):
     aid = rd('I')
     rd('B' if ver <= 8 else 'H' if ver <= 12 else 'I')
     nw = rd('3f'); se = rd('3f'); nez, swz = rd('2f')
-    for _d in range(4): k_ = rd('I'); o += 4 * k_
+    conn = []
+    for _d in range(4):
+      k_ = rd('I'); conn += list(struct.unpack_from('<%dI' % k_, buf, o)); o += 4 * k_
     for _h in range(rd('B')): o += 4 + 12 + (1 if ver >= 2 else 0)
     if ver < 15: k_ = rd('B'); o += 14 * k_
     for _e in range(rd('I')):
@@ -31,6 +33,6 @@ def load_nav(buf):
     if ver >= 16:
       k_ = rd('I'); o += 5 * k_; o += 4
     if sub >= 1: o += 1  # dato propio de CS:S (1 byte)
-    areas.append({'id': aid, 'nw': nw, 'se': se, 'nez': nez, 'swz': swz})
+    areas.append({'id': aid, 'nw': nw, 'se': se, 'nez': nez, 'swz': swz, 'conn': conn})
   assert o <= len(buf)
   return ver, areas

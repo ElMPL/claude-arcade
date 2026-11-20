@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
 const crypto = require('crypto');
+const Accounts = require('./accounts');
 
 const PORT = process.env.PORT || 3000;
 const GAMES_DIR = path.join(__dirname, 'games');
@@ -109,11 +110,53 @@ app.get('/thumbs/:id.svg', (req, res) => {
 
 app.get('/healthz', (_req, res) => res.send('ok'));
 app.get('/api/games', (_req, res) => res.json(GAMES));
+// ---------- Cuentas (usuario y contraseña, historial de coronas) ----------
+app.set('trust proxy', 1);
+const COOKIE = 'ca_s';
+function readCookie(header) {
+  const m = String(header || '').match(/(?:^|;\s*)ca_s=([^;]+)/); return m ? decodeURIComponent(m[1]) : null;
+}
+function setCookie(req, res, token) {
+  const secure = req.secure ? '; Secure' : '';
+  res.setHeader('Set-Cookie', token ? `${COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${60 * 864e2}; SameSite=Lax${secure}` : `${COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure}`);
+}
+const authTries = new Map(); // ip -> { n, t }: freno a probar contraseñas
+function tooMany(ip) {
+  const now = Date.now(), e = authTries.get(ip) || { n: 0, t: now };
+  if (now - e.t > 10 * 60e3) { e.n = 0; e.t = now; }
+  e.n++; authTries.set(ip, e); return e.n > 20;
+}
+const api = express.Router();
+api.use(express.json({ limit: '4kb' }));
+const wrap = fn => (req, res) => fn(req, res).catch(e => { console.error('cuentas', e); res.status(500).json({ ok: false, error: 'Error del servidor, probá de nuevo' }); });
+api.post('/register', wrap(async (req, res) => {
+  if (tooMany(req.ip)) return res.status(429).json({ ok: false, error: 'Demasiados intentos, esperá unos minutos' });
+  const r = await Accounts.register(req.body && req.body.user, req.body && req.body.pass);
+  if (!r.ok) return res.json(r);
+  setCookie(req, res, await Accounts.newSession(r.user));
+  res.json({ ok: true, user: Accounts.publicUser(r.user) });
+}));
+api.post('/login', wrap(async (req, res) => {
+  if (tooMany(req.ip)) return res.status(429).json({ ok: false, error: 'Demasiados intentos, esperá unos minutos' });
+  const r = await Accounts.login(req.body && req.body.user, req.body && req.body.pass);
+  if (!r.ok) return res.json(r);
+  setCookie(req, res, await Accounts.newSession(r.user));
+  res.json({ ok: true, user: Accounts.publicUser(r.user) });
+}));
+api.post('/logout', wrap(async (req, res) => { await Accounts.logout(readCookie(req.headers.cookie)); setCookie(req, res, null); res.json({ ok: true }); }));
+api.get('/me', wrap(async (req, res) => {
+  const u = await Accounts.userFromToken(readCookie(req.headers.cookie));
+  res.json(u ? { ok: true, user: Accounts.publicUser(u) } : { ok: false });
+}));
+api.get('/top', wrap(async (_req, res) => res.json({ ok: true, top: await Accounts.top(20) })));
+app.use('/api/account', api);
+
 app.use('/games', express.static(GAMES_DIR, { fallthrough: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Salas ----------
 const rooms = new Map(); // code -> room
+const accOf = new Map(); // socket.id -> clave de la cuenta (o null si juega como invitado)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function makeCode() {
@@ -158,6 +201,12 @@ function roomList() {
 
 io.on('connection', socket => {
   let room = null;
+  // si el navegador tiene sesión iniciada, el jugador usa el nombre de su cuenta y sus coronas quedan guardadas
+  const userP = Accounts.userFromToken(readCookie(socket.handshake.headers.cookie)).catch(() => null);
+  async function playerName(payload) {
+    const u = await userP;
+    return u ? { name: u.name, acc: u.key } : { name: cleanName(payload && payload.name), acc: null };
+  }
   let msgCount = 0, passTries = 0;
   const resetTimer = setInterval(() => { msgCount = 0; }, 1000);
   const passTimer = setInterval(() => { passTries = 0; }, 60000);
@@ -183,37 +232,38 @@ io.on('connection', socket => {
 
   socket.on('rooms:list', (_p, cb) => { if (typeof cb === 'function') cb({ ok: true, rooms: roomList() }); });
 
-  socket.on('room:create', (payload, cb) => {
+  socket.on('room:create', async (payload, cb) => {
     if (typeof cb !== 'function') return;
-    const name = cleanName(payload && payload.name);
+    const { name, acc } = await playerName(payload);
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     leave();
     const code = makeCode();
     const r = { code, name: cleanRoomName(payload && payload.roomName) || 'Sala de ' + name, pass: null, salt: '', hostId: socket.id, players: new Map(), gameId: null, state: 'lobby' };
     setPass(r, payload && payload.pass);
-    r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0 });
+    r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0, acc: !!acc }); accOf.set(socket.id, acc);
     rooms.set(code, r);
     room = r;
     socket.join(code);
     cb({ ok: true, me: socket.id, room: publicRoom(r) });
   });
 
-  socket.on('room:join', (payload, cb) => {
+  socket.on('room:join', async (payload, cb) => {
     if (typeof cb !== 'function') return;
     const code = String((payload && payload.code) || '').toUpperCase().trim();
-    const name = cleanName(payload && payload.name);
+    const { name, acc } = await playerName(payload);
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     const r = rooms.get(code);
     if (!r) return cb({ ok: false, error: 'No existe esa sala' });
     if (r.state === 'playing') return cb({ ok: false, error: 'La partida ya empezó, esperá a que termine' });
     if (r.players.size >= MAX_ROOM_SIZE) return cb({ ok: false, error: 'La sala está llena' });
+    if (acc && [...r.players.keys()].some(id => id !== socket.id && accOf.get(id) === acc)) return cb({ ok: false, error: 'Ya estás en esta sala con tu cuenta (en otra pestaña)' });
     if (r.pass && r.hostId !== socket.id) {
       if (!(payload && payload.pass)) return cb({ ok: false, needPass: true, error: 'Esta sala tiene contraseña' });
       if (++passTries > 12) return cb({ ok: false, needPass: true, error: 'Demasiados intentos, esperá un minuto' });
       if (!passOk(r, payload.pass)) return cb({ ok: false, needPass: true, error: 'Contraseña incorrecta' });
     }
     leave();
-    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0 });
+    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0, acc: !!acc }); accOf.set(socket.id, acc);
     room = r;
     socket.join(code);
     cb({ ok: true, me: socket.id, room: publicRoom(r) });
@@ -267,6 +317,15 @@ io.on('connection', socket => {
     const winners = payload && Array.isArray(payload.winners) ? [...new Set(payload.winners)].filter(id => room.players.has(id)).slice(0, 8) : [];
     for (const id of winners) room.players.get(id).crowns++;
     const game = GAME_BY_ID.get(room.gameId);
+    // historial de coronas de las cuentas
+    const names = [...room.players.values()].map(p => p.name);
+    for (const id of winners) {
+      const key = accOf.get(id); if (!key) continue;
+      const me = room.players.get(id).name;
+      Accounts.addCrown(key, { game: game ? game.name : '?', gameId: room.gameId, room: room.name, with: names.filter(n => n !== me).slice(0, 8), co: winners.length > 1 })
+        .then(u => { const s = io.sockets.sockets.get(id); if (u && s) s.emit('account:update', Accounts.publicUser(u)); })
+        .catch(e => console.error('corona', e));
+    }
     let text = payload && typeof payload === 'object' ? String(payload.text || '').slice(0, 120) : '';
     if (!text && winners.length) text = `👑 ${winners.map(id => room.players.get(id).name).join(' y ')} ${winners.length > 1 ? 'ganaron' : 'ganó'} ${game ? game.name : ''}`;
     const results = { text, winners, gameName: game ? game.name : '' };
@@ -325,7 +384,10 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('disconnect', () => { clearInterval(resetTimer); clearInterval(passTimer); leave(); });
+  socket.on('disconnect', () => { clearInterval(resetTimer); clearInterval(passTimer); leave(); accOf.delete(socket.id); });
 });
 
-server.listen(PORT, () => console.log(`ClaudeArcade en http://localhost:${PORT}`));
+Accounts.store.init()
+  .then(() => console.log('Cuentas guardadas en', Accounts.store.kind))
+  .catch(e => console.error('No se pudo abrir la base de cuentas', e))
+  .finally(() => server.listen(PORT, () => console.log(`ClaudeArcade en http://localhost:${PORT}`)));

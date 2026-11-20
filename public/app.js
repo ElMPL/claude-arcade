@@ -21,7 +21,7 @@
   const isHost = () => room && room.hostId === myId;
 
   function show(view) {
-    ['viewCatalog', 'viewOnline', 'viewLobby'].forEach(id => { $('#' + id).hidden = id !== view; });
+    ['viewCatalog', 'viewOnline', 'viewLobby', 'viewAccount'].forEach(id => { $('#' + id).hidden = id !== view; });
     window.scrollTo(0, 0);
   }
 
@@ -89,6 +89,7 @@
       }
       if (room) show('viewLobby');
     });
+    socket.on('account:update', u => { me = u; renderAccount(); toast('👑 ¡Corona guardada en tu cuenta! Total: ' + u.crowns); });
     socket.on('relay', m => toFrame({ kind: 'msg', type: m.type, data: m.data, from: m.from, adm: m.adm ? 1 : 0 }));
     socket.on('room:kicked', () => { toast('Un admin te sacó de la sala'); });
     socket.on('connect', () => Admin.reauth());
@@ -120,7 +121,7 @@
       return null;
     }
     input.classList.remove('invalid');
-    store.set('arcade:name', n);
+    if (!me) store.set('arcade:name', n);
     return n;
   }
   $('#inName').addEventListener('input', () => {
@@ -235,8 +236,9 @@
     ul.innerHTML = '';
     [...room.players].sort((a, b) => (b.crowns || 0) - (a.crowns || 0)).forEach(p => {
       const li = document.createElement('li');
+      const accTag = p.acc ? ' <small class="accTag" title="Juega con su cuenta">✔</small>' : '';
       const crowns = p.crowns ? `<span class="crowns" title="Juegos ganados">👑 ${p.crowns}</span>` : '<span class="crowns zero">👑 0</span>';
-      li.innerHTML = `<span class="pname">${esc(p.name)}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
+      li.innerHTML = `<span class="pname">${esc(p.name)}${accTag}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
       ul.appendChild(li);
     });
 
@@ -422,9 +424,77 @@
     return { f7, define, sync, render, reauth };
   })();
 
+  // ---------- Cuenta ----------
+  let me = null, accTab = 'login';
+  async function api(path, body) {
+    const r = await fetch('/api/account/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' } : { credentials: 'same-origin' });
+    try { return await r.json(); } catch { return { ok: false, error: 'Error del servidor' }; }
+  }
+  function applyName() {
+    const inp = $('#inName');
+    if (me) { inp.value = me.name; inp.disabled = true; inp.title = 'Jugás con tu cuenta'; }
+    else { inp.disabled = false; inp.title = ''; inp.value = store.get('arcade:name') || ''; }
+    $('#btnAccount').textContent = me ? `👤 ${me.name} · 👑 ${me.crowns}` : '👤 Iniciar sesión';
+  }
+  const fmtDate = t => new Date(t).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  function renderAccount() {
+    applyName();
+    if (!me) return;
+    $('#accName').textContent = me.name;
+    $('#accSince').textContent = 'Cuenta creada el ' + new Date(me.created).toLocaleDateString('es-AR');
+    $('#accCrowns').textContent = me.crowns;
+    const bg = Object.entries(me.byGame || {}).sort((a, b) => b[1] - a[1]);
+    $('#accByGame').innerHTML = bg.length ? bg.map(([g, n]) => `<li><span>${esc(g)}</span><span>👑 ${n}</span></li>`).join('') : '<li class="none">Todavía nada</li>';
+    $('#accHistory').innerHTML = (me.history || []).length ? me.history.map(h => `<li><span class="cr">👑</span><b>${esc(h.game)}${h.co ? ' <small class="accTag">(compartida)</small>' : ''}</b><small>${esc(h.room || '')}${h.with && h.with.length ? ' · contra ' + h.with.map(esc).join(', ') : ''}</small><time>${fmtDate(h.t)}</time></li>`).join('')
+      : '<li class="none">Ganá un juego online para sumar tu primera corona.</li>';
+  }
+  async function loadTop() {
+    const r = await api('top');
+    $('#accTop').innerHTML = r.ok && r.top.length ? r.top.map(u => `<li class="${me && u.name === me.name ? 'me' : ''}"><span>${esc(u.name)}</span>👑 ${u.crowns}</li>`).join('') : '<li class="none">Sin coronas todavía</li>';
+  }
+  function openAccModal(tab) {
+    accTab = tab || 'login';
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === accTab));
+    $('#accPass2Row').hidden = accTab !== 'register';
+    $('#accPass').autocomplete = accTab === 'register' ? 'new-password' : 'current-password';
+    $('#accSubmit').textContent = accTab === 'register' ? 'Crear cuenta' : 'Entrar';
+    $('#accErr').textContent = '';
+    $('#accModal').hidden = false; $('#accUser').focus();
+  }
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => openAccModal(t.dataset.tab)));
+  $('#accClose').addEventListener('click', () => { $('#accModal').hidden = true; });
+  $('#accModal').addEventListener('click', e => { if (e.target === $('#accModal')) $('#accModal').hidden = true; });
+  $('#accForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const user = $('#accUser').value.trim(), pass = $('#accPass').value;
+    if (accTab === 'register' && pass !== $('#accPass2').value) { $('#accErr').textContent = 'Las contraseñas no coinciden'; return; }
+    $('#accSubmit').disabled = true;
+    const r = await api(accTab, { user, pass });
+    $('#accSubmit').disabled = false;
+    if (!r.ok) { $('#accErr').textContent = r.error || 'No se pudo'; return; }
+    me = r.user; $('#accPass').value = $('#accPass2').value = '';
+    $('#accModal').hidden = true;
+    // la conexión de la sala lee la sesión al conectarse: se reabre (si no estás en una sala)
+    if (socket && !room) { socket.disconnect(); socket = null; }
+    renderAccount();
+    toast(accTab === 'register' ? `¡Bienvenido, ${me.name}!` : `Hola de nuevo, ${me.name}`);
+    if (room) toast('Tu cuenta se usa desde la próxima sala en la que entres');
+  });
+  $('#btnAccount').addEventListener('click', () => {
+    if (!me) return openAccModal('login');
+    renderAccount(); loadTop(); show('viewAccount');
+  });
+  $('#btnLogout').addEventListener('click', async () => {
+    await api('logout', {});
+    me = null; if (socket && !room) { socket.disconnect(); socket = null; }
+    applyName(); show('viewCatalog'); toast('Cerraste sesión');
+  });
+
   // ---------- Inicio ----------
   async function init() {
     $('#inName').value = store.get('arcade:name') || '';
+    try { const r = await api('me'); if (r.ok) me = r.user; } catch { /* sin cuenta */ }
+    applyName();
     try {
       games = await (await fetch('/api/games')).json();
     } catch {

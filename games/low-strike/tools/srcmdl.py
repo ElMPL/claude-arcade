@@ -5,7 +5,7 @@ import struct, numpy as np
 def cstr(d, o):
   e = d.index(b'\0', o); return d[o:e].decode('latin1')
 
-def load_prop(fs, path, skin_family=0):
+def load_prop(fs, path, skin_family=0, lod=0):
   d = fs.get(path)
   if d is None: return None
   base = path[:-4]
@@ -47,7 +47,7 @@ def load_prop(fs, path, skin_family=0):
       nmesh, meshidx, nverts, vindex = struct.unpack_from('<iiii', d, mo + 72)
       xm = xb + xmo + mi * 8; xnl, xlo = struct.unpack_from('<ii', x, xm)
       if xnl <= 0: continue
-      xl = xm + xlo
+      xl = xm + xlo + min(lod, xnl - 1) * 12  # cabecera de cada LOD: numMeshes, meshOffset, switchPoint
       xnmesh, xmeo = struct.unpack_from('<ii', x, xl)
       for me in range(nmesh):
         mso = mo + meshidx + me * 116
