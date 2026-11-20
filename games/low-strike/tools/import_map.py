@@ -98,6 +98,7 @@ margin = 2.0
 size = max(hi[0] - lo[0], hi[2] - lo[2]) + margin * 2
 cell = math.ceil(size / N * 1000) / 1000
 off = np.array([-lo[0] + margin, -y0, -lo[2] + margin])
+if os.environ.get('DBG'): _x, _z = map(float, os.environ['DBG'].split(',')); DBGC = int(_z // cell) * N + int(_x // cell)
 T_col = T_col + off; T_all = T_all + off
 print(mid, 'size', size, 'cell', cell, 'tris col', len(T_col), 'render', len(T_all))
 
@@ -168,6 +169,8 @@ print('samples', len(ci))
 
 # ---------- tramos sólidos por celda ----------
 LMAX = int(os.environ.get('LMAX', 3))
+SRCMAP = bool(os.environ.get('SRCMAP'))  # mapas de Source: la geometría es cerrada, los parches de malla sólo inventan pilares
+DBGC = DBGC if "DBGC" in dir() else None
 NOUP = np.full(N * N, np.nan, np.float32)  # celdas sin superficie hacia arriba (¿cable/viga colgando o pared?)
 TOP = np.full((LMAX, N * N), np.nan, np.float32); BOT = np.full((LMAX, N * N), np.nan, np.float32); CLS = np.zeros((LMAX, N * N), np.uint8)
 for c in range(N * N):
@@ -178,16 +181,19 @@ for c in range(N * N):
   if len(up) == 0:
     TOP[0, c] = max(25, y.max()); BOT[0, c] = -30; CLS[0, c] = 3; NOUP[c] = y.min(); continue
   # superficies agrupadas
-  ev = sorted([(v, 0) for v in up] + [(v, 1) for v in dn])
+  ev = sorted([(v, 0) for v in up] + [(v, 1) for v in dn], key=lambda e: (e[0], -e[1]))  # empate: primero la cara de abajo
   merged = []
   for v, t in ev:
     if merged and merged[-1][1] == t and v - merged[-1][0] < 0.08: merged[-1] = (v, t); continue
     merged.append((v, t))
   solids = []; state = 'solid'; cur = -30.0
+  if DBGC is not None and c == DBGC: print('DBG ev', [(round(float(v),2), t) for v, t in merged], 'steep', np.round(np.unique(np.round(st, 1)), 1).tolist()[:40])
   for v, t in merged:
     if t == 0:
       if state == 'solid': solids.append([cur, v]); state = 'free'
-      elif solids: solids[-1][1] = v  # caja apoyada (sin cara de abajo)
+      elif solids:
+        if SRCMAP and v - solids[-1][1] > 0.6: solids.append([v - 0.15, v])  # Source: superficie suelta (lámpara, chapa), no un pilar
+        else: solids[-1][1] = v  # caja apoyada (sin cara de abajo)
     else:
       if state == 'free' and v - solids[-1][1] > 0.25: cur = v; state = 'solid'
   if state == 'solid' and cur > -29: solids.append([cur, cur + 0.4])
@@ -203,12 +209,21 @@ for c in range(N * N):
     fb = solids[li][1]; ft = solids[li + 1][0] if li + 1 < len(solids) else 1e9
     inside = st[(st > fb + 0.05) & (st < ft - 0.05)]
     if len(inside) and np.any((inside > fb + 1.0) & (inside < fb + 1.9)):
-      solids[li][1] = min(inside.max() + 0.05, ft if ft < 1e8 else inside.max() + 0.05); wall[li] = True
+      # la pared llega hasta donde siguen las muestras empinadas sin cortarse (no hasta la lámpara del techo)
+      ins = np.sort(inside); k0 = np.searchsorted(ins, fb + 1.0); top_ = ins[k0]
+      for v_ in ins[k0 + 1:]:
+        if v_ - top_ > 0.5: break
+        top_ = v_
+      solids[li][1] = min(top_ + 0.05, ft if ft < 1e8 else top_ + 0.05); wall[li] = True
       if li + 1 < len(solids) and solids[li][1] >= solids[li + 1][0] - 0.3:
         solids[li][1] = solids[li + 1][1]; solids.pop(li + 1); wall.pop(li + 1)
       break
-  while len(solids) > LMAX:  # sobran tramos: se juntan los dos separados por el hueco más chico (el que menos se puede caminar)
-    k = min(range(len(solids) - 1), key=lambda q: solids[q + 1][0] - solids[q][1])
+  while len(solids) > LMAX:
+    # sobran tramos: primero se cierran los huecos donde no entra nadie (menos de 1,15 m); si todos son caminables,
+    # se juntan los dos de más arriba (techo y lo que cuelga de él), nunca un piso con lo que tiene encima
+    gaps = [(solids[q + 1][0] - solids[q][1], q) for q in range(len(solids) - 1)]
+    small = [g for g in gaps if g[0] < 1.15]
+    k = min(small)[1] if small else len(solids) - 2
     solids[k] = [solids[k][0], solids[k + 1][1]]; wall[k] = wall[k] or wall[k + 1]; solids.pop(k + 1); wall.pop(k + 1)
   for li, s_ in enumerate(solids):
     BOT[li, c] = s_[0]; TOP[li, c] = s_[1]
@@ -218,7 +233,8 @@ for c in range(N * N):
 # celdas sin cara hacia arriba cuyo punto más bajo está muy por encima del piso vecino: son cables, vigas
 # o toldos colgando, no paredes -> se copian del piso vecino
 fix = 0
-for _ in range(3):
+# mapas de Source: la geometría es cerrada, estos parches sólo inventan pilares
+for _ in ([] if SRCMAP else range(3)):
   for c in np.where(~np.isnan(NOUP))[0]:
     x, z = c % N, c // N; best = None
     for dz in (-1, 0, 1):
@@ -237,7 +253,7 @@ def floor_h(j):
     if CLS[l, j] == 1 and not np.isnan(TOP[l, j]): return l, TOP[l, j]
   return None, None
 crack = 0
-for _ in range(2):
+for _ in ([] if SRCMAP else range(2)):
   for c in range(N * N):
     x, z = c % N, c // N
     if x < 6 or z < 6 or x >= N - 6 or z >= N - 6: continue

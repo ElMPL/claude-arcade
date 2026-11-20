@@ -13,6 +13,7 @@ export function buildWorld(info, layers) {
     W.ladders = info.ladders || null;
     W.idx = (x, z) => { const cx = Math.floor(x / cell), cz = Math.floor(z / cell); return cx < 0 || cz < 0 || cx >= n || cz >= n ? -1 : cz * n + cx; };
     W.props = []; W.propCell = [];
+    if (info.source === 'css' && info.breakables && info.breakables.length) { W.top.push(new Float32Array(N).fill(NaN)); W.bot.push(new Float32Array(N).fill(NaN)); W.cls.push(new Uint8Array(N)); W.L++; } // capa libre para abrir puertas y rompibles
     return W;
   }
   const multi = L > 1;
@@ -373,7 +374,25 @@ export function buildVis(W, mesh) {
   for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) { let m = -1e9; for (let d = -2; d <= 2; d++) { const zz = z + d; if (zz >= 0 && zz < n && tmp[zz * n + x] > m) m = tmp[zz * n + x]; } mx[z * n + x] = m > -1e8 ? m + 0.3 : NaN; }
   W.vis = mx;
 }
+// las balas (y cualquier rayo) atraviesan los clips del jugador y las rejas: si el impacto cae adentro de una
+// de esas cajas, se sigue desde un poco más adelante
 export function raycast(W, ox, oy, oz, dx, dy, dz, maxT = 200, clip = false) {
+  const P = W.info && W.info.pass;
+  if (!P || !P.length) return raycast0(W, ox, oy, oz, dx, dy, dz, maxT, clip);
+  let t0 = 0;
+  for (let k = 0; k < 24; k++) {
+    const h = raycast0(W, ox + dx * t0, oy + dy * t0, oz + dz * t0, dx, dy, dz, maxT - t0, clip);
+    if (!h) return h;
+    if (h.cell === undefined || h.layer === undefined) { h.t += t0; return h; }
+    // el tramo que frenó el rayo tiene que estar entero adentro de la caja (si no, es una pared de verdad pegada al clip)
+    const cx = (h.cell % W.n + 0.5) * W.cell, cz = (Math.floor(h.cell / W.n) + 0.5) * W.cell, top = W.top[h.layer][h.cell], bot = W.bot[h.layer][h.cell];
+    let inBox = false; for (const b of P) if (cx > b[0] && cx < b[3] && cz > b[2] && cz < b[5] && bot > b[1] - 0.12 && top < b[4] + 0.12) { inBox = true; break; }
+    if (!inBox) { h.t += t0; return h; }
+    t0 += h.t + W.cell * 0.7; if (t0 >= maxT) return null;
+  }
+  return null;
+}
+function raycast0(W, ox, oy, oz, dx, dy, dz, maxT = 200, clip = false) {
   const vis = clip ? W.vis : null;
   const cell = W.cell, n = W.n;
   let cx = Math.floor(ox / cell), cz = Math.floor(oz / cell);

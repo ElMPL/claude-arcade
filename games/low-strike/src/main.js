@@ -219,7 +219,7 @@ function onKey(c) {
   else if (c === 'KeyR') reload();
   else if (c === 'KeyG') dropCurrent();
   else if (c === 'KeyE') use();
-  else if (c === 'KeyF') { if (M.reloadT <= 0 && M.drawT <= 0 && !M.scope) { const ct = (WEAPONS[curId()] || {}).cat; M.inspectDur = ct === 'knife' ? 2.6 : ct === 'pistol' ? 3.2 : 4.2; M.inspect = M.inspectDur; } }
+  else if (c === 'KeyF') { /* el cuchillo no se inspecciona (por ahora) */ if (M.reloadT <= 0 && M.drawT <= 0 && !M.scope && (WEAPONS[curId()] || {}).cat !== 'knife') { const ct = (WEAPONS[curId()] || {}).cat; M.inspectDur = ct === 'knife' ? 2.6 : ct === 'pistol' ? 3.2 : 4.2; M.inspect = M.inspectDur; } }
 }
 // táctil (básico)
 function setupTouch() {
@@ -940,7 +940,7 @@ async function loadGame(id) {
     if (data.mesh) buildVis(W2, data.mesh);
     const props = data.mesh && !data.bsp ? placeProps(W2, buildNav(W2), id) : []; // los .bsp ya traen todo
     if (W2.vis) for (let l = 0; l < W2.L; l++) { const T = W2.top[l], Cc = W2.cls[l], V = W2.vis; for (let i = 0; i < T.length; i++) if (Cc[i] === 2 && !(V[i] >= T[i])) V[i] = T[i] + 0.05; } // props: sí chocan
-    if (data.mesh) sealTraps(W2, buildNav(W2));
+    if (data.mesh && !data.bsp) sealTraps(W2, buildNav(W2)); // en los .bsp de Source no hace falta (y sellaba lo que está detrás de puertas)
     return { W: W2, props };
   };
   if (G.cfg.size === 2 && ['comp', 'casual', 'retake'].includes(G.cfg.mode || 'comp')) {
@@ -961,6 +961,8 @@ async function loadGame(id) {
   PM.hCrouch = (data.bsp ? 44 : 54) * 0.0254; PM.eyeCrouch = (data.bsp ? 38 : 46) * 0.0254;
   applyPrefs();
   try { BRK = makeBreakables(W, data.info, mapMesh); } catch (e) { BRK = null; console.warn('rompibles', e); }
+  // con las puertas ya abiertas se rehace la navegación de los bots (si no, el sitio A de Nuke les quedaba encerrado)
+  if (BRK && BRK.doors.length) { G.nav = buildNav(W); const slot = data.wing && data.wing.W === W ? data.wing : data.full; if (slot) slot.nav = G.nav; }
   if (wing && wing.cells.length) mapMesh.add(wingmanMesh(W, wing.cells));
   if (G.props && G.props.length) scene.add(propsMesh(G.props));
   if (data.mesh && !data.bsp) { try { scene.add(buildDecor(W, G.nav, id, data.info)); } catch (e) { console.warn('decor', e); } }
@@ -1502,7 +1504,7 @@ function frame(now) {
     if (mouseL && me() && !me().alive && M.deadT > 2.2) { mouseL = false; nextSpec(1); }
     renderer.clear();
     renderer.render(scene, camera);
-    if (QUALITY > 0) renderPlayerShadows();
+    // sombras de jugadores: desactivadas (pedido del usuario: se veían raras)
     renderer.clearDepth();
     if (vm.visible) renderer.render(vmScene, vmCam);
   }

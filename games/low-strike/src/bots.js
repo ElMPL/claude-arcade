@@ -134,7 +134,7 @@ export function makeBots(G, H) {
     b.path = path; b.pi = 1; b.goal = [x, y, z]; b.repath = 6 + rnd() * 2;
     if (!b.path) b.repath = 1.5 + rnd();
   }
-  const randNode = (list) => G.nav.pos(list[Math.floor(rnd() * list.length)]);
+  const randNode = (list) => list && list.length ? G.nav.pos(list[Math.floor(rnd() * list.length)]) : G.nav.pos(G.nav.main.findIndex(v => v)); // sin nodos: cualquier lugar transitable
 
   B.tick = (dt) => {
     const D = DIFF[G.cfg.diff] || DIFF.normal;

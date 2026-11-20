@@ -174,7 +174,7 @@ export function zoneNodes(nav, bit) {
     const x = (i % W.n + 0.5) * W.cell, z = (Math.floor(i / W.n) + 0.5) * W.cell;
     const cx = Math.floor(x / nav.c), cz = Math.floor(z / nav.c), j = cz * nav.m + cx;
     const Y = W.info && W.info.zonesY && (bit === 4 ? W.info.zonesY.A : bit === 8 ? W.info.zonesY.B : null);
-    for (let l = W.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j] && (!Y || (nav.H[l][j] > Y[0] - 0.6 && nav.H[l][j] < Y[1] + 0.6))) { out.add(l * nav.N + j); break; } // el nivel más alto que sea transitable (en Nuke, el del sitio)
+    for (let l = nav.L - 1; l >= 0; l--) if (!isNaN(nav.H[l][j]) && nav.main[l * nav.N + j] && (!Y || (nav.H[l][j] > Y[0] - 0.6 && nav.H[l][j] < Y[1] + 0.6))) { out.add(l * nav.N + j); break; } // el nivel más alto que sea transitable (en Nuke, el del sitio)
   }
   return [...out];
 }
@@ -183,7 +183,7 @@ export function zoneNodes(nav, bit) {
 // puede volver — afuera del mapa, pozos, techos bajos al borde. Se tapan con paredes invisibles hasta
 // arriba para que nadie quede atrapado ni se caiga del mapa. Devuelve cuántas celdas se taparon.
 export function sealTraps(W, nav, jump = 1.45) {
-  const { m, N, H } = nav, T = W.L * N;
+  const { m, N, H } = nav, T = nav.L * N;
   if (!nav.main) return 0;
   const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const nbr = (id, fn) => {
@@ -191,7 +191,7 @@ export function sealTraps(W, nav, jump = 1.45) {
     for (const [dx, dz] of D4) {
       const xx = x + dx, zz = z + dz; if (xx < 0 || zz < 0 || xx >= m || zz >= m) continue;
       const j = zz * m + xx;
-      for (let l2 = 0; l2 < W.L; l2++) { const h2 = H[l2][j]; if (!isNaN(h2) && h2 - h <= jump) fn(l2 * N + j); }
+      for (let l2 = 0; l2 < nav.L; l2++) { const h2 = H[l2][j]; if (!isNaN(h2) && h2 - h <= jump) fn(l2 * N + j); }
     }
   };
   // hacia adelante desde la zona principal (el jugador puede bajar cualquier altura)

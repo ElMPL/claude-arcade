@@ -90,6 +90,8 @@ DOORS = {'func_door', 'prop_door_rotating'}  # puertas que se deslizan: quedan a
 # func_door_rotating: puertas que giran (Nuke): se dibujan y se abren/cierran con E; van como rompibles con bisagra
 VISUAL_ENT = {'func_illusionary'}
 models = {0: ('world', {}, (0, 0, 0))}
+RAILS = []
+ALPHA_BOX = []  # rejas y barandas de pincel (las balas las atraviesan)
 DOOR_M = {}
 for e in ents:
   m = e.get('model', '')
@@ -165,17 +167,20 @@ for mi, (kind, e, org) in models.items():
     N = np.array(PL[f[0]][:3])  # en Source el plano de la cara ya mira hacia su frente (side es informativo)
     cr = np.cross(Pb[tri[:, 1]] - Pb[tri[:, 0]], Pb[tri[:, 2]] - Pb[tri[:, 0]]) @ N
     if cr.sum() < 0: tri = tri[:, [0, 2, 1]]   # col: antihorario visto de frente (normal hacia afuera)
-    s = Pb @ S[:3] + S[3]; t = Pb @ T[:3] + T[3]
+    PL_ = Pb - off3  # entidades con origen: texturas y lightmap van en coordenadas locales del modelo
+    s = PL_ @ S[:3] + S[3]; t = PL_ @ T[:3] + T[3]
     lmu = None
     if lofs >= 0 and 0 < lw <= 260 and 0 < lh <= 260 and not (flags & 0x4):
       img_l = luxels(f, lofs, lw, lh)
       if img_l is not None:
         lm_imgs.append(img_l); li = len(lm_imgs) - 1
-        ls = Pb @ LS[:3] + LS[3] - lmmins[0] + 0.5; lt = Pb @ LT[:3] + LT[3] - lmmins[1] + 0.5
+        ls = PL_ @ LS[:3] + LS[3] - lmmins[0] + 0.5; lt = PL_ @ LT[:3] + LT[3] - lmmins[1] + 0.5
         lmu = (li, ls, lt)
     if kind in ('world', 'solid', 'brk') and colf:  # el mundo: sus caras visibles (el compilador ya sacó las tapadas)
       for a, b, c in tri: col.append(tr(np.stack([P[a], P[b], P[c]])))
       tag(f'{kind}:{name}' + (f':disp' if disp >= 0 else ''))
+    if k == 'alpha' and kind in ('world', 'solid'):
+      q_ = tr(P); ALPHA_BOX.append((q_.min(0), q_.max(0)))
     if k is None: continue
     render.append((P, s / tw, t / th, name, lmu, k, mi if kind == 'brk' else -1, tri))
 print(mid, 'caras render', len(render), 'materiales', len(MATS), 'lightmaps', len(lm_imgs))
@@ -213,7 +218,8 @@ def side_name(k):
   ti_ = BS[k][1]
   if ti_ < 0: return 'tools/toolsnodraw', 0
   return TN[TD[TI[ti_][17]][3]].lower(), TI[ti_][16]
-nclip = ninv = nskip = 0
+nclip = ninv = nskip = nrail = 0
+PASS = []  # cajas que frenan al jugador pero no a las balas (clips)
 # cajas de los rompibles (en el sistema de tr, sin offset)
 BRKBOX = []
 for k_, (kd, e_, org_) in models.items():
@@ -226,13 +232,19 @@ for bi in sorted(world_brushes):
     if t_ and BRKBOX and os.environ.get('CLIPHOLES'):  # sólo Mirage: en Nuke los clips sobre las claraboyas van
       q = np.concatenate(t_).reshape(-1, 3); lo3, hi3 = q.min(0), q.max(0)
       if any(np.all(lo3 < b[1] + 0.3) and np.all(hi3 > b[0] - 0.3) for b in BRKBOX): nskip += 1; continue  # tapa un pasadizo rompible
+    if t_:
+      q = np.concatenate(t_).reshape(-1, 3); lo3, hi3 = q.min(0), q.max(0)
+      # clip apoyado arriba de una baranda: en Source es para que no te subas, acá era una pared invisible
+      if any(abs(lo3[1] - b[1][1]) < 0.35 and lo3[0] < b[1][0] + 0.3 and hi3[0] > b[0][0] - 0.3 and lo3[2] < b[1][2] + 0.3 and hi3[2] > b[0][2] - 0.3 for b in ALPHA_BOX + RAILS):
+        nrail += 1; continue
+      PASS.append((lo3, hi3))
     col += t_; nclip += 1; tag(f'clip:{bi}'); continue
   if cont & (CONTENTS_SOLID | CONTENTS_WINDOW | CONTENTS_GRATE):
     sides = [side_name(k) for k in range(BR[bi][0], BR[bi][0] + BR[bi][1])]
     if any(fl & 0x6 or 'sky' in n for n, fl in sides): continue
     if all(n.startswith('tools/') or fl & 0x80 for n, fl in sides) and any('invisible' in n or 'clip' in n for n, fl in sides):
       col += brush_tris(bi); ninv += 1; tag(f'inv:{bi}')
-print('clip del jugador', nclip, 'paredes invisibles', ninv, 'clips sacados de pasadizos rompibles', nskip)
+print('clip del jugador', nclip, 'paredes invisibles', ninv, 'clips sacados de pasadizos rompibles', nskip, 'clips sobre barandas sacados', nrail)
 
 # ---------- props estáticos ----------
 gl = B.lump(35); ngl = struct.unpack_from('<i', gl, 0)[0]; props = []
@@ -319,7 +331,7 @@ def floor_light(o):
     yy, xx = int(np.clip(y_, 0, img.shape[0] - 1)), int(np.clip(x_, 0, img.shape[1] - 1))
     best = (z, img[max(0, yy - 1):yy + 2, max(0, xx - 1):xx + 2].reshape(-1, 3).mean(0))
   return None if best is None else best[1]
-for name, org, ang, solid, skin in props:
+for PIDX, (name, org, ang, solid, skin) in enumerate(props):
   key = (name, skin)
   if key not in cache:
     m0 = load_prop(fs, name, skin)
@@ -362,7 +374,7 @@ for name, org, ang, solid, skin in props:
   if not solid and 'railing' in name.lower():
     for a, b, c in T: col.append(tr(np.stack([P[a], P[b], P[c]])))
     for a, b, c in T: col.append(tr(np.stack([P[a], P[c], P[b]])))
-    tag(f'rail:{name}')
+    tag(f'rail:{name}#{PIDX}')
   # colisión: la del .phy (piezas convexas, lo que choca de verdad en Source); sin .phy el prop no es sólido,
   # salvo los de caja (solid 2). Así las palmeras chocan sólo en el tronco y los cables/plantas no traban.
   if solid and 'phy' not in m:
@@ -370,7 +382,7 @@ for name, org, ang, solid, skin in props:
     m['phy'] = load_phy(fs.get(name[:-4] + '.phy'))
   if solid and m.get('phy') is not None:
     for a, b, c in m['phy']: col.append(tr(np.stack([R @ a + org, R @ b + org, R @ c + org])))
-    tag(f'phy:{name}')
+    tag(f'phy:{name}#{PIDX}')
   elif solid == 2:
     lo3, hi3 = m['P'].min(0), m['P'].max(0)
     bx = np.array([[x, y, z] for x in (lo3[0], hi3[0]) for y in (lo3[1], hi3[1]) for z in (lo3[2], hi3[2])])
@@ -381,7 +393,7 @@ for name, org, ang, solid, skin in props:
         if np.cross(b - a, c - a) @ (a - ctr) < 0: b, c = c, b
         col.append(tr(np.stack([R @ a + org, R @ b + org, R @ c + org])))
     except Exception: pass
-    tag(f'box:{name}')
+    tag(f'box:{name}#{PIDX}')
   if False:
     if 'vol' not in m:  # volumen con signo: si da negativo el modelo viene con la orientación al revés
       Q = m['P']; m['vol'] = float(np.einsum('ij,ij->i', Q[T[:, 0]], np.cross(Q[T[:, 1]], Q[T[:, 2]])).sum())
@@ -389,6 +401,54 @@ for name, org, ang, solid, skin in props:
     for a, b, c in TT: col.append(tr(np.stack([P[a], P[b], P[c]])))
 print('props', nprop, 'de', len(props), 'tris', ptris)
 col = np.array(col)
+# ---------- paredes invisibles: todo lo que no se ve (clips, paredes de herramientas) o es un prop, y que se mete en
+# lugares donde la malla de navegación del juego original dice que se camina, se saca entero (esa pieza)
+navb = fs.get('maps/' + os.path.basename(path).replace('.bsp', '.nav'))
+if navb is None and os.path.exists(path[:-4] + '.nav'): navb = open(path[:-4] + '.nav', 'rb').read()
+if navb is not None and len(col):
+  from srcnav import load_nav
+  _, NAVA = load_nav(navb)
+  REMOVABLE = ('clip:', 'inv:')  # sólo lo invisible: los props se ven, así que su colisión queda
+  cand = np.array([i for i, sname in enumerate(colsrc) if sname.startswith(REMOVABLE)], int)
+  if len(cand):
+    CT = col[cand]; cmin = CT.min(1); cmax = CT.max(1)
+    G = 1.0; buck = {}
+    for j in range(len(cand)):
+      for gx in range(int(math.floor(cmin[j, 0] / G)), int(math.floor(cmax[j, 0] / G)) + 1):
+        for gz in range(int(math.floor(cmin[j, 2] / G)), int(math.floor(cmax[j, 2] / G)) + 1): buck.setdefault((gx, gz), []).append(j)
+    def seg_hits(px, pz, y0, y1, js):
+      # triángulos que cortan el segmento vertical (px, y0..y1, pz)
+      out = []
+      for j in js:
+        t_ = CT[j]
+        if cmin[j, 1] > y1 or cmax[j, 1] < y0: continue
+        a, b, c = t_[0], t_[1], t_[2]
+        d0 = (b[0] - a[0]) * (pz - a[2]) - (b[2] - a[2]) * (px - a[0]); d1 = (c[0] - b[0]) * (pz - b[2]) - (c[2] - b[2]) * (px - b[0]); d2 = (a[0] - c[0]) * (pz - c[2]) - (a[2] - c[2]) * (px - c[0])
+        if not ((d0 >= 0 and d1 >= 0 and d2 >= 0) or (d0 <= 0 and d1 <= 0 and d2 <= 0)): continue
+        n_ = np.cross(b - a, c - a)
+        if abs(n_[1]) < 1e-9: out.append(j); continue  # vertical: si el punto cae en su sombra en planta, cuenta
+        yy = a[1] - (n_[0] * (px - a[0]) + n_[2] * (pz - a[2])) / n_[1]
+        if y0 <= yy <= y1: out.append(j)
+      return out
+    bad = set(); STEP = 0.35
+    for ar in NAVA:
+      x0, x1 = sorted([ar['nw'][0], ar['se'][0]]); yy0, yy1 = sorted([ar['nw'][1], ar['se'][1]])
+      ins = 10  # un poco hacia adentro: los bordes del área tocan paredes y barandas de verdad
+      nx_ = max(1, int((x1 - x0) * U / STEP)); ny_ = max(1, int((yy1 - yy0) * U / STEP))
+      for i_ in range(nx_ + 1):
+        for k_ in range(ny_ + 1):
+          fx, fy = i_ / nx_, k_ / ny_
+          X = x0 + (x1 - x0) * fx; Y = yy0 + (yy1 - yy0) * fy
+          if x1 - x0 > 2 * ins: X = min(max(X, x0 + ins), x1 - ins)
+          if yy1 - yy0 > 2 * ins: Y = min(max(Y, yy0 + ins), yy1 - ins)
+          z = (1 - fx) * (1 - fy) * ar['nw'][2] + fx * (1 - fy) * ar['nez'] + fx * fy * ar['se'][2] + (1 - fx) * fy * ar['swz']
+          px, py, pz = X * U, z * U, -Y * U
+          for j in seg_hits(px, pz, py + 0.5, py + 1.3, buck.get((int(math.floor(px / G)), int(math.floor(pz / G))), [])): bad.add(colsrc[cand[j]])
+    if bad:
+      keep_ = np.array([sname not in bad for sname in colsrc])
+      col = col[keep_]; colsrc = [sname for sname, k_ in zip(colsrc, keep_) if k_]
+    from collections import Counter as _C
+    print('paredes invisibles sacadas (piezas):', len(bad), _C(b_.split(':')[0] for b_ in bad).most_common(), sorted(bad)[:25])
 # recorte: la caja de lo que se dibuja del mundo (las cáscaras de cielo se extienden mucho más allá)
 DP = np.concatenate([r[0] for r in render if r[6] == -1 and isinstance(r[4], tuple) and r[4][0] != 'flat'])
 lo_, hi_ = tr(DP).min(0) - 1.5, tr(DP).max(0) + 1.5
@@ -446,7 +506,7 @@ json.dump({'zones': zones, 'spawns': spawns}, open(f'/tmp/ls/{mid}_col_ents.json
 ext = float(max(hi_[0] - lo_[0], hi_[2] - lo_[2])) + 4
 NN = int(min(1536, max(1024, math.ceil(ext / 0.125 / 64) * 64)))
 print('grilla', NN, 'celda', round(ext / NN, 3))
-subprocess.run(['python3', 'import_map.py', mid, f'/tmp/ls/{mid}_col.npz'], check=True, env={**os.environ, 'N': str(NN), 'STEPK': os.environ.get('STEPK', '0.5'), 'LMAX': '4'})
+subprocess.run(['python3', 'import_map.py', mid, f'/tmp/ls/{mid}_col.npz'], check=True, env={**os.environ, 'N': str(NN), 'STEPK': os.environ.get('STEPK', '0.5'), 'LMAX': os.environ.get('LMAX', '4'), 'SRCMAP': os.environ.get('SRCMAP', '')})
 info = json.load(open(f'../maps/{mid}.json')); off = np.array(info['origin'])
 
 # ---------- atlas de texturas ----------
@@ -541,6 +601,8 @@ info['breakables'] = [brk_info(m) for m in brk_ids]
 info['sky'] = next((e.get('skyname') for e in ents if e.get('classname') == 'worldspawn'), None)
 zy = {k: [box_of(m)[1], box_of(m)[4]] for k, m in SITE_M.items()}
 if len(zy) == 2: info['zonesY'] = zy
+# cajas que las balas atraviesan: clips y rejas/barandas de pincel (en Source no frenan tiros)
+info['pass'] = [[round(float(v), 2) for v in list(np.array(a) + off) + list(np.array(b) + off)] for a, b in PASS + [(b_[0] - 0.05, b_[1] + 0.05) for b_ in ALPHA_BOX] if np.all(np.array(b) - np.array(a) < 60)]
 info['source'] = 'css'; info['rshift'] = [float(v) for v in RS]
 json.dump(info, open(f'../maps/{mid}.json', 'w'))
 print('render', {str(p['kind']): p['verts'] // 3 for p in parts}, 'atlas', AW, AH, 'lm', LMW, LMH, 'bin MB', round(sum(len(b) for b in blobs) / 1e6, 2), 'escaleras', len(lad), 'rompibles', len(brk_ids))

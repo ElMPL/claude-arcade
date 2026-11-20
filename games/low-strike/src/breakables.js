@@ -20,6 +20,9 @@ export function makeBreakables(W, info, mapMesh) {
         else if (t > y1 + M && bt < y1 && bt >= y0 - M) b.cells.push([i, l, t, bt, t, y1]); // pared arriba: se corta abajo
         else if (bt < y0 - M && t > y1 + M) { // pared abajo y arriba (agujero en un muro): se parte en dos usando un nivel libre
           let free = -1; for (let q = 0; q < W.L; q++) if (isNaN(W.top[q][i])) { free = q; break; }
+          if (free < 0) { // columna llena (Nuke tiene 4 pisos): se agrega una capa vacía para poder abrir el hueco
+            const N = W.top[0].length; W.top.push(new Float32Array(N).fill(NaN)); W.bot.push(new Float32Array(N).fill(NaN)); W.cls.push(new Uint8Array(N)); free = W.L; W.L++;
+          }
           if (free >= 0) { b.cells.push([i, l, t, bt, y0, bt]); b.cells.push([i, free, NaN, NaN, t, y1, 3]); }
         }
       }
