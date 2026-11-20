@@ -185,7 +185,7 @@ Seguí **`SUBIR_JUEGO.md`**: fork → rama → `games/<tu-id>/` → `node script
 
 ## Modo admin (opcional)
 
-La plataforma tiene un panel oculto (F7 + código) para el dueño. Un juego puede agregar trucos que aparecen ahí:
+La plataforma tiene un panel oculto (F7) que solo se abre para las cuentas admin del dueño. Un juego puede agregar trucos que aparecen ahí:
 
 ```js
 Arcade.admin.define([
@@ -198,4 +198,4 @@ Arcade.admin.on('win', () => { /* botón apretado */ });
 
 - Los trucos que cambian solo tu jugador se aplican directo en tu cliente.
 - Si el truco necesita al host (repartir cartas, sumar puntos), mandá un mensaje al host. El host lo acepta solo si `meta.admin` es true: `Arcade.on('admReq', (data, from, meta) => { if (meta.admin) ... })`. Ese dato lo pone el servidor y no se puede falsificar.
-- No escribas el código de admin en ningún archivo del juego.
+- No agregues códigos ni contraseñas de admin propios en el juego: quién es admin lo decide la plataforma.

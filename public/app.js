@@ -363,25 +363,16 @@
     const ss = { get: k => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { } } };
     let on = false, defs = {}, open = false;
     const vals = id => { try { return JSON.parse(ss.get('arcade:adm:' + id) || '{}'); } catch { return {}; } };
-    const box = document.createElement('div'); box.id = 'admPrompt'; box.hidden = true;
-    box.innerHTML = '<form><input id="admCode" type="password" autocomplete="off" spellcheck="false" placeholder="código"><button>OK</button></form><small id="admMsg"></small>';
     const panel = document.createElement('div'); panel.id = 'admPanel'; panel.hidden = true;
-    document.body.append(box, panel);
-    box.querySelector('form').addEventListener('submit', e => {
-      e.preventDefault();
-      const code = $('#admCode').value.trim(); if (!code) return;
-      ensureSocket().emit('admin:auth', { code }, res => {
-        if (res && res.ok) { ss.set('arcade:admcode', code); on = true; box.hidden = true; $('#admCode').value = ''; toast('🛠 Modo admin activado'); open = true; render(); sync(); }
-        else { $('#admMsg').textContent = (res && res.error) || 'Código incorrecto'; box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
-      });
-    });
-    box.addEventListener('keydown', e => { if (e.key === 'Escape') box.hidden = true; e.stopPropagation(); });
+    document.body.append(panel);
+    // sin código: el servidor decide según la cuenta con la que entraste; para el resto F7 no hace nada
     function f7() {
-      if (!on) { box.hidden = !box.hidden; $('#admMsg').textContent = ''; if (!box.hidden) setTimeout(() => $('#admCode').focus(), 30); else if (current) frame.focus(); return; }
-      open = !open; render();
-      if (!open && current) frame.focus();
+      if (!(me && me.admin)) return;
+      const go = () => { open = !open; render(); if (!open && current) frame.focus(); };
+      if (on) return go();
+      ensureSocket().emit('admin:auth', {}, r => { on = !!(r && r.ok); if (on) { toast('🛠 Modo admin'); sync(); go(); } });
     }
-    function reauth() { const c = ss.get('arcade:admcode'); if (c && socket) socket.emit('admin:auth', { code: c }, r => { on = !!(r && r.ok); render(); sync(); }); }
+    function reauth() { if (!(me && me.admin) || !socket) { if (on) { on = false; open = false; render(); sync(); } return; } socket.emit('admin:auth', {}, r => { on = !!(r && r.ok); render(); sync(); }); }
     function sync() { if (current) toFrame({ kind: 'admin', active: on, values: on ? vals(current.game.id) : {} }); }
     function define(id, list) { defs[id] = Array.isArray(list) ? list.slice(0, 24) : []; render(); }
     function act(a, extra = {}) { ensureSocket().emit('admin:action', { act: a, ...extra }, r => { if (r && !r.ok && r.error) toast(r.error); }); }
@@ -411,7 +402,7 @@
     panel.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.x === 'close') { open = false; render(); if (current) frame.focus(); }
-      else if (b.dataset.x === 'off') { on = false; open = false; ss.set('arcade:admcode', null); render(); sync(); toast('Modo admin desactivado'); }
+      else if (b.dataset.x === 'off') { on = false; open = false; render(); sync(); toast('Modo admin desactivado'); }
       else if (b.dataset.press && current) toFrame({ kind: 'adminPress', id: b.dataset.press });
       else if (b.dataset.act) act(b.dataset.act, { id: b.dataset.id, d: +b.dataset.d || 1 });
     });
@@ -420,7 +411,6 @@
       const v = vals(current.game.id); v[t.dataset.tg] = t.checked; ss.set('arcade:adm:' + current.game.id, JSON.stringify(v)); sync();
     });
     window.addEventListener('keydown', e => { if (e.key === 'F7') { e.preventDefault(); f7(); } });
-    if (ss.get('arcade:admcode')) { ensureSocket(); }
     return { f7, define, sync, render, reauth };
   })();
 
@@ -486,7 +476,7 @@
   });
   $('#btnLogout').addEventListener('click', async () => {
     await api('logout', {});
-    me = null; if (socket && !room) { socket.disconnect(); socket = null; }
+    me = null; Admin.reauth(); if (socket && !room) { socket.disconnect(); socket = null; }
     applyName(); show('viewCatalog'); toast('Cerraste sesión');
   });
 

@@ -11,14 +11,9 @@ const PORT = process.env.PORT || 3000;
 const GAMES_DIR = path.join(__dirname, 'games');
 const MAX_ROOM_SIZE = 8;          // tope duro de una sala (cada juego define su propio max)
 const MAX_MSGS_PER_SEC = 150;     // anti-spam por jugador
-// Modo admin (panel oculto con F7). Solo se guarda el hash del código; ADMIN_CODE lo reemplaza si está definido.
-const ADMIN_HASH = process.env.ADMIN_CODE
-  ? crypto.createHash('sha256').update(process.env.ADMIN_CODE).digest()
-  : Buffer.from('68bda044787b788d756bc261271f3611aab80294bcfeb3704279137149081d50', 'hex');
-function checkAdmin(code) {
-  const h = crypto.createHash('sha256').update(String(code || '').slice(0, 64)).digest();
-  return crypto.timingSafeEqual(h, ADMIN_HASH);
-}
+// Modo admin (panel oculto con F7): ya no hay código; es admin solo quien entra con una de estas cuentas.
+// ADMIN_USERS (separadas por coma) las reemplaza si está definido.
+const ADMIN_USERS = new Set(String(process.env.ADMIN_USERS || 'nitsuga').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 
 const app = express();
 const server = http.createServer(app);
@@ -134,19 +129,19 @@ api.post('/register', wrap(async (req, res) => {
   const r = await Accounts.register(req.body && req.body.user, req.body && req.body.pass);
   if (!r.ok) return res.json(r);
   setCookie(req, res, await Accounts.newSession(r.user));
-  res.json({ ok: true, user: Accounts.publicUser(r.user) });
+  res.json({ ok: true, user: { ...Accounts.publicUser(r.user), admin: ADMIN_USERS.has(r.user.key) || undefined } });
 }));
 api.post('/login', wrap(async (req, res) => {
   if (tooMany(req.ip)) return res.status(429).json({ ok: false, error: 'Demasiados intentos, esperá unos minutos' });
   const r = await Accounts.login(req.body && req.body.user, req.body && req.body.pass);
   if (!r.ok) return res.json(r);
   setCookie(req, res, await Accounts.newSession(r.user));
-  res.json({ ok: true, user: Accounts.publicUser(r.user) });
+  res.json({ ok: true, user: { ...Accounts.publicUser(r.user), admin: ADMIN_USERS.has(r.user.key) || undefined } });
 }));
 api.post('/logout', wrap(async (req, res) => { await Accounts.logout(readCookie(req.headers.cookie)); setCookie(req, res, null); res.json({ ok: true }); }));
 api.get('/me', wrap(async (req, res) => {
   const u = await Accounts.userFromToken(readCookie(req.headers.cookie));
-  res.json(u ? { ok: true, user: Accounts.publicUser(u) } : { ok: false });
+  res.json(u ? { ok: true, user: { ...Accounts.publicUser(u), admin: ADMIN_USERS.has(u.key) || undefined } } : { ok: false });
 }));
 api.get('/top', wrap(async (_req, res) => res.json({ ok: true, top: await Accounts.top(20) })));
 app.use('/api/account', api);
@@ -336,12 +331,14 @@ io.on('connection', socket => {
   // ---------- Admin ----------
   let adminTries = 0;
   socket.data.leave = () => leave();
-  socket.on('admin:auth', (payload, cb) => {
+  // admin = la cuenta con la que se abrió esta conexión (cookie de sesión), nunca algo que mande el cliente
+  userP.then(u => { if (u && ADMIN_USERS.has(u.key)) socket.data.admin = true; });
+  socket.on('admin:auth', async (_payload, cb) => {
     if (typeof cb !== 'function') return;
-    if (++adminTries > 8) return cb({ ok: false, error: 'Demasiados intentos' });
-    const ok = checkAdmin(payload && payload.code);
-    if (ok) socket.data.admin = true;
-    cb({ ok });
+    if (++adminTries > 30) return cb({ ok: false });
+    const u = await userP;
+    socket.data.admin = !!(u && ADMIN_USERS.has(u.key));
+    cb({ ok: socket.data.admin });
   });
   socket.on('admin:action', (p, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
