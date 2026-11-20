@@ -66,6 +66,7 @@ print('caras salteadas (cielo 3D)', len(skip_faces), 'pinceles mundo', len(world
 
 # ---------- materiales ----------
 SURF_SKIP = 0x2 | 0x4 | 0x40 | 0x80 | 0x100 | 0x200  # sky2d, sky, trigger, nodraw, hint, skip
+UNLIT = set()  # materiales que brillan solos (no llevan lightmap)
 MATS = {}  # nombre → (kind, imagen PIL o None)
 def mat_of(name):
   if name in MATS: return MATS[name]
@@ -74,22 +75,30 @@ def mat_of(name):
   m = material(fs, n) or {}
   if m.get('nodraw') or m.get('sky'): MATS[name] = (None, None); return MATS[name]
   img = texture(fs, m.get('base'), 256)
-  kind = 'water' if m.get('water') else 'alpha' if (m.get('translucent') or m.get('alphatest')) else 'opaque'
+  # add = luz/brillo (suma, sin oscurecer); glass = vidrio transparente de verdad (antes se recortaba y quedaba invisible
+  # pero sólido: paredes invisibles); alpha = recorte (rejas, plantas)
+  kind = 'water' if m.get('water') else 'add' if m.get('additive') else 'glass' if m.get('translucent') else 'alpha' if m.get('alphatest') else 'opaque'
+  if m.get('unlit'): UNLIT.add(name)
   if img is None: img = Image.new('RGBA', (8, 8), (128, 128, 128, 255))
+  if kind == 'water': img = Image.new('RGBA', (8, 8), (58, 84, 80, 170))  # agua: un color translúcido (la textura de Source es un mapa de distorsión, se veía negra)
   if kind == 'opaque': img = img.convert('RGB').convert('RGBA')
   MATS[name] = (kind, img); return MATS[name]
 
 # ---------- modelos de pincel (entidades) ----------
 SOLID_ENT = {'func_wall', 'func_brush', 'func_breakable', 'func_breakable_surf', 'func_wall_toggle', 'func_rotating', 'func_movelinear', 'func_physbox', 'func_lod'}
-DOORS = {'func_door', 'func_door_rotating', 'prop_door_rotating'}  # en el juego no hay puertas: quedan abiertas (no se dibujan ni chocan)
+DOORS = {'func_door', 'prop_door_rotating'}  # puertas que se deslizan: quedan abiertas (no se dibujan ni chocan)
+# func_door_rotating: puertas que giran (Nuke): se dibujan y se abren/cierran con E; van como rompibles con bisagra
 VISUAL_ENT = {'func_illusionary'}
 models = {0: ('world', {}, (0, 0, 0))}
+DOOR_M = {}
 for e in ents:
   m = e.get('model', '')
   if not m.startswith('*'): continue
   k = int(m[1:]); cl = e.get('classname', '')
   org = tuple(float(x) for x in e.get('origin', '0 0 0').split())
   if cl in DOORS: models[k] = ('zone', e, org)
+  elif cl == 'func_door_rotating': models[k] = ('brk', e, org); DOOR_M[k] = e
+  elif cl == 'func_rotating' and not e.get('targetname', '').startswith('fan'): models[k] = ('zone', e, org)  # haces de las sirenas: no chocan
   elif cl in ('func_breakable', 'func_breakable_surf'): models[k] = ('brk', e, org)
   elif cl in SOLID_ENT: models[k] = ('solid' if not (cl == 'func_brush' and e.get('Solidity') == '1') else 'visual', e, org)
   elif cl in VISUAL_ENT: models[k] = ('visual', e, org)
@@ -204,17 +213,26 @@ def side_name(k):
   ti_ = BS[k][1]
   if ti_ < 0: return 'tools/toolsnodraw', 0
   return TN[TD[TI[ti_][17]][3]].lower(), TI[ti_][16]
-nclip = ninv = 0
+nclip = ninv = nskip = 0
+# cajas de los rompibles (en el sistema de tr, sin offset)
+BRKBOX = []
+for k_, (kd, e_, org_) in models.items():
+  if kd == 'brk' and k_ not in DOOR_M:
+    a_ = tr(np.array(MD[k_][0:3]) + org_); b_ = tr(np.array(MD[k_][3:6]) + org_); BRKBOX.append((np.minimum(a_, b_), np.maximum(a_, b_)))
 for bi in sorted(world_brushes):
   cont = BR[bi][2]
   if cont & CONTENTS_PLAYERCLIP and not cont & CONTENTS_SOLID:
-    col += brush_tris(bi); nclip += 1; tag(f'clip:{bi}'); continue
+    t_ = brush_tris(bi)
+    if t_ and BRKBOX and os.environ.get('CLIPHOLES'):  # sólo Mirage: en Nuke los clips sobre las claraboyas van
+      q = np.concatenate(t_).reshape(-1, 3); lo3, hi3 = q.min(0), q.max(0)
+      if any(np.all(lo3 < b[1] + 0.3) and np.all(hi3 > b[0] - 0.3) for b in BRKBOX): nskip += 1; continue  # tapa un pasadizo rompible
+    col += t_; nclip += 1; tag(f'clip:{bi}'); continue
   if cont & (CONTENTS_SOLID | CONTENTS_WINDOW | CONTENTS_GRATE):
     sides = [side_name(k) for k in range(BR[bi][0], BR[bi][0] + BR[bi][1])]
     if any(fl & 0x6 or 'sky' in n for n, fl in sides): continue
     if all(n.startswith('tools/') or fl & 0x80 for n, fl in sides) and any('invisible' in n or 'clip' in n for n, fl in sides):
       col += brush_tris(bi); ninv += 1; tag(f'inv:{bi}')
-print('clip del jugador', nclip, 'paredes invisibles', ninv)
+print('clip del jugador', nclip, 'paredes invisibles', ninv, 'clips sacados de pasadizos rompibles', nskip)
 
 # ---------- props estáticos ----------
 gl = B.lump(35); ngl = struct.unpack_from('<i', gl, 0)[0]; props = []
@@ -234,7 +252,9 @@ for e in ents:
   if e.get('classname', '').startswith(('prop_physics', 'prop_dynamic')) and e.get('model', '').endswith('.mdl'):
     if e.get('classname', '').startswith('prop_dynamic') and e.get('solid', '6') == '0' and e.get('disableshadows') is None: pass
     o = tuple(float(x) for x in e.get('origin', '0 0 0').split()); a = tuple(float(x) for x in e.get('angles', '0 0 0').split())
-    props.append((e['model'], o, a, 0 if e.get('solid') == '0' else 6, int(e.get('skin', 0) or 0)))
+    sk = int(e.get('skin', 0) or 0)
+    if 'emergency_light' in e['model']: sk = 1  # la sirena prendida
+    props.append((e['model'], o, a, 0 if e.get('solid') == '0' else 6, sk))
 def rotm(p, y, r):
   p, y, r = map(math.radians, (p, y, r))
   cp, sp, cy, sy, cr, sr = math.cos(p), math.sin(p), math.cos(y), math.sin(y), math.cos(r), math.sin(r)
@@ -242,7 +262,63 @@ def rotm(p, y, r):
   return np.array([[cp * cy, sr * sp * cy - cr * sy, cr * sp * cy + sr * sy],
                    [cp * sy, sr * sp * sy + cr * cy, cr * sp * sy - sr * cy],
                    [-sp, sr * cp, cr * cp]])
-cache = {}; nprop = 0; ptris = 0
+cache = {}; nprop = 0; ptris = 0; SPIN = []
+# luz ambiente de cada hoja (lo que Source usa para iluminar props): color medio del cubo de luz más cercano
+AMB_I, AMB_L = B.lump(52), B.lump(56)
+def rgbe(b, o):
+  r, g, b_, e = struct.unpack_from('<BBBb', b, o); return np.array([r, g, b_], float) * (2.0 ** e) / 255.0
+def ambient(p):
+  li = leaf_at(p)
+  for _ in range(6):  # si cae dentro de algo sólido, se sube de a 16 unidades
+    if not LEAVES[li][0] & 1: break
+    p = p + np.array([0, 0, 16]); li = leaf_at(p)
+  try:
+    if AMB_I:
+      n, first = struct.unpack_from('<HH', AMB_I, li * 4)
+      if n == 0: return None
+      c = [rgbe(AMB_L, (first + k) * 28 + q * 4) for k in range(n) for q in range(5)]  # sin la cara de abajo
+    elif len(AMB_L) >= (li + 1) * 24: c = [rgbe(AMB_L, li * 24 + q * 4) for q in range(5)]
+    else: return None
+  except struct.error: return None
+  c = np.mean(c, 0)
+  return np.power(np.clip(c * AMB_K, 0, 8), 1 / 2.2) * 0.5
+# escala: hay mapas (los portados de CS:GO) con la luz ambiente en otra escala; se iguala la mediana de los props
+# con la mediana de los lightmaps del mundo
+AMB_K = 1.0
+_w = np.median([float(np.mean(x)) for x in lm_imgs]) if lm_imgs else 0.4
+_a = [ambient(np.array(o_) + np.array([0, 0, 40])) for _, o_, _, _, _ in props[::max(1, len(props) // 300)]]
+_a = [float(np.mean(x)) for x in _a if x is not None]
+if _a and np.median(_a) > 1e-4:
+  AMB_K = float((_w / np.median(_a)) ** 2.2)
+print('luz ambiente: escala', round(AMB_K, 3), 'mediana mundo', round(float(_w), 3))
+PROP_LMS = {}  # color cuantizado → índice de bloque de lightmap
+# luz del piso: el lightmap del suelo justo debajo de cada prop (lo más parecido a lo que lo rodea)
+FL = []  # (x0,y0,x1,y1, zmax, triángulos, ls, lt, li)
+for r in render:
+  P_, lmu_, tri_ = r[0], r[4], r[7]
+  if r[6] != -1 or not isinstance(lmu_, tuple) or lmu_[0] == 'flat': continue
+  for a, b, c in tri_:
+    A_, B_, C_ = P_[a], P_[b], P_[c]; n_ = np.cross(B_ - A_, C_ - A_); ln = np.linalg.norm(n_)
+    if ln < 1e-6 or abs(n_[2]) / ln < 0.6: continue
+    FL.append((min(A_[0], B_[0], C_[0]), min(A_[1], B_[1], C_[1]), max(A_[0], B_[0], C_[0]), max(A_[1], B_[1], C_[1]), A_, B_, C_, (lmu_[0], lmu_[1][[a, b, c]], lmu_[2][[a, b, c]])))
+FLA = np.array([f[:4] for f in FL]) if FL else np.zeros((0, 4))
+def floor_light(o):
+  if not len(FLA): return None
+  m_ = np.where((FLA[:, 0] <= o[0]) & (FLA[:, 2] >= o[0]) & (FLA[:, 1] <= o[1]) & (FLA[:, 3] >= o[1]))[0]
+  best = None
+  for i in m_:
+    _, _, _, _, A_, B_, C_, (li, ls_, lt_) = FL[i]
+    v0, v1, v2 = B_[:2] - A_[:2], C_[:2] - A_[:2], np.array(o[:2]) - A_[:2]
+    den = v0[0] * v1[1] - v1[0] * v0[1]
+    if abs(den) < 1e-9: continue
+    u = (v2[0] * v1[1] - v1[0] * v2[1]) / den; v = (v0[0] * v2[1] - v2[0] * v0[1]) / den
+    if u < -0.01 or v < -0.01 or u + v > 1.01: continue
+    z = A_[2] + u * (B_[2] - A_[2]) + v * (C_[2] - A_[2])
+    if z > o[2] + 24 or (best is not None and z <= best[0]): continue
+    img = lm_imgs[li]; x_ = ls_[0] + u * (ls_[1] - ls_[0]) + v * (ls_[2] - ls_[0]); y_ = lt_[0] + u * (lt_[1] - lt_[0]) + v * (lt_[2] - lt_[0])
+    yy, xx = int(np.clip(y_, 0, img.shape[0] - 1)), int(np.clip(x_, 0, img.shape[1] - 1))
+    best = (z, img[max(0, yy - 1):yy + 2, max(0, xx - 1):xx + 2].reshape(-1, 3).mean(0))
+  return None if best is None else best[1]
 for name, org, ang, solid, skin in props:
   key = (name, skin)
   if key not in cache:
@@ -264,7 +340,29 @@ for name, org, ang, solid, skin in props:
     if nm is None: continue
     k, img = mat_of(nm)
     if k is None: continue
-    render.append((P, m['UV'][:, 0], m['UV'][:, 1], nm, None, k, -1, sel))
+    sp = None
+    if 'emergency_lightb' in name: SPIN.append([float(v) for v in tr(np.array(org))]); sp = len(SPIN) - 1  # haz que gira
+    if nm in UNLIT or k == 'add': lmk = 'unlit'
+    else:
+      if 'amb' not in locals() or amb_org != org:
+        amb_org = org; o3 = np.array(org, float); rad = float(np.max(np.abs(P[:, :2] - o3[:2]))) + 16
+        # el piso justo debajo está en la sombra del propio prop: se mira alrededor y se toma lo más iluminado
+        smp = [floor_light(o3 + np.array([rad * math.cos(a_), rad * math.sin(a_), 0])) for a_ in np.arange(8) * math.pi / 4]
+        smp = sorted([x for x in smp if x is not None], key=lambda c_: -float(np.mean(c_)))
+        amb = np.mean(smp[:max(1, len(smp) // 2)], 0) if smp else None
+        if amb is None: amb = ambient(np.array(org) + np.array([0, 0, min(64.0, float(P[:, 2].max() - org[2])) + 8]))
+        else: amb = amb * 1.05
+      if amb is None: lmk = None
+      else:
+        q = tuple(np.round(np.clip(amb, 0.1, 1) * 31).astype(int))
+        if q not in PROP_LMS: lm_imgs.append(np.tile(np.array(q, float) / 31, (4, 4, 1))); PROP_LMS[q] = len(lm_imgs) - 1
+        lmk = ('flat', PROP_LMS[q])
+    render.append((P, m['UV'][:, 0], m['UV'][:, 1], nm, lmk, k, -1 if sp is None else -2 - sp, sel))
+  # barandas sin colisión propia (en Source las cubre un clip): chocan con su malla
+  if not solid and 'railing' in name.lower():
+    for a, b, c in T: col.append(tr(np.stack([P[a], P[b], P[c]])))
+    for a, b, c in T: col.append(tr(np.stack([P[a], P[c], P[b]])))
+    tag(f'rail:{name}')
   # colisión: la del .phy (piezas convexas, lo que choca de verdad en Source); sin .phy el prop no es sólido,
   # salvo los de caja (solid 2). Así las palmeras chocan sólo en el tronco y los cables/plantas no traban.
   if solid and 'phy' not in m:
@@ -292,7 +390,7 @@ for name, org, ang, solid, skin in props:
 print('props', nprop, 'de', len(props), 'tris', ptris)
 col = np.array(col)
 # recorte: la caja de lo que se dibuja del mundo (las cáscaras de cielo se extienden mucho más allá)
-DP = np.concatenate([r[0] for r in render if r[6] < 0 and r[4] is not None])
+DP = np.concatenate([r[0] for r in render if r[6] == -1 and isinstance(r[4], tuple) and r[4][0] != 'flat'])
 lo_, hi_ = tr(DP).min(0) - 1.5, tr(DP).max(0) + 1.5
 # mejor: la malla de navegación de los bots (.nav) dice exactamente dónde se puede caminar
 navname = 'maps/' + os.path.basename(path).replace('.bsp', '.nav')
@@ -376,31 +474,35 @@ Image.fromarray(atlas, 'RGBA').save(f'../maps/{mid}_tex.webp', quality=85, metho
 
 # ---------- atlas de lightmaps (+ un bloque gris para los props) ----------
 lm_imgs.append(np.full((4, 4, 3), 0.42)); PROP_LM = len(lm_imgs) - 1
+lm_imgs.append(np.full((4, 4, 3), 0.5)); WHITE_LM = len(lm_imgs) - 1  # ×2 en el shader = luz plena (lo que brilla solo)
 LMW = 4096; lx = ly = lrow = 0
 order = sorted(range(len(lm_imgs)), key=lambda i: -lm_imgs[i].shape[0]); lpos = [None] * len(lm_imgs)
 for i in order:
   h, w = lm_imgs[i].shape[:2]
-  if lx + w + 2 > LMW: lx = 0; ly += lrow; lrow = 0
-  lpos[i] = (lx + 1, ly + 1); lx += w + 2; lrow = max(lrow, h + 2)
+  if lx + w + 4 > LMW: lx = 0; ly += lrow; lrow = 0
+  lpos[i] = (lx + 2, ly + 2); lx += w + 4; lrow = max(lrow, h + 4)  # 2 px de borde: sin manchas del vecino
 LMH = 1 << math.ceil(math.log2(ly + lrow))
 lmA = np.zeros((LMH, LMW, 3), np.uint8)
 for i, img in enumerate(lm_imgs):
   X, Y = lpos[i]; h, w = img.shape[:2]
-  lmA[Y - 1:Y + h + 1, X - 1:X + w + 1] = np.pad(np.round(img * 255).astype(np.uint8), ((1, 1), (1, 1), (0, 0)), mode='edge')
-Image.fromarray(lmA, 'RGB').save(f'../maps/{mid}_lm.webp', quality=90, method=6)
+  lmA[Y - 2:Y + h + 2, X - 2:X + w + 2] = np.pad(np.round(img * 255).astype(np.uint8), ((2, 2), (2, 2), (0, 0)), mode='edge')
+Image.fromarray(lmA, 'RGB').save(f'../maps/{mid}_lm.webp', lossless=True, method=6)  # sin pérdida: la compresión corría luz y sombra entre caras vecinas
 
 # ---------- malla de render ----------
-groups = {'opaque': [], 'alpha': [], 'water': []}
+groups = {}
 brk_ids = sorted({r[6] for r in render if r[6] >= 0})
 RMIN = np.min([(tr(r[0]) + off).min(0) for r in render], 0)
 RS = np.maximum(0, -RMIN + 0.05).round(2)
 for P, s, t, nm, lmu, k, bm, tri in render:
-  if bm >= 0: k = (k, brk_ids.index(bm)); groups.setdefault(k, [])
+  if bm >= 0: k = (k, 'brk', brk_ids.index(bm)); groups.setdefault(k, [])
+  elif bm <= -2: k = (k, 'spin', -2 - bm); groups.setdefault(k, [])
   W3 = tr(P) + off + RS; ti_ = used.index(nm)
-  if lmu is not None: li, ls, lt = lmu; X, Y = lpos[li]; LU = (X + ls) / LMW; LV_ = (Y + lt) / LMH
+  if lmu == 'unlit': X, Y = lpos[WHITE_LM]; LU = np.full(len(P), (X + 2) / LMW); LV_ = np.full(len(P), (Y + 2) / LMH)
+  elif isinstance(lmu, tuple) and lmu[0] == 'flat': X, Y = lpos[lmu[1]]; LU = np.full(len(P), (X + 2) / LMW); LV_ = np.full(len(P), (Y + 2) / LMH)
+  elif lmu is not None: li, ls, lt = lmu; X, Y = lpos[li]; LU = (X + ls) / LMW; LV_ = (Y + lt) / LMH
   else: X, Y = lpos[PROP_LM]; LU = np.full(len(P), (X + 2) / LMW); LV_ = np.full(len(P), (Y + 2) / LMH)
   for a, b, c in tri:
-    for q in (a, b, c): groups[k].append((W3[q], s[q], t[q], ti_, LU[q], LV_[q]))
+    for q in (a, b, c): groups.setdefault(k, []).append((W3[q], s[q], t[q], ti_, LU[q], LV_[q]))
 parts = []; blobs = []
 for k, vs in groups.items():
   if not vs: continue
@@ -410,7 +512,9 @@ for k, vs in groups.items():
   tl = np.array([v[3] for v in vs], '<u2')
   lm = np.clip(np.round(np.array([[v[4], v[5]] for v in vs]) * 65535), 0, 65535).astype('<u2')
   blobs.append(pos.tobytes() + uv.tobytes() + tl.tobytes() + lm.tobytes())
-  parts.append({'kind': k[0], 'verts': n, 'brk': k[1]} if isinstance(k, tuple) else {'kind': k, 'verts': n})
+  if not isinstance(k, tuple): parts.append({'kind': k, 'verts': n})
+  elif k[1] == 'brk': parts.append({'kind': k[0], 'verts': n, 'brk': k[2]})
+  else: parts.append({'kind': k[0], 'verts': n, 'spin': [round(SPIN[k[2]][q] + off[q], 3) for q in range(3)] + [2.4]})  # pivote + vueltas por seg (rad)
 import gzip
 open(f'../maps/{mid}.bin.gz', 'wb').write(gzip.compress(b''.join(blobs), 9))  # comprimido: el server no comprime y los props pesan
 if os.path.exists(f'../maps/{mid}.bin'): os.remove(f'../maps/{mid}.bin')
@@ -428,7 +532,12 @@ for bi in world_brushes | set(range(len(BR))):
     t_ = brush_tris(bi)
     if t_: q = np.concatenate(t_).reshape(-1, 3) + off; lad.append([round(float(v), 3) for v in list(q.min(0)) + list(q.max(0))])
 info['ladders'] = lad
-info['breakables'] = [{'box': box_of(m), 'mat': int(next((e for e in ents if e.get('model') == '*%d' % m), {}).get('material', 0) or 0)} for m in brk_ids]
+def brk_info(m):
+  d = {'box': box_of(m), 'mat': int(next((e for e in ents if e.get('model') == '*%d' % m), {}).get('material', 0) or 0)}
+  if m in DOOR_M:  # puerta: bisagra en el origen de la entidad, gira sobre el eje vertical
+    h = tr(np.array(models[m][2])) + off; d['door'] = {'hinge': [round(float(v), 3) for v in h], 'ang': float(DOOR_M[m].get('distance', 90) or 90)}
+  return d
+info['breakables'] = [brk_info(m) for m in brk_ids]
 info['sky'] = next((e.get('skyname') for e in ents if e.get('classname') == 'worldspawn'), None)
 zy = {k: [box_of(m)[1], box_of(m)[4]] for k, m in SITE_M.items()}
 if len(zy) == 2: info['zonesY'] = zy

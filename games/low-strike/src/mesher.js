@@ -637,18 +637,21 @@ void main() {
   #include <fog_vertex>
 }`;
 const BSP_FS = `
-uniform sampler2D map; uniform sampler2D lmap; uniform float bright; uniform float alphaTest; uniform float lmScale;
+uniform sampler2D map; uniform sampler2D lmap; uniform float bright; uniform float alphaTest; uniform float lmScale; uniform float useAlpha; uniform vec2 atlasPx;
 varying vec2 vUv; varying vec4 vTile; varying vec2 vLm;
 #include <common>
 #include <fog_pars_fragment>
 #include <logdepthbuf_pars_fragment>
 void main() {
   #include <logdepthbuf_fragment>
-  vec2 g = vUv * vTile.zw;
-  vec4 tx = textureGrad(map, vTile.xy + fract(vUv) * vTile.zw, dFdx(g), dFdy(g));
+  vec2 g = vUv * vTile.zw, gx = dFdx(g), gy = dFdy(g);
+  // tope de mip: más allá de nivel 2 se mezclaban las texturas vecinas del atlas (bordes de colores raros a lo lejos)
+  float lod = 0.5 * log2(max(dot(gx * atlasPx, gx * atlasPx), dot(gy * atlasPx, gy * atlasPx)) + 1e-8);
+  if (lod > 2.0) { float k = exp2(2.0 - lod); gx *= k; gy *= k; }
+  vec4 tx = textureGrad(map, vTile.xy + fract(vUv) * vTile.zw, gx, gy);
   if (tx.a < alphaTest) discard;
   vec3 lm = texture2D(lmap, vLm).rgb;
-  gl_FragColor = vec4(tx.rgb * pow(lm * lmScale, vec3(0.85)) * bright, 1.0);
+  gl_FragColor = vec4(tx.rgb * pow(lm * lmScale, vec3(0.85)) * bright, useAlpha > 0.5 ? max(tx.a, 0.18) : 1.0);
   #include <fog_fragment>
 }`;
 export function buildFromBsp(bsp, info) {
@@ -657,7 +660,28 @@ export function buildFromBsp(bsp, info) {
   const lmap = tl.load(bsp.base + A.lm); lmap.flipY = false; lmap.minFilter = THREE.LinearFilter; lmap.magFilter = THREE.LinearFilter; lmap.generateMipmaps = false;
   const tiles = A.tiles.map(t => [t[0] / A.w, t[1] / A.h, t[2] / A.w, t[3] / A.h]);
   let tris = 0;
+  const spinners = [];
+  // trozos: la malla grande del mapa se parte en bloques de ~20 m para que la cámara descarte lo que no ve
+  const CH = 20, parts = [];
   for (const p of bsp.parts) {
+    if (p.brk !== undefined || p.spin || p.n < 30000) { parts.push(p); continue; }
+    const rs = info.rshift || [0, 0, 0], buckets = new Map();
+    for (let t = 0; t < p.n; t += 3) {
+      const cx = (p.pos[t * 3] + p.pos[t * 3 + 3] + p.pos[t * 3 + 6]) / 300 - rs[0], cz = (p.pos[t * 3 + 2] + p.pos[t * 3 + 5] + p.pos[t * 3 + 8]) / 300 - rs[2];
+      const k = Math.floor(cx / CH) * 1000 + Math.floor(cz / CH); let b = buckets.get(k); if (!b) buckets.set(k, b = []); b.push(t);
+    }
+    for (const list of buckets.values()) {
+      const n = list.length * 3, q = { kind: p.kind, n, pos: new Uint16Array(n * 3), uv: new Float32Array(n * 2), tile: new Uint16Array(n), lm: new Uint16Array(n * 2) };
+      let o = 0;
+      for (const t of list) for (let v = t; v < t + 3; v++, o++) {
+        q.pos[o * 3] = p.pos[v * 3]; q.pos[o * 3 + 1] = p.pos[v * 3 + 1]; q.pos[o * 3 + 2] = p.pos[v * 3 + 2];
+        q.uv[o * 2] = p.uv[v * 2]; q.uv[o * 2 + 1] = p.uv[v * 2 + 1]; q.tile[o] = p.tile[v]; q.lm[o * 2] = p.lm[v * 2]; q.lm[o * 2 + 1] = p.lm[v * 2 + 1];
+      }
+      parts.push(q);
+    }
+  }
+  const mats = {};
+  for (const p of parts) {
     const n = p.n, pos = new Float32Array(n * 3), tr = new Float32Array(n * 4), uvL = new Float32Array(n * 2);
     const rs = info.rshift || [0, 0, 0];
     for (let i = 0; i < n * 3; i++) pos[i] = p.pos[i] / 100 - rs[i % 3];
@@ -666,14 +690,23 @@ export function buildFromBsp(bsp, info) {
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uvT', new THREE.BufferAttribute(p.uv, 2));
     g.setAttribute('tileR', new THREE.BufferAttribute(tr, 4)); g.setAttribute('uvL', new THREE.BufferAttribute(uvL, 2));
     g.computeBoundingSphere();
-    const mat = new THREE.ShaderMaterial({ vertexShader: BSP_VS, fragmentShader: BSP_FS, fog: true, side: THREE.DoubleSide,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, lmap: { value: null }, bright: { value: info.source === 'css' ? 1.15 : 1.45 }, lmScale: { value: info.lmScale || 1 }, alphaTest: { value: p.kind === 'alpha' ? 0.5 : -1 } }]) });
-    mat.uniforms.map.value = map; mat.uniforms.lmap.value = lmap;
-    if (p.kind === 'water') { mat.transparent = true; }
-    const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; m.receiveShadow = false; m.castShadow = p.kind !== 'water';
+    // un material por tipo (compartido por todos los trozos)
+    let mat = mats[p.kind];
+    if (!mat) {
+      mat = mats[p.kind] = new THREE.ShaderMaterial({ vertexShader: BSP_VS, fragmentShader: BSP_FS, fog: true, side: THREE.DoubleSide,
+        uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map: { value: null }, lmap: { value: null }, bright: { value: info.source === 'css' ? 1.15 : 1.45 }, lmScale: { value: info.lmScale || 1 }, alphaTest: { value: p.kind === 'alpha' ? 0.5 : p.kind === 'add' || p.kind === 'glass' ? 0.02 : -1 }, useAlpha: { value: p.kind === 'glass' || p.kind === 'water' ? 1 : 0 }, atlasPx: { value: new THREE.Vector2(A.w, A.h) } }]) });
+      mat.uniforms.map.value = map; mat.uniforms.lmap.value = lmap;
+      if (p.kind === 'water' || p.kind === 'glass') { mat.transparent = true; mat.depthWrite = p.kind === 'water'; }
+      if (p.kind === 'add') { mat.transparent = true; mat.depthWrite = false; mat.blending = THREE.AdditiveBlending; }
+    }
+    const see = p.kind === 'opaque' || p.kind === 'alpha';
+    if (p.spin) { const [px, py, pz] = p.spin; g.translate(-px, -py, -pz); g.computeBoundingSphere(); }
+    const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; m.receiveShadow = false; m.castShadow = see;
+    if (!see) m.renderOrder = 2;
+    if (p.spin) { m.position.set(p.spin[0], p.spin[1], p.spin[2]); m.matrixAutoUpdate = true; m.userData.spin = p.spin[3]; spinners.push(m); }
     if (p.brk !== undefined) m.userData.brk = p.brk;
     group.add(m); tris += n / 3;
   }
-  group.matrixAutoUpdate = false;
+  group.matrixAutoUpdate = false; group.userData.spinners = spinners;
   return { mesh: group, tris, theme: themeOf(info.id) };
 }

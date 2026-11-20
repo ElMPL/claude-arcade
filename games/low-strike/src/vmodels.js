@@ -167,7 +167,7 @@ export function playSeq(V, kind, opts = {}) {
   if (kind === 'idle') s = pick('idle', 'idle1');
   else if (kind === 'draw') s = pick('draw', 'deploy');
   else if (kind === 'reload') s = pick('reload', 'reload1', 'start_reload');
-  else if (kind === 'shoot') { const opts2 = Object.keys(S).filter(k => /shoot|fire|stab|throw/.test(k) && !/last|empty|left|leftlast/.test(k) && (suf ? k.endsWith(suf) : !k.endsWith('_unsil'))); s = opts2.length ? S[opts2[Math.floor(Math.random() * opts2.length)]] : null; }
+  else if (kind === 'shoot') { const opts2 = Object.keys(S).filter(k => /shoot|fire|stab|throw/.test(k) && !/last|empty|left|leftlast|burst/.test(k) && (suf ? k.endsWith(suf) : !k.endsWith('_unsil'))); s = opts2.length ? S[opts2[Math.floor(Math.random() * opts2.length)]] : null; }
   else s = S[kind] || S[{ stab: 'stab_hit', stab_hit: 'stab', midslash1: 'stab_miss', midslash2: 'stab_miss' }[kind]] || null;
   if (!s || !s.clip) return 0;
   const a = V.mixer.clipAction(s.clip);
@@ -213,7 +213,7 @@ export function inspectPose(V, k, cat) {
 // Armas que existen en CS:Source: se usa la malla original de primera persona (brazos y arma animados juntos,
 // agarre exacto) con las texturas de CS:S de cada pieza (viewmodels/tex/css_<material>.webp). Las de CS:GO que no
 // están en CS:S (MP9, Tec-9, Negev…) siguen con el modelo de CS2 pegado a la mano.
-export const NATIVE = new Set(['ak47', 'm4a1s', 'm4a4', 'aug', 'famas', 'galil', 'sg553', 'awp', 'g3sg1', 'glock', 'usp', 'p2000', 'deagle', 'fiveseven', 'dualies', 'p250', 'mac10', 'ump', 'p90', 'xm1014', 'm249', 'he', 'smoke', 'flash', 'decoy', 'c4']);
+export const NATIVE = new Set(['knife', 'ak47', 'm4a1s', 'm4a4', 'aug', 'famas', 'galil', 'sg553', 'awp', 'g3sg1', 'glock', 'usp', 'p2000', 'deagle', 'fiveseven', 'dualies', 'p250', 'mac10', 'ump', 'p90', 'xm1014', 'm249', 'he', 'smoke', 'flash', 'decoy', 'c4']);
 const CSS_TEX = new Set(['c4', 'c4_light', 'flashbang', 'fraggrenade', 'smokegrenade', 'knife_t', 'mach_m249para', 'deagle_skin1', 'pist_elite', 'pist_fiveseven', 'glock18', 'pist_p228_1', 'pist_usp', 'rif_ak47skin1', 'rif_aug', 'rif_famas', 'rif_galil', 'rif_m4a1', 'rif_sg552', 'shot_m3super90', 'shot_xm1014', 'smg_mac10_1', 'mp5_1', 'smg_p90', 'smg_p90_sight', 'smg_tmp', 'smg_ump45', 'v_awp', 'v_awp_scope', 'snip_g3sg1', 'snip_scout', 'snip_sg550']);
 const TEX_ALIAS = { w_smg_mp5: 'mp5_1', handle: 'knife_t' };
 const texMats = {};
@@ -244,6 +244,19 @@ export function loadKnife(skin = 1, base = 'viewmodels/') {
     return { g, mat: new THREE.MeshStandardMaterial({ map, roughness: 0.35, metalness: 0.55, side: THREE.DoubleSide }) };
   });
 }
+// molotov: la botella de CS:Source (cs_militia/bottle01) en la mano del modelo de la granada
+let molP = null;
+export function loadMolotov(base = 'viewmodels/') {
+  if (!molP) molP = Promise.all([fetch(base + 'molotov_css.json').then(r => r.json()), fetch(base + 'molotov_css.bin').then(r => r.arrayBuffer())]).then(([m, b]) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b, 0, m.v * 3), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(b, m.v * 12, m.v * 2), 2));
+    g.setIndex(new THREE.BufferAttribute(new Uint16Array(b, m.v * 20, m.i), 1)); g.computeVertexNormals();
+    const map = tl.load(base + 'tex/molotov_css.webp'); map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.anisotropy = 8;
+    return { g, mat: new THREE.MeshStandardMaterial({ map, roughness: 0.25, metalness: 0.1 }) };
+  });
+  return molP;
+}
 // mallas de mundo sacadas de los modelos de primera persona (pose de reposo, sin brazos), con su textura:
 // bomba plantada/tirada y granadas en vuelo
 const worldCache = {};
@@ -267,4 +280,8 @@ async function staticFromV(vname, tex, opts = {}) {
 export function c4World() { return (worldCache.c4 ||= staticFromV('v_c4', null, { flat: true })).then(m => m.clone()); }
 const NADE_V = { he: ['v_eq_fraggrenade'], smoke: ['v_eq_smokegrenade'], flash: ['v_eq_flashbang'], decoy: ['v_eq_flashbang'] };
 export const nadeWorld = {};
-export function preloadNades() { for (const [k, [v, t]] of Object.entries(NADE_V)) staticFromV(v, t).then(m => { nadeWorld[k] = m; }).catch(() => {}); }
+export function preloadNades() {
+  for (const [k, [v, t]] of Object.entries(NADE_V)) staticFromV(v, t).then(m => { nadeWorld[k] = m; }).catch(() => {});
+  // molotov/incendiaria en vuelo: la botella de CS:S (ejes de Source: Z arriba → Y arriba), centrada
+  loadMolotov().then(({ g, mat }) => { const q = g.clone(); q.rotateX(-Math.PI / 2); q.computeBoundingBox(); const c = q.boundingBox.getCenter(new THREE.Vector3()); q.translate(-c.x, -c.y, -c.z); const m = new THREE.Mesh(q, mat); nadeWorld.molotov = m; nadeWorld.incendiary = m; }).catch(() => {});
+}

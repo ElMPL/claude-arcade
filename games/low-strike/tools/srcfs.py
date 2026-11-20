@@ -40,11 +40,12 @@ def material(fs, name, depth=0):
     base = material(fs, re.sub(r'^materials/', '', inc.replace('\\', '/'), flags=re.I).rsplit('.', 1)[0], depth + 1) or {}
     out = dict(base)
     if '$basetexture' in kv: out['base'] = kv['$basetexture']
-    for k in ('$translucent', '$alphatest'):
+    for k in ('$translucent', '$alphatest', '$additive', '$selfillum'):
       if k in kv: out[k[1:]] = kv[k] not in ('0', '')
     return out
   return {'shader': shader, 'base': kv.get('$basetexture'), 'translucent': kv.get('$translucent', '0') not in ('0', ''),
-          'alphatest': kv.get('$alphatest', '0') not in ('0', ''), 'bump': '$bumpmap' in kv, 'water': 'water' in shader,
+          'alphatest': kv.get('$alphatest', '0') not in ('0', ''), 'additive': kv.get('$additive', '0') not in ('0', ''),
+          'unlit': shader.lower().startswith('unlit') or kv.get('$selfillum', '0') not in ('0', ''), 'bump': '$bumpmap' in kv, 'water': 'water' in shader,
           'nodraw': kv.get('%compilenodraw', '0') not in ('0', '') or shader in ('nodraw',), 'sky': kv.get('%compilesky', '0') not in ('0', '')}
 
 def texture(fs, base, maxsize=256):

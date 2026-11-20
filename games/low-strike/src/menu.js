@@ -85,10 +85,13 @@ export function makeMenu(o) {
     const pivot = new THREE.Group(), inner = new THREE.Group(); pivot.add(inner); inner.add(mesh);
     mesh.updateMatrixWorld(true);
     // lugares candidatos: los spawns y el centro de los sitios mirando a 8 lados; gana el de vista más abierta
-    const cands = [...((info.spawns || {}).CT || []), ...((info.spawns || {}).T || [])].filter((_, i) => i % 3 === 0);
+    const cands = [...((info.spawns || {}).CT || []), ...((info.spawns || {}).T || [])].filter((_, i) => i % 4 === 0).slice(0, 6);
     const zm = info.zonesM || {};
-    for (const k of ['A', 'B']) { const z = zm[k]; if (!z) continue; const cx = (z[0] + z[2]) / 2, cz = (z[1] + z[3]) / 2; rc.set(new V(cx, 60, cz), new V(0, -1, 0)); rc.far = 120; const h = rc.intersectObject(mesh, true)[0]; if (h) for (let a = 0; a < 8; a++) cands.push([cx, h.point.y, cz, a * Math.PI / 4]); }
+    for (const k of ['A', 'B']) { const z = zm[k]; if (!z) continue; const cx = (z[0] + z[2]) / 2, cz = (z[1] + z[3]) / 2; rc.set(new V(cx, 60, cz), new V(0, -1, 0)); rc.far = 120; const h = rc.intersectObject(mesh, true)[0]; if (h) for (let a = 0; a < 8; a += 2) cands.push([cx, h.point.y, cz, a * Math.PI / 4]); }
     let best = null;
+    // el lugar elegido se guarda por mapa: la próxima vez no hay que tirar cientos de rayos contra la malla
+    const ck = 'ls:menuSpot:' + info.id + ':' + (info.parts ? info.parts.length : 0);
+    try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c) { cands.length = 0; best = { score: 1, cp: new V(c[0], c[1], c[2]), yaw: c[3] }; } } catch { }
     for (const s of cands) {
       const fwd = new V(-Math.sin(s[3]), 0, -Math.cos(s[3])), D = 7.2;
       const eye = new V(s[0], s[1] + 1.5, s[2]).addScaledVector(fwd, -D); // la cámara, 7 m detrás del lugar
@@ -107,7 +110,8 @@ export function makeMenu(o) {
       }
       if (!best || score > best.score) best = { score, cp: new V(cp.x, h.point.y, cp.z), yaw: s[3] };
     }
-    if (best) { inner.position.set(-best.cp.x, -best.cp.y, -best.cp.z); pivot.rotation.y = -best.yaw; backdrop = pivot; scene.add(pivot); inMap = true; }
+    if (best) { try { localStorage.setItem(ck, JSON.stringify([best.cp.x, best.cp.y, best.cp.z, best.yaw])); } catch { }
+      inner.position.set(-best.cp.x, -best.cp.y, -best.cp.z); pivot.rotation.y = -best.yaw; backdrop = pivot; scene.add(pivot); inMap = true; }
     for (const ob of [floor, ped, ring, glow, halo]) ob.visible = !inMap;
     scene.fog = inMap ? new THREE.Fog('#c9d6e2', 40, 220) : new THREE.Fog('#1a1d22', 6, 16);
     scene.background = inMap ? new THREE.Color('#8fb2d8') : bgt;

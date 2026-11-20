@@ -49,7 +49,7 @@ export async function loadMap(id, base = 'maps/') {
       const uvB = buf.slice(o, o + n * 8); o += n * 8; const uv = new Float32Array(uvB);
       const tile = new Uint16Array(buf.slice(o, o + n * 2)); o += n * 2;
       const lm = new Uint16Array(buf.slice(o, o + n * 4)); o += n * 4;
-      parts.push({ kind: p.kind, brk: p.brk, n, pos, uv, tile, lm }); allPos.push(pos);
+      parts.push({ kind: p.kind, brk: p.brk, spin: p.spin, n, pos, uv, tile, lm }); if (p.kind !== "add" && p.kind !== "glass") allPos.push(pos);
     }
     const rs = info.rshift || [0, 0, 0]; // los mapas de Source guardan el render corrido (lo que queda fuera de la grilla de colisión)
     const tot = allPos.reduce((a, b) => a + b.length, 0), mesh = rs.some(v => v) ? new Float32Array(tot) : new Uint16Array(tot); let k = 0;

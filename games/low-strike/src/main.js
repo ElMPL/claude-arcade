@@ -21,7 +21,7 @@ import { makeFx } from './fx.js';
 import { loadGunModels, makePlayerModel, setModelGun, poseModel, makeViewModel, setViewGun, updateViewArms, gunMesh, gunGeo, gunInfo, finOf, MAT, GMAT } from './models.js';
 import { loadAgents } from './agents.js';
 import { loadArms } from './vmarms.js';
-import { VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun, inspectPose, nativeGun, c4World, nadeWorld, preloadNades } from './vmodels.js';
+import { loadMolotov, VMAP, loadVModel, makeVModel, playSeq, updateVModel, attachGun, inspectPose, nativeGun, c4World, nadeWorld, preloadNades } from './vmodels.js';
 const skinIdx = p => (p.team === 'T' ? p.skT : p.skCT) | 0;
 import * as A from './audio.js';
 import { makeMenu } from './menu.js';
@@ -322,7 +322,9 @@ function use() {
     if (!M.defusing) { M.defusing = true; M.defT = 0; req('defst', {}); A.sfxDefuse(null); }
     return;
   }
-  const d = lookDrop(); if (d) req('take', { id: d.id, swap: true, ammo: M.ammo[slotOf(d.w) === 1 ? 'p' : 's'] });
+  const d = lookDrop(); if (d) return req('take', { id: d.id, swap: true, ammo: M.ammo[slotOf(d.w) === 1 ? 'p' : 's'] });
+  // puertas: E abre o cierra la que tengas al lado
+  if (BRK && BRK.doors.length) { const i = BRK.doorNear(p.x, p.y, p.z); if (i >= 0) { const r = BRK.toggle(i, p.x, p.z); if (r) { send('door', r); A.sfxS('door', [p.x, p.y + 1, p.z], 0.8) || A.sfxClick([p.x, p.y + 1, p.z], 300, 0.6); } } }
 }
 function stopDefuse() { M.defusing = false; M.defT = 0; req('defx', {}); }
 function lookDrop() {
@@ -560,6 +562,7 @@ function onMsg(type, d, from, meta) {
     case 'st': applySt(d); break;
     case 'rs': roundStart(d); break;
     case 'brk': breakIt(d.i); break;
+    case 'door': if (BRK) BRK.setDoorTo(d.i, d.a); break;
     case 'ev': onEvent(d); break;
     case 'p': { const p = G.players.get(from); if (p && from !== myId) netPos(p, d); break; }
     case 'pb': if (!isHost()) for (const b of d) { const p = G.players.get(b[0]); if (p) netPos(p, b.slice(1)); } break;
@@ -1246,7 +1249,7 @@ settings.hooks.vmPreview = (cv, S) => {
 function buildSrcVM(wid, fin = 0) {
   const name = VMAP[wid], key = wid + ':' + fin; if (!name || srcVMs[key]) return;
   srcVMs[key] = 'loading';
-  loadVModel(name).then(def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { if (fin === 0 && nativeGun(v, wid)) { } else if (wid === 'dualies') { attachGun(v, gunGeo(wid, fin), null, /_R_/); attachGun(v, gunGeo(wid, fin), null, /_L_/); } else if (gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; });
+  loadVModel(name).then(async def => { const v = makeVModel(def); v.holder.name = 'srcvm'; v.gunMats = GMAT; try { if (wid === 'molotov' || wid === 'incendiary') { const b = await loadMolotov(); attachGun(v, b.g, b.mat); } else if (fin === 0 && nativeGun(v, wid)) { } else if (wid === 'dualies') { attachGun(v, gunGeo(wid, fin), null, /_R_/); attachGun(v, gunGeo(wid, fin), null, /_L_/); } else if (gunGeo(wid, fin)) attachGun(v, gunGeo(wid, fin)); } catch (e) { console.warn('arma', wid, e); } srcVMs[key] = v; }).catch(e => { console.warn('viewmodel', name, e); srcVMs[key] = 'fail'; });
 }
 // precarga de todos los modelos de primera persona al entrar (de a uno, sin trabar): así al comprar o cambiar de
 // arma ya están listos y no aparece por un instante el modelo de repuesto
@@ -1467,16 +1470,30 @@ function updateHud(dt) {
 }
 
 // ---------------- bucle ----------------
-let last = performance.now();
+let last = performance.now(), menuAcc = 0, menuLast = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (G.phase === 'lobby' && menu && renderer) { menu.render(renderer, dt); return; }
+  if (G.phase === 'lobby' && menu && renderer) {
+    // menú: a ~40 fps y resolución 1:1 (el mapa de fondo es pesado y el menú no necesita más)
+    menuAcc += (now - menuLast) / 1000; menuLast = now; if (menuAcc < 1 / 40) return;
+    if (renderer.getPixelRatio() > 1) renderer.setPixelRatio(1);
+    menu.render(renderer, Math.min(0.1, menuAcc)); menuAcc = 0; return;
+  }
   if (G.phase !== 'lobby' && loaded) {
     const ff = (window.__ls && window.__ls.ff) || 0;
     for (let k = 0; k < ff; k++) simulate(0.05);
     simulate(dt);
     fx.quality = CFG.fx ?? 2; fx.update(dt, G.time, camera);
+    if (mapMesh && mapMesh.userData.spinners) for (const m of mapMesh.userData.spinners) m.rotation.y += m.userData.spin * dt; // sirenas de Nuke
+    if (BRK) {
+      BRK.tick(dt);
+      // los bots no saben abrir puertas: si uno se topa con una cerrada, se le abre
+      if (isHost() && BRK.doors.length && (G.doorT = (G.doorT || 0) + dt) > 0.4) {
+        G.doorT = 0;
+        for (const p of G.players.values()) if (p.bot && p.alive) { const i = BRK.doorNear(p.x, p.y, p.z, 0.9); if (i >= 0 && BRK.list[i].target === 0) { const r = BRK.toggle(i, p.x, p.z); if (r) send('door', r); } }
+      }
+    }
     if (fpsEl && CFG.showFps) { fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fpsEl.textContent = Math.round(fpsN / fpsAcc) + ' FPS'; fpsAcc = 0; fpsN = 0; } } updatePings(); fx.tickDebug(dt); updateTraj();
     updateCamera(dt);
     updateHud(dt);
@@ -1637,4 +1654,4 @@ async function boot() {
 }
 boot();
 // para pruebas automáticas
-window.__ls = { G, M, me, req, get fx() { return fx; }, get H() { return H; }, get BOTS() { return BOTS; }, get camera() { return camera; }, get vm() { return vm; }, get scene() { return scene; }, keys, look, onKey, traceShot, targets, shotDir, setMouse(l, r) { mouseL = l; mouseR = !!r; if (r) secondary(); } };
+window.__ls = { G, M, me, req, get fx() { return fx; }, get H() { return H; }, get BOTS() { return BOTS; }, get camera() { return camera; }, get BRK() { return BRK; }, get mapMesh() { return mapMesh; }, use, get vm() { return vm; }, get scene() { return scene; }, keys, look, onKey, traceShot, targets, shotDir, setMouse(l, r) { mouseL = l; mouseR = !!r; if (r) secondary(); } };
