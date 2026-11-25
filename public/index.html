@@ -142,6 +142,13 @@
           </details>
           <p id="lastResult" class="result" hidden></p>
           <button id="btnLeave" class="btn ghost">Salir de la sala</button>
+          <div class="chat">
+            <ul id="chatLog" aria-live="polite"></ul>
+            <form id="chatForm" autocomplete="off">
+              <input id="chatIn" maxlength="200" placeholder="Escribí un mensaje…" aria-label="Mensaje">
+              <button class="btn small primary" aria-label="Enviar">➤</button>
+            </form>
+          </div>
         </div>
         <div class="card grow">
           <h3 id="pickTitle">Elegí un juego</h3>

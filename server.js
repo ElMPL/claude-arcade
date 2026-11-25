@@ -278,7 +278,7 @@ io.on('connection', socket => {
     if (hr && hr.players.has(pid)) {
       const pl = hr.players.get(pid); pl.off = 0; clearTimeout(offTimers.get(pid)); offTimers.delete(pid);
       room = hr; socket.join(hr.code);
-      socket.emit('room:rejoin', { me: pid, recovered: !!socket.recovered, room: publicRoom(hr), game: hr.state === 'playing' ? { gameId: hr.gameId, hostId: hr.hostId, players: [...hr.players.values()] } : null });
+      socket.emit('room:rejoin', { me: pid, recovered: !!socket.recovered, chat: hr.chat || [], room: publicRoom(hr), game: hr.state === 'playing' ? { gameId: hr.gameId, hostId: hr.hostId, players: [...hr.players.values()] } : null });
       socket.to(hr.code).emit('room:update', publicRoom(hr));
     }
   }
@@ -330,7 +330,7 @@ io.on('connection', socket => {
     if (r.players.has(pid)) {
       const pl = r.players.get(pid); pl.off = 0; clearTimeout(offTimers.get(pid)); offTimers.delete(pid);
       room = r; socket.join(code);
-      cb({ ok: true, me: pid, room: publicRoom(r), game: r.state === 'playing' ? { gameId: r.gameId, hostId: r.hostId, players: [...r.players.values()] } : null });
+      cb({ ok: true, me: pid, chat: r.chat || [], room: publicRoom(r), game: r.state === 'playing' ? { gameId: r.gameId, hostId: r.hostId, players: [...r.players.values()] } : null });
       socket.to(code).emit('room:update', publicRoom(r));
       return;
     }
@@ -346,7 +346,7 @@ io.on('connection', socket => {
     r.players.set(pid, { id: pid, name, slot: r.players.size, crowns: 0, acc: !!acc, ...look }); accOf.set(pid, acc); homeOf.set(pid, code);
     room = r;
     socket.join(code);
-    cb({ ok: true, me: pid, room: publicRoom(r) });
+    cb({ ok: true, me: pid, chat: r.chat || [], room: publicRoom(r) });
     socket.to(code).emit('room:update', publicRoom(r));
   });
 
@@ -457,6 +457,18 @@ io.on('connection', socket => {
       if (target && target.data.leave) { target.emit('room:kicked'); target.data.leave(); } else removePlayer(room, p.id);
     } else return reply({ ok: false });
     reply({ ok: true });
+  });
+
+  // Chat de la sala (se guardan los últimos 40 mensajes para los que entran después)
+  let chatAt = 0;
+  socket.on('room:chat', text => {
+    if (!room) return;
+    const now = Date.now(); if (now - chatAt < 600) return; chatAt = now;
+    text = String(text == null ? '' : text).replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const pl = room.players.get(pid); if (!text || !pl) return;
+    const m = { id: pid, name: pl.name, avatar: pl.avatar, color: pl.color, text, t: now };
+    room.chat = room.chat || []; room.chat.push(m); if (room.chat.length > 40) room.chat.shift();
+    io.to(room.code).emit('room:chat', m);
   });
 
   // Relay genérico: el juego manda {type, data, to?, v?}

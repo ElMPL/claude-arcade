@@ -111,7 +111,7 @@
   function lostRoom(msg) {
     clearTimeout(lostT); lostT = null; netBanner(false);
     if (!room) return;
-    room = null; closeFrame(); renderBadge(); show('viewOnline');
+    room = null; chatMsgs = []; renderChat(); closeFrame(); renderBadge(); show('viewOnline');
     $('#onlineErr').textContent = msg || 'Se cortó la conexión con la sala. Volvé a entrar.';
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && socket && !socket.connected) socket.connect(); });
@@ -119,7 +119,8 @@
   function ensureSocket() {
     if (socket) return socket;
     socket = io({ transports: ['websocket', 'polling'], auth: { pid: myPid() }, reconnectionDelay: 600, reconnectionDelayMax: 4000 });
-    socket.on('room:rejoin', ({ me, room: r, game, recovered }) => {
+    socket.on('room:rejoin', ({ me, room: r, game, recovered, chat }) => {
+      if (chat) setChat(chat);
       clearTimeout(lostT); lostT = null; netBanner(false);
       myId = me; room = r; renderLobby(); renderBadge && renderBadge();
       if (game) {
@@ -135,7 +136,8 @@
       socket.auth.pid = myPid(); setTimeout(() => socket.connect(), 300);
     });
     socket.on('game:hostChanged', ({ hostId }) => { if (!current) return; current.ctx.hostId = hostId; toFrame({ kind: 'host', hostId }); });
-    socket.on('room:update', r => { room = r; renderLobby(); Admin.render(); });
+    socket.on('room:update', r => { chatPeople(r); room = r; renderLobby(); Admin.render(); });
+    socket.on('room:chat', m => addChat(m));
     socket.on('game:start', startOnline);
     socket.on('game:end', ({ results }) => {
       closeFrame();
@@ -185,11 +187,44 @@
     if ($('#inName').value.trim()) { $('#inName').classList.remove('invalid'); $('#onlineErr').textContent = ''; }
   });
 
+  // ---------- Chat de la sala ----------
+  let chatMsgs = [];
+  const hhmm = t => new Date(t).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  function chatLine(m) {
+    if (m.sys) return `<li class="sys">${esc(m.text)}</li>`;
+    const mine = m.id === myId;
+    return `<li class="${mine ? 'mine' : ''}"><span class="cav" style="--pc:${esc(m.color || '#7c5cff')}">${esc(m.avatar || '🙂')}</span><div><b>${esc(m.name)}</b><time>${hhmm(m.t)}</time><p>${esc(m.text)}</p></div></li>`;
+  }
+  function renderChat() {
+    const ul = $('#chatLog'); if (!ul) return;
+    const atBottom = ul.scrollHeight - ul.scrollTop - ul.clientHeight < 40;
+    ul.innerHTML = chatMsgs.length ? chatMsgs.map(chatLine).join('') : '<li class="sys">Todavía no hay mensajes. ¡Saludá!</li>';
+    if (atBottom) ul.scrollTop = ul.scrollHeight;
+  }
+  function setChat(list) { chatMsgs = list.slice(-40); renderChat(); const ul = $('#chatLog'); ul.scrollTop = ul.scrollHeight; }
+  function addChat(m) {
+    chatMsgs.push(m); if (chatMsgs.length > 60) chatMsgs.shift(); renderChat();
+    if (m.id !== myId && !m.sys) { $('#chatLog').scrollTop = $('#chatLog').scrollHeight; if ($('#viewLobby').hidden) toast(`💬 ${m.name}: ${m.text.slice(0, 60)}`); }
+  }
+  // avisos de quién entra y quién sale
+  function chatPeople(r) {
+    if (!room || !r || room.code !== r.code) return;
+    const was = new Map(room.players.map(p => [p.id, p.name])), now = new Map(r.players.map(p => [p.id, p.name]));
+    for (const [id, n] of now) if (!was.has(id)) addChat({ sys: 1, text: `👋 ${n} entró a la sala` });
+    for (const [id, n] of was) if (!now.has(id)) addChat({ sys: 1, text: `🚪 ${n} salió de la sala` });
+  }
+  $('#chatForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('#chatIn').value.trim(); if (!v || !socket || !room) return;
+    socket.emit('room:chat', v); $('#chatIn').value = '';
+  });
+
   function onJoined(res) {
     if (!res.ok) { $('#onlineErr').textContent = res.error; return; }
     $('#onlineErr').textContent = '';
     myId = res.me;
     room = res.room;
+    setChat(res.chat || []);
     if (res.game) { renderLobby(); startOnline(res.game); return; }
     $('#lastResult').hidden = true;
     history.replaceState(null, '', '/?sala=' + room.code);
@@ -260,7 +295,7 @@
 
   $('#btnLeave').addEventListener('click', () => {
     if (socket) socket.emit('room:leave');
-    room = null;
+    room = null; chatMsgs = []; renderChat();
     history.replaceState(null, '', '/');
     renderBadge();
     show('viewCatalog');
