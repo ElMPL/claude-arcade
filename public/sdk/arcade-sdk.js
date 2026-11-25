@@ -76,6 +76,11 @@
     if (m.kind === 'adminPress') { if (admActive) emit('$adm:' + m.id, true); return; }
     if (m.kind === 'msg') {
       emit(m.type, m.data, m.from, { admin: !!m.adm });
+    } else if (m.kind === 'host') {
+      var ch = m.hostId && m.hostId !== ctx.hostId;
+      if (m.hostId) ctx.hostId = m.hostId;
+      ctx.isHost = ctx.me.id === ctx.hostId;
+      if (ch) emit('$hostChanged', ctx.hostId);
     } else if (m.kind === 'playerLeft') {
       ctx.players = ctx.players.filter(function (p) { return p.id !== m.id; });
       var changed = m.hostId && m.hostId !== ctx.hostId;

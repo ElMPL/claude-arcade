@@ -41,17 +41,38 @@
     el.title = g.description;
     const players = g.mode === 'multi' ? `👥 ${g.minPlayers === g.maxPlayers ? g.minPlayers : g.minPlayers + '–' + g.maxPlayers}` : '👤 1';
     el.innerHTML =
-      `<div class="thumb"><img src="${esc(g.thumbnail)}" alt="${esc(g.name)}" loading="lazy"></div>` +
-      `<div class="meta"><b>${esc(g.name)}</b><small>${players} · ${esc(g.author)}</small></div>`;
+      `<div class="thumb"><img src="${esc(g.thumbnail)}" alt="${esc(g.name)}" loading="lazy"><span class="mode ${g.mode}">${g.mode === 'multi' ? 'ONLINE' : 'SOLO'}</span><span class="play">▶</span></div>` +
+      `<div class="meta"><b>${esc(g.name)}</b><small>${players} · ${esc(g.author)}</small><p>${esc(g.description || '')}</p></div>`;
     el.addEventListener('click', onClick);
     return el;
   }
+
+  // ---------- Destacado ----------
+  let heroI = 0, heroT = null;
+  function renderHero() {
+    const h = $('#hero'); if (!games.length) { h.hidden = true; return; }
+    const list = games.slice(0, 6), g = list[heroI % list.length];
+    const players = g.mode === 'multi' ? `👥 ${g.minPlayers}–${g.maxPlayers} jugadores` : '👤 Un jugador';
+    h.style.setProperty('--c', g.color);
+    h.innerHTML = `<div class="heroBg" style="background-image:url('${esc(g.thumbnail)}')"></div>
+      <div class="heroImg"><img src="${esc(g.thumbnail)}" alt=""></div>
+      <div class="heroTxt"><span class="heroTag">⭐ DESTACADO</span><h1>${esc(g.name)}</h1><p>${esc(g.description || '')}</p>
+        <div class="heroBtns"><button class="btn primary big" data-hero="play">▶ Jugar</button><span class="heroInfo">${players}</span></div>
+        <div class="heroDots">${list.map((x, i) => `<button data-dot="${i}" class="${i === heroI % list.length ? 'on' : ''}" aria-label="${esc(x.name)}"></button>`).join('')}</div></div>`;
+    h.hidden = false;
+    h.onclick = e => {
+      const d = e.target.closest('[data-dot]'); if (d) { heroI = +d.dataset.dot; renderHero(); restartHero(); return; }
+      if (e.target.closest('[data-hero]')) onCatalogClick(g);
+    };
+  }
+  function restartHero() { clearInterval(heroT); heroT = setInterval(() => { if (document.hidden || $('#viewCatalog').hidden) return; heroI++; renderHero(); }, 7000); }
 
   // ---------- Catálogo ----------
   function renderGrid() {
     const grid = $('#grid');
     grid.innerHTML = '';
-    const list = games.filter(g => filter === 'all' || g.mode === filter);
+    const q = ($('#search') && $('#search').value || '').trim().toLowerCase();
+    const list = games.filter(g => (filter === 'all' || g.mode === filter) && (!q || (g.name + ' ' + (g.description || '')).toLowerCase().includes(q)));
     if (!list.length) grid.innerHTML = '<p class="empty">Todavía no hay juegos acá. ¡Subí el primero!</p>';
     list.forEach(g => grid.appendChild(tile(g, () => onCatalogClick(g))));
   }
@@ -75,9 +96,45 @@
   }));
 
   // ---------- Online ----------
+  // id de jugador de esta pestaña: si se corta la conexión, al volver el servidor te devuelve a tu lugar
+  function myPid() {
+    let p = null; try { p = sessionStorage.getItem('arcade:pid'); } catch { /* sin storage */ }
+    if (!p || !/^[A-Za-z0-9_-]{16,64}$/.test(p)) { p = Array.from(crypto.getRandomValues(new Uint8Array(18)), b => 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_'[b & 63]).join(''); try { sessionStorage.setItem('arcade:pid', p); } catch { /* sin storage */ } }
+    return p;
+  }
+  let lostT = null;
+  function netBanner(on, txt) {
+    let b = document.getElementById('netBanner');
+    if (!b) { b = document.createElement('div'); b.id = 'netBanner'; document.body.appendChild(b); }
+    b.textContent = txt || '📶 Se cortó la conexión… reconectando'; b.classList.toggle('on', !!on);
+  }
+  function lostRoom(msg) {
+    clearTimeout(lostT); lostT = null; netBanner(false);
+    if (!room) return;
+    room = null; closeFrame(); renderBadge(); show('viewOnline');
+    $('#onlineErr').textContent = msg || 'Se cortó la conexión con la sala. Volvé a entrar.';
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && socket && !socket.connected) socket.connect(); });
+  addEventListener('online', () => { if (socket && !socket.connected) socket.connect(); });
   function ensureSocket() {
     if (socket) return socket;
-    socket = io({ transports: ['websocket', 'polling'] });
+    socket = io({ transports: ['websocket', 'polling'], auth: { pid: myPid() }, reconnectionDelay: 600, reconnectionDelayMax: 4000 });
+    socket.on('room:rejoin', ({ me, room: r, game, recovered }) => {
+      clearTimeout(lostT); lostT = null; netBanner(false);
+      myId = me; room = r; renderLobby(); renderBadge && renderBadge();
+      if (game) {
+        // si el corte fue corto y nada se perdió, el juego sigue; si no, se recarga y le pide el estado al host
+        if (current && current.ctx.online && (recovered || game.hostId === myId)) { current.ctx.hostId = game.hostId; toFrame({ kind: 'host', hostId: game.hostId }); }
+        else { closeFrame(); startOnline(game); }
+        toast('📶 Volviste a la partida');
+      } else { if (current && current.ctx.online) closeFrame(); show('viewLobby'); toast('📶 Volviste a la sala'); }
+    });
+    socket.on('session:replaced', () => {
+      try { sessionStorage.removeItem('arcade:pid'); } catch { /* sin storage */ }
+      lostRoom('Esta sala se abrió en otra pestaña o dispositivo.');
+      socket.auth.pid = myPid(); setTimeout(() => socket.connect(), 300);
+    });
+    socket.on('game:hostChanged', ({ hostId }) => { if (!current) return; current.ctx.hostId = hostId; toFrame({ kind: 'host', hostId }); });
     socket.on('room:update', r => { room = r; renderLobby(); Admin.render(); });
     socket.on('game:start', startOnline);
     socket.on('game:end', ({ results }) => {
@@ -99,14 +156,14 @@
       current.ctx.hostId = p.hostId;
       toFrame({ kind: 'playerLeft', id: p.id, hostId: p.hostId });
     });
-    socket.on('disconnect', () => {
+    socket.on('disconnect', reason => {
       if (!room) return;
-      room = null;
-      closeFrame();
-      renderBadge();
-      show('viewOnline');
-      $('#onlineErr').textContent = 'Se cortó la conexión con la sala. Volvé a entrar.';
+      if (reason === 'io server disconnect') { setTimeout(() => socket.connect(), 500); }
+      netBanner(true);
+      // el servidor guarda tu lugar un par de minutos; si no vuelve en ese tiempo, se avisa
+      clearTimeout(lostT); lostT = setTimeout(() => lostRoom(), 110000);
     });
+    socket.io.on('reconnect_attempt', n => { if (room) netBanner(true, n > 3 ? '📶 Sin conexión… seguimos intentando' : undefined); });
     return socket;
   }
 
@@ -133,6 +190,7 @@
     $('#onlineErr').textContent = '';
     myId = res.me;
     room = res.room;
+    if (res.game) { renderLobby(); startOnline(res.game); return; }
     $('#lastResult').hidden = true;
     history.replaceState(null, '', '/?sala=' + room.code);
     if (wantGame && isHost()) socket.emit('room:selectGame', { gameId: wantGame });
@@ -237,9 +295,10 @@
     [...room.players].sort((a, b) => (b.crowns || 0) - (a.crowns || 0)).forEach(p => {
       const li = document.createElement('li');
       const accTag = p.acc ? ' <small class="accTag" title="Juega con su cuenta">✔</small>' : '';
+      const offTag = p.off ? ' <small class="offTag" title="Se le cortó la conexión">📶 volviendo…</small>' : '';
       const crowns = p.crowns ? `<span class="crowns" title="Juegos ganados">👑 ${p.crowns}</span>` : '<span class="crowns zero">👑 0</span>';
       const av = p.acc ? `<span class="miniAv" style="--pc:${esc(p.color || '')}">${esc(p.avatar || '🙂')}</span>` : '';
-      li.innerHTML = `<span class="pname">${av}<span class="${p.acc ? 'who' : ''}" ${p.acc ? `data-user="${esc(p.name)}"` : ''}>${esc(p.name)}</span>${accTag}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
+      li.innerHTML = `<span class="pname">${av}<span class="${p.acc ? 'who' : ''}" ${p.acc ? `data-user="${esc(p.name)}"` : ''}>${esc(p.name)}</span>${accTag}${offTag}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
       ul.appendChild(li);
     });
 
@@ -446,7 +505,7 @@
     const inp = $('#inName');
     if (me) { inp.value = me.name; inp.disabled = true; inp.title = 'Jugás con tu cuenta'; }
     else { inp.disabled = false; inp.title = ''; inp.value = store.get('arcade:name') || ''; }
-    $('#btnAccount').textContent = me ? `${(me.profile && me.profile.avatar) || '👤'} ${me.name} · 👑 ${me.crowns}` : '👤 Iniciar sesión';
+    $('#btnAccount').innerHTML = me ? `${esc((me.profile && me.profile.avatar) || '👤')}<span class="lbl"> ${esc(me.name)} · 👑 ${me.crowns}</span>` : '👤<span class="lbl"> Iniciar sesión</span>';
   }
   function histHTML(list) {
     return (list || []).length ? list.map(h => `<li><span class="cr">👑</span><b>${esc(h.game)}${h.co ? ' <small class="accTag">(compartida)</small>' : ''}</b><small>${esc(h.room || '')}${h.with && h.with.length ? ' · contra ' + h.with.map(esc).join(', ') : ''}</small><time>${fmtDate(h.t)}</time></li>`).join('')
@@ -580,7 +639,8 @@
       games = [];
       toast('No se pudo cargar el catálogo');
     }
-    renderGrid();
+    renderGrid(); renderHero(); restartHero();
+    $('#search').addEventListener('input', renderGrid);
     const sala = new URLSearchParams(location.search).get('sala');
     if (sala) {
       $('#inCode').value = sala.toUpperCase().slice(0, 5);

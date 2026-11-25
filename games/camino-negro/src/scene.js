@@ -210,18 +210,20 @@ export function createScene(canvas, priceText) {
   const houseGeo = new THREE.BoxGeometry(0.16, 0.13, 0.16), roofGeo = new THREE.ConeGeometry(0.135, 0.1, 4);
   const hotelGeo = new THREE.BoxGeometry(0.5, 0.22, 0.2);
   const greenM = new THREE.MeshStandardMaterial({ color: '#21b357', roughness: 0.4 }), redM = new THREE.MeshStandardMaterial({ color: '#e8352f', roughness: 0.4 }), roofM = new THREE.MeshStandardMaterial({ color: '#156e36' });
-  function setProp(i, own, colOf) {
+  function setProp(i, own, colOf, pop) {
     let P = props[i];
     const s = SQUARES[i], [cx, cz] = tileCenter(i), [ox, oz] = sideOut(i);
     if (!P) { P = props[i] = { g: new THREE.Group(), k: '' }; scene.add(P.g); }
     const key = own ? `${own.o}|${own.h}|${own.m}|${colOf(own.o)}` : '';
-    if (P.k === key) return; P.k = key;
+    if (P.k === key) return; const prev = P.own; P.k = key; P.own = own ? { ...own } : null;
     P.g.clear(); if (!own) return;
+    const fresh = !prev || prev.o !== own.o, ph = prev && !fresh ? prev.h : 0;
     // banderita del dueño en el borde exterior
     const flagM = new THREE.MeshStandardMaterial({ color: colOf(own.o), roughness: 0.35 });
     const along = ox ? [0, 1] : [1, 0];
     const plate = new THREE.Mesh(new THREE.BoxGeometry(along[0] ? 0.86 : 0.22, 0.06, along[1] ? 0.86 : 0.22), flagM);
     plate.position.set(cx + ox * 0.92, BH + 0.03, cz + oz * 0.92); plate.castShadow = true; P.g.add(plate);
+    if (fresh && pop) pop(plate);
     if (own.m) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(ox ? 1.5 : 0.94, 0.01, oz ? 1.5 : 0.94), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.45 }));
       m.position.set(cx, BH + 0.006, cz); P.g.add(m);
@@ -230,12 +232,13 @@ export function createScene(canvas, priceText) {
     }
     if (s.t === 'prop' && own.h) {
       const bx = cx - ox * 0.6, bz = cz - oz * 0.6; // sobre la franja de color
-      if (own.h === 5) { const h = new THREE.Mesh(hotelGeo, redM); if (ox) h.rotation.y = Math.PI / 2; h.position.set(bx, BH + 0.11, bz); h.castShadow = true; P.g.add(h); }
+      if (own.h === 5) { const h = new THREE.Mesh(hotelGeo, redM); if (ox) h.rotation.y = Math.PI / 2; h.position.set(bx, BH + 0.11, bz); h.castShadow = true; P.g.add(h); if (ph < 5 && pop) pop(h); }
       else for (let k = 0; k < own.h; k++) {
         const off = (k - (own.h - 1) / 2) * 0.21;
         const h = new THREE.Mesh(houseGeo, greenM), r = new THREE.Mesh(roofGeo, roofM);
         const px = bx + along[0] * off, pz = bz + along[1] * off;
         h.position.set(px, BH + 0.065, pz); r.position.set(px, BH + 0.18, pz); r.rotation.y = Math.PI / 4; h.castShadow = r.castShadow = true; P.g.add(h, r);
+        if (k >= ph && pop) { pop(h, 0.05); pop(r, 0.12); }
       }
     }
   }
@@ -271,8 +274,9 @@ export function createScene(canvas, priceText) {
   function update(dt) {
     cam.tx += (cam.wantX - cam.tx) * Math.min(1, dt * 2); cam.tz += (cam.wantZ - cam.tz) * Math.min(1, dt * 2);
     const d = cam.dist * (camera.aspect < 1 ? 1.5 : 1);
-    camera.position.set(cam.tx + Math.sin(cam.yaw) * Math.cos(cam.pitch) * d, Math.sin(cam.pitch) * d, cam.tz + Math.cos(cam.yaw) * Math.cos(cam.pitch) * d);
-    camera.lookAt(cam.tx, 0, cam.tz);
+    const sx = cam.shx || 0, sz = cam.shz || 0;
+    camera.position.set(cam.tx + sx + Math.sin(cam.yaw) * Math.cos(cam.pitch) * d, Math.sin(cam.pitch) * d, cam.tz + sz + Math.cos(cam.yaw) * Math.cos(cam.pitch) * d);
+    camera.lookAt(cam.tx + sx, 0, cam.tz + sz);
     if (diceAnim) {
       const a = diceAnim; a.t += dt; const k = Math.min(1, a.t / 0.95);
       dice.forEach((d, j) => {

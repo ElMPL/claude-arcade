@@ -17,7 +17,8 @@ const ADMIN_USERS = new Set(String(process.env.ADMIN_USERS || 'nitsuga').split('
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { maxHttpBufferSize: 64 * 1024, pingInterval: 10000, pingTimeout: 8000 });
+// pings más tolerantes (en el celu la pestaña se congela un rato) y recuperación de la conexión si se corta un momento
+const io = new Server(server, { maxHttpBufferSize: 64 * 1024, pingInterval: 15000, pingTimeout: 20000, connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000, skipMiddlewares: true } });
 
 // ---------- Catálogo ----------
 function clampInt(v, min, max, def) {
@@ -153,7 +154,7 @@ api.get('/me', wrap(async (req, res) => {
   const u = await Accounts.userFromToken(readCookie(req.headers.cookie));
   res.json(u ? { ok: true, user: meOut(u) } : { ok: false });
 }));
-api.get('/options', (_req, res) => res.json({ ok: true, ...Accounts.OPTIONS }));
+api.get('/options', (_req, res) => res.json({ ok: true, ...Accounts.OPTIONS, storage: Accounts.store.kind }));
 api.post('/profile', authed(async (req, res, u) => {
   const r = await Accounts.updateProfile(u.key, req.body);
   if (!r.ok) return res.json(r);
@@ -178,7 +179,40 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Salas ----------
 const rooms = new Map(); // code -> room
-const accOf = new Map(); // socket.id -> clave de la cuenta (o null si juega como invitado)
+const accOf = new Map();   // id del jugador -> clave de la cuenta (o null si juega como invitado)
+const sockOf = new Map();  // id del jugador -> socket conectado
+const homeOf = new Map();  // id del jugador -> código de la sala donde está
+const offTimers = new Map();
+const GRACE_LOBBY = 45e3, GRACE_PLAYING = 120e3, HOST_WAIT = 8e3;
+
+// saca a un jugador de una sala (se fue, lo echaron o no volvió a tiempo)
+function removePlayer(r, pid) {
+  if (!r.players.has(pid)) return;
+  r.players.delete(pid); homeOf.delete(pid);
+  clearTimeout(offTimers.get(pid)); offTimers.delete(pid);
+  if (r.players.size === 0) { rooms.delete(r.code); return; }
+  if (r.hostId === pid) r.hostId = pickHost(r);
+  if (r.state === 'playing') {
+    io.to(r.code).emit('game:playerLeft', { id: pid, hostId: r.hostId });
+    const game = GAME_BY_ID.get(r.gameId);
+    if (game && r.players.size < game.minPlayers) {
+      r.state = 'lobby';
+      io.to(r.code).emit('game:end', { results: { text: 'No quedan jugadores suficientes' } });
+    }
+  }
+  io.to(r.code).emit('room:update', publicRoom(r));
+}
+// el nuevo host es alguien conectado (si hay)
+function pickHost(r) { const on = [...r.players.values()].find(p => !p.off); return on ? on.id : r.players.keys().next().value; }
+// si el host se cortó en plena partida, después de unos segundos pasa a otro para que el juego no quede trabado
+function hostCheck(r, pid) {
+  const pl = r.players.get(pid);
+  if (!pl || !pl.off || r.hostId !== pid) return;
+  const nh = pickHost(r); if (nh === pid) return;
+  r.hostId = nh;
+  if (r.state === 'playing') io.to(r.code).emit('game:hostChanged', { hostId: nh });
+  io.to(r.code).emit('room:update', publicRoom(r));
+}
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function makeCode() {
@@ -232,6 +266,22 @@ function roomList() {
 
 io.on('connection', socket => {
   let room = null;
+  // id estable del jugador: sale de un secreto que guarda la pestaña, así al reconectarse vuelve a su lugar
+  const secret = String((socket.handshake.auth && socket.handshake.auth.pid) || '');
+  const pid = /^[A-Za-z0-9_-]{16,64}$/.test(secret) ? 'p' + crypto.createHash('sha256').update('pid:' + secret).digest('hex').slice(0, 15) : socket.id;
+  socket.join(pid);
+  { const old = sockOf.get(pid); if (old && old !== socket) { old.data.replaced = true; old.emit('session:replaced'); old.disconnect(true); } }
+  sockOf.set(pid, socket);
+  // ¿estaba en una sala? vuelve a entrar solo
+  {
+    const hr = homeOf.has(pid) && rooms.get(homeOf.get(pid));
+    if (hr && hr.players.has(pid)) {
+      const pl = hr.players.get(pid); pl.off = 0; clearTimeout(offTimers.get(pid)); offTimers.delete(pid);
+      room = hr; socket.join(hr.code);
+      socket.emit('room:rejoin', { me: pid, recovered: !!socket.recovered, room: publicRoom(hr), game: hr.state === 'playing' ? { gameId: hr.gameId, hostId: hr.hostId, players: [...hr.players.values()] } : null });
+      socket.to(hr.code).emit('room:update', publicRoom(hr));
+    }
+  }
   // si el navegador tiene sesión iniciada, el jugador usa el nombre de su cuenta y sus coronas quedan guardadas
   const userP = Accounts.userFromToken(readCookie(socket.handshake.headers.cookie)).catch(() => null);
   async function playerName(payload) {
@@ -248,19 +298,8 @@ io.on('connection', socket => {
     if (!room) return;
     const r = room;
     room = null;
-    r.players.delete(socket.id);
     socket.leave(r.code);
-    if (r.players.size === 0) { rooms.delete(r.code); return; }
-    if (r.hostId === socket.id) r.hostId = r.players.keys().next().value;
-    if (r.state === 'playing') {
-      io.to(r.code).emit('game:playerLeft', { id: socket.id, hostId: r.hostId });
-      const game = GAME_BY_ID.get(r.gameId);
-      if (game && r.players.size < game.minPlayers) {
-        r.state = 'lobby';
-        io.to(r.code).emit('game:end', { results: { text: 'No quedan jugadores suficientes' } });
-      }
-    }
-    io.to(r.code).emit('room:update', publicRoom(r));
+    removePlayer(r, pid);
   }
 
   socket.on('rooms:list', (_p, cb) => { if (typeof cb === 'function') cb({ ok: true, rooms: roomList() }); });
@@ -271,13 +310,13 @@ io.on('connection', socket => {
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     leave();
     const code = makeCode();
-    const r = { code, name: cleanRoomName(payload && payload.roomName) || 'Sala de ' + name, pass: null, salt: '', hostId: socket.id, players: new Map(), gameId: null, state: 'lobby' };
+    const r = { code, name: cleanRoomName(payload && payload.roomName) || 'Sala de ' + name, pass: null, salt: '', hostId: pid, players: new Map(), gameId: null, state: 'lobby' };
     setPass(r, payload && payload.pass);
-    r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0, acc: !!acc, ...look }); accOf.set(socket.id, acc);
+    r.players.set(pid, { id: pid, name, slot: 0, crowns: 0, acc: !!acc, ...look }); accOf.set(pid, acc); homeOf.set(pid, code);
     rooms.set(code, r);
     room = r;
     socket.join(code);
-    cb({ ok: true, me: socket.id, room: publicRoom(r) });
+    cb({ ok: true, me: pid, room: publicRoom(r) });
   });
 
   socket.on('room:join', async (payload, cb) => {
@@ -287,19 +326,27 @@ io.on('connection', socket => {
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     const r = rooms.get(code);
     if (!r) return cb({ ok: false, error: 'No existe esa sala' });
+    // ya estaba en esa sala (se le cortó): vuelve a su lugar aunque estén jugando
+    if (r.players.has(pid)) {
+      const pl = r.players.get(pid); pl.off = 0; clearTimeout(offTimers.get(pid)); offTimers.delete(pid);
+      room = r; socket.join(code);
+      cb({ ok: true, me: pid, room: publicRoom(r), game: r.state === 'playing' ? { gameId: r.gameId, hostId: r.hostId, players: [...r.players.values()] } : null });
+      socket.to(code).emit('room:update', publicRoom(r));
+      return;
+    }
     if (r.state === 'playing') return cb({ ok: false, error: 'La partida ya empezó, esperá a que termine' });
     if (r.players.size >= MAX_ROOM_SIZE) return cb({ ok: false, error: 'La sala está llena' });
-    if (acc && [...r.players.keys()].some(id => id !== socket.id && accOf.get(id) === acc)) return cb({ ok: false, error: 'Ya estás en esta sala con tu cuenta (en otra pestaña)' });
-    if (r.pass && r.hostId !== socket.id) {
+    if (acc && [...r.players.keys()].some(id => id !== pid && accOf.get(id) === acc)) return cb({ ok: false, error: 'Ya estás en esta sala con tu cuenta (en otra pestaña)' });
+    if (r.pass && r.hostId !== pid) {
       if (!(payload && payload.pass)) return cb({ ok: false, needPass: true, error: 'Esta sala tiene contraseña' });
       if (++passTries > 12) return cb({ ok: false, needPass: true, error: 'Demasiados intentos, esperá un minuto' });
       if (!passOk(r, payload.pass)) return cb({ ok: false, needPass: true, error: 'Contraseña incorrecta' });
     }
     leave();
-    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0, acc: !!acc, ...look }); accOf.set(socket.id, acc);
+    r.players.set(pid, { id: pid, name, slot: r.players.size, crowns: 0, acc: !!acc, ...look }); accOf.set(pid, acc); homeOf.set(pid, code);
     room = r;
     socket.join(code);
-    cb({ ok: true, me: socket.id, room: publicRoom(r) });
+    cb({ ok: true, me: pid, room: publicRoom(r) });
     socket.to(code).emit('room:update', publicRoom(r));
   });
 
@@ -308,7 +355,7 @@ io.on('connection', socket => {
   // el host puede cambiar el nombre y la contraseña de la sala desde el lobby
   socket.on('room:settings', (payload, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
-    if (!room || room.hostId !== socket.id) return reply({ ok: false, error: 'Solo el host puede cambiar la sala' });
+    if (!room || room.hostId !== pid) return reply({ ok: false, error: 'Solo el host puede cambiar la sala' });
     const n = cleanRoomName(payload && payload.roomName); if (n) room.name = n;
     if (payload && 'pass' in payload) setPass(room, payload.pass);
     io.to(room.code).emit('room:update', publicRoom(room));
@@ -316,7 +363,7 @@ io.on('connection', socket => {
   });
 
   socket.on('room:selectGame', payload => {
-    if (!room || room.hostId !== socket.id || room.state !== 'lobby') return;
+    if (!room || room.hostId !== pid || room.state !== 'lobby') return;
     const game = GAME_BY_ID.get(payload && payload.gameId);
     if (!game || game.mode !== 'multi') return;
     room.gameId = game.id;
@@ -325,7 +372,7 @@ io.on('connection', socket => {
 
   socket.on('room:start', (_payload, cb) => {
     const reply = typeof cb === 'function' ? cb : () => {};
-    if (!room || room.hostId !== socket.id) return reply({ ok: false, error: 'Solo el host puede empezar' });
+    if (!room || room.hostId !== pid) return reply({ ok: false, error: 'Solo el host puede empezar' });
     const game = GAME_BY_ID.get(room.gameId);
     if (!game) return reply({ ok: false, error: 'Elegí un juego primero' });
     const n = room.players.size;
@@ -341,7 +388,7 @@ io.on('connection', socket => {
   });
 
   socket.on('room:end', payload => {
-    if (!room || room.hostId !== socket.id || room.state !== 'playing') return;
+    if (!room || room.hostId !== pid || room.state !== 'playing') return;
     endGame(room, payload);
   });
   function endGame(room, payload) {
@@ -356,14 +403,14 @@ io.on('connection', socket => {
       const key = accOf.get(id); if (!key) continue;
       const me = room.players.get(id).name;
       Accounts.addCrown(key, { game: game ? game.name : '?', gameId: room.gameId, room: room.name, with: names.filter(n => n !== me).slice(0, 8), co: winners.length > 1 })
-        .then(u => { const s = io.sockets.sockets.get(id); if (u && s) s.emit('account:update', Accounts.publicUser(u)); })
+        .then(u => { if (u) io.to(id).emit('account:update', Accounts.publicUser(u)); })
         .catch(e => console.error('corona', e));
     }
     // partidas jugadas (y racha cortada) para las cuentas que no ganaron
     for (const id of room.players.keys()) {
       const key = accOf.get(id); if (!key || winners.includes(id)) continue;
       Accounts.addPlayed(key, false)
-        .then(u => { const s = io.sockets.sockets.get(id); if (u && s) s.emit('account:update', Accounts.publicUser(u)); })
+        .then(u => { if (u) io.to(id).emit('account:update', Accounts.publicUser(u)); })
         .catch(e => console.error('partida', e));
     }
     let text = payload && typeof payload === 'object' ? String(payload.text || '').slice(0, 120) : '';
@@ -391,23 +438,23 @@ io.on('connection', socket => {
     if (!room) return reply({ ok: false, error: 'Tenés que estar en una sala' });
     const act = p && p.act;
     if (act === 'crown') {
-      const pl = room.players.get(p.id || socket.id); if (!pl) return reply({ ok: false });
+      const pl = room.players.get(p.id || pid); if (!pl) return reply({ ok: false });
       pl.crowns = Math.max(0, pl.crowns + (p.d === -1 ? -1 : 1));
       io.to(room.code).emit('room:update', publicRoom(room));
     } else if (act === 'win') {
       if (room.state !== 'playing') return reply({ ok: false, error: 'No hay partida en juego' });
-      endGame(room, { winners: [socket.id] });
+      endGame(room, { winners: [pid] });
     } else if (act === 'end') {
       if (room.state !== 'playing') return reply({ ok: false, error: 'No hay partida en juego' });
       endGame(room, { text: 'Partida terminada por un admin' });
     } else if (act === 'host') {
       if (room.state !== 'lobby') return reply({ ok: false, error: 'Solo en el lobby' });
-      room.hostId = socket.id;
+      room.hostId = pid;
       io.to(room.code).emit('room:update', publicRoom(room));
     } else if (act === 'kick') {
-      if (!p.id || p.id === socket.id || !room.players.has(p.id)) return reply({ ok: false });
-      const target = io.sockets.sockets.get(p.id);
-      if (target) { target.emit('room:kicked'); target.data.leave && target.data.leave(); }
+      if (!p.id || p.id === pid || !room.players.has(p.id)) return reply({ ok: false });
+      const target = sockOf.get(p.id);
+      if (target && target.data.leave) { target.emit('room:kicked'); target.data.leave(); } else removePlayer(room, p.id);
     } else return reply({ ok: false });
     reply({ ok: true });
   });
@@ -416,7 +463,7 @@ io.on('connection', socket => {
   socket.on('relay', msg => {
     if (!room || room.state !== 'playing' || !msg || typeof msg.type !== 'string' || msg.type.length > 32) return;
     if (++msgCount > MAX_MSGS_PER_SEC) return;
-    const out = { type: msg.type, data: msg.data, from: socket.id };
+    const out = { type: msg.type, data: msg.data, from: pid };
     if (socket.data.admin) out.adm = 1; // los juegos pueden confiar en pedidos de un admin
     if (msg.to) {
       if (!room.players.has(msg.to)) return;
@@ -426,7 +473,20 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('disconnect', () => { clearInterval(resetTimer); clearInterval(passTimer); leave(); accOf.delete(socket.id); });
+  socket.on('disconnect', () => {
+    clearInterval(resetTimer); clearInterval(passTimer);
+    if (sockOf.get(pid) === socket) sockOf.delete(pid);
+    if (socket.data.replaced) return;            // se abrió de nuevo en otro lado: ese socket sigue
+    if (!room) { accOf.delete(pid); return; }
+    // no lo sacamos enseguida: tiene un rato para volver (celular que se durmió, señal que se cortó)
+    const r = room, pl = r.players.get(pid); room = null;
+    if (!pl) return;
+    pl.off = Date.now();
+    io.to(r.code).emit('room:update', publicRoom(r));
+    clearTimeout(offTimers.get(pid));
+    offTimers.set(pid, setTimeout(() => { const q = r.players.get(pid); if (q && q.off) { removePlayer(r, pid); accOf.delete(pid); } }, r.state === 'playing' ? GRACE_PLAYING : GRACE_LOBBY));
+    if (r.hostId === pid) setTimeout(() => hostCheck(r, pid), r.state === 'playing' ? HOST_WAIT : HOST_WAIT * 2);
+  });
 });
 
 Accounts.store.init()

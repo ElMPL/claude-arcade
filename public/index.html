@@ -10,22 +10,25 @@
 </head>
 <body>
   <header>
-    <a class="logo" href="/">Claude<span>Arcade</span></a>
+    <a class="logo" href="/"><span class="lgIco">🕹️</span>Claude<span>Arcade</span></a>
     <div class="header-right">
       <span id="roomBadge" class="badge" hidden></span>
       <button id="btnAccount" class="btn">👤 Iniciar sesión</button>
-      <button id="btnOnline" class="btn primary">🎮 Jugar online</button>
+      <button id="btnOnline" class="btn primary">🎮<span class="lbl"> Jugar online</span></button>
     </div>
   </header>
 
   <main>
     <section id="viewCatalog">
+      <div id="hero" class="hero" hidden></div>
       <div class="filters">
         <button data-f="all" class="chip on">Todos</button>
         <button data-f="multi" class="chip">👥 Multijugador</button>
         <button data-f="single" class="chip">👤 Un jugador</button>
+        <input id="search" class="search" placeholder="🔎 Buscar juego" maxlength="30" autocomplete="off">
       </div>
       <div id="grid" class="grid"></div>
+      <footer class="foot">Hecho con Claude · Juegos de la comunidad · <a href="https://github.com/sobrevivesai/claude-arcade" target="_blank" rel="noopener">Subí el tuyo</a></footer>
     </section>
 
     <section id="viewOnline" hidden>

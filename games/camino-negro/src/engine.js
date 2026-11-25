@@ -1,6 +1,6 @@
 // Camino Negro — motor de la partida. Corre solo en el host; los demás reciben el estado y los eventos.
 import { SQUARES, GROUPS, CARDS, JAIL, RAILS, UTILS, groupSquares, SALARY, BAIL, START_CASH, INFL_STEP, money } from './data.js';
-import { botAction } from './bot.js';
+import { botAction, botValue, botAcceptTrade, botBid } from './bot.js';
 
 // cuánto tarda cada evento en verse en pantalla (el cliente usa lo mismo para su cola)
 export function dur(e) {
@@ -12,10 +12,12 @@ export function dur(e) {
     case 'jail': return 600;
     case 'bk': return 1400;
     case 'over': return 0;
+    case 'aucst': return 500;
+    case 'trade': return 600;
     default: return 120;
   }
 }
-const HUMAN_T = 35000, BOT_T = 450;
+const HUMAN_T = 35000, BOT_T = 450, AUC_T = 10000, AUC_BUMP = 5000, TRADE_T = 30000;
 
 export function createEngine(seatsIn, opts, hooks) {
   const decks = {};
@@ -25,7 +27,7 @@ export function createEngine(seatsIn, opts, hooks) {
   const S = {
     seats: seatsIn.map(s => ({ id: s.id || null, name: s.name, bot: !!s.bot, col: s.col, look: s.look || 0, cash: START_CASH, pos: 0, jail: 0, jtries: 0, jcards: 0, skip: 0, out: false })),
     own: {}, turn: 0, phase: 'roll', dice: [1, 1], dbl: 0, rolled: false, infl: 1, round: 1, pot: 0,
-    limit: opts.limit || 0, offer: -1, card: null, log: [], winner: null, busy: 0, deadline: 0,
+    limit: opts.limit || 0, offer: -1, card: null, auc: null, aucQ: [], trade: null, log: [], winner: null, busy: 0, deadline: 0,
   };
   const inf = v => Math.round(v * S.infl);
   const P = i => S.seats[i];
@@ -34,7 +36,7 @@ export function createEngine(seatsIn, opts, hooks) {
   function ev(e) { evAcc += dur(e); hooks.event(e); }
   function log(t) { S.log.push(t); if (S.log.length > 40) S.log.shift(); }
   function push() { hooks.push(pub()); }
-  function pub() { const o = JSON.parse(JSON.stringify(S)); o.tl = S.deadline ? Math.max(0, S.deadline - Date.now()) : 0; o.bz = Math.max(0, S.busy - Date.now()); delete o.deadline; delete o.busy; return o; }
+  function pub() { const o = JSON.parse(JSON.stringify(S)); o.tl = S.deadline ? Math.max(0, S.deadline - Date.now()) : 0; o.bz = Math.max(0, S.busy - Date.now()); delete o.deadline; delete o.busy; const now = Date.now(); if (o.auc) { o.auc.left = Math.max(0, S.auc.end - now); delete o.auc.end; } if (o.trade) { o.trade.left = Math.max(0, S.trade.end - now); delete o.trade.end; delete o.trade.at; } return o; }
 
   // ---------- reglas de propiedad ----------
   const ownerOf = sq => S.own[sq] ? S.own[sq].o : -1;
@@ -90,7 +92,7 @@ export function createEngine(seatsIn, opts, hooks) {
   function bankrupt(seat, to, why) {
     const p = P(seat);
     log(`💀 ${p.name} quebró${why ? ' (' + why + ')' : ''}`);
-    for (const [q, o] of Object.entries(S.own)) if (o.o === seat) { if (to >= 0) { o.o = to; o.h = 0; } else delete S.own[q]; }
+    for (const [q, o] of Object.entries(S.own)) if (o.o === seat) { if (to >= 0) { o.o = to; o.h = 0; } else { delete S.own[q]; S.aucQ.push(+q); } }
     if (to >= 0) { P(to).cash += p.cash; P(to).jcards += p.jcards; }
     p.cash = 0; p.jcards = 0; p.out = true; p.jail = 0;
     ev({ e: 'bk', s: seat, to });
@@ -169,6 +171,8 @@ export function createEngine(seatsIn, opts, hooks) {
 
   function nextTurn() {
     if (S.phase === 'over') return;
+    // lo que dejó un quebrado en el banco sale a subasta antes de seguir
+    if (S.aucQ.length) { startAuction(S.aucQ.shift(), 'next'); return; }
     const n = S.seats.length; let t = S.turn, wrapped = false;
     for (let k = 0; k < n; k++) {
       t = (t + 1) % n; if (t <= S.turn) wrapped = true;
@@ -181,7 +185,7 @@ export function createEngine(seatsIn, opts, hooks) {
       if (S.limit && S.round > S.limit) { finish(); return; }
       if (S.round % 5 === 0) log(`📈 Inflación acumulada: +${Math.round((S.infl - 1) * 100)}%. Todo sale más caro (tu plata no)`);
     }
-    S.turn = t; S.phase = 'roll'; S.dbl = 0; S.rolled = false; S.offer = -1; S.card = null;
+    S.turn = t; S.seats[t].offers = 0; S.phase = 'roll'; S.dbl = 0; S.rolled = false; S.offer = -1; S.card = null;
   }
 
   function finish() {
@@ -191,6 +195,67 @@ export function createEngine(seatsIn, opts, hooks) {
     S.phase = 'over'; S.worths = S.seats.map((s, i) => worth(i));
     ev({ e: 'over', w: S.winner });
     hooks.over && hooks.over(S.winner);
+  }
+
+  // ---------- subastas ----------
+  function startAuction(sq, ret) {
+    S.auc = { sq, bid: 0, by: -1, out: [], ret, step: inf(10), end: Math.max(Date.now(), S.busy) + AUC_T };
+    S.phase = 'auction'; S.offer = -1;
+    ev({ e: 'aucst', sq }); log(`🔨 A subasta: ${SQUARES[sq].name}`);
+  }
+  function bid(seat, v) {
+    const A = S.auc; if (!A || P(seat).out || A.out.includes(seat) || A.by === seat) return false;
+    v = Math.round(v); if (!(v >= Math.max(A.step, A.bid + A.step)) || v > P(seat).cash) return false;
+    A.bid = v; A.by = seat; A.end = Math.max(A.end, Date.now() + AUC_BUMP);
+    ev({ e: 'bid', s: seat, v }); return true;
+  }
+  function fold(seat) { const A = S.auc; if (!A || A.out.includes(seat) || A.by === seat) return false; A.out.push(seat); ev({ e: 'fold', s: seat }); return true; }
+  function auctionDone(now) {
+    const A = S.auc, rest = alive().filter(i => !A.out.includes(i) && i !== A.by);
+    return now > A.end || (A.by >= 0 && !rest.length) || (A.by < 0 && !rest.length);
+  }
+  function closeAuction() {
+    const A = S.auc; S.auc = null; S.phase = 'x';
+    if (A.by >= 0 && P(A.by).cash >= A.bid) {
+      P(A.by).cash -= A.bid; S.own[A.sq] = { o: A.by, h: 0, m: false };
+      ev({ e: 'pay', s: A.by, to: -1, v: A.bid }); ev({ e: 'buy', s: A.by, sq: A.sq, auc: 1 });
+      log(`🔨 ${P(A.by).name} ganó la subasta de ${SQUARES[A.sq].name} por ${money(A.bid)}`);
+    } else log(`🔨 Nadie ofertó por ${SQUARES[A.sq].name}: queda en el banco`);
+    if (A.ret === 'move') afterMove(S.turn); else nextTurn();
+  }
+
+  // ---------- tratos ----------
+  const cleanSide = x => ({ c: Math.max(0, Math.round(+((x && x.c) || 0)) || 0), p: [...new Set(((x && x.p) || []).filter(q => Number.isInteger(q) && q >= 0 && q < 40))].slice(0, 28), j: Math.max(0, Math.min(2, (x && x.j) | 0)) });
+  const tradable = (q, owner) => S.own[q] && S.own[q].o === owner && (SQUARES[q].t !== 'prop' || groupSquares(SQUARES[q].g).every(x => !S.own[x] || S.own[x].h === 0));
+  function tradeValid(T) {
+    const a = P(T.from), b = P(T.to);
+    if (!b || b.out || a.out || T.from === T.to) return false;
+    if (T.give.c > a.cash || T.get.c > b.cash || T.give.j > a.jcards || T.get.j > b.jcards) return false;
+    if (!T.give.p.every(q => tradable(q, T.from)) || !T.get.p.every(q => tradable(q, T.to))) return false;
+    return T.give.p.length + T.get.p.length + T.give.j + T.get.j > 0;
+  }
+  function offer(seat, a) {
+    if (S.trade || !['roll', 'end'].includes(S.phase)) return false;
+    const p = P(seat); if ((p.offers || 0) >= 4) return false;
+    const T = { from: seat, to: a.to | 0, give: cleanSide(a.give), get: cleanSide(a.get) };
+    if (!tradeValid(T)) return false;
+    p.offers = (p.offers || 0) + 1;
+    S.trade = { ...T, prev: S.phase, end: Date.now() + TRADE_T, at: Date.now() };
+    S.phase = 'trade'; ev({ e: 'offer', from: T.from, to: T.to });
+    log(`🤝 ${p.name} le ofrece un trato a ${P(T.to).name}`);
+    return true;
+  }
+  function closeTrade(ok) {
+    const T = S.trade; S.trade = null; S.phase = T.prev;
+    if (ok && tradeValid(T)) {
+      const a = P(T.from), b = P(T.to);
+      a.cash += T.get.c - T.give.c; b.cash += T.give.c - T.get.c;
+      a.jcards += T.get.j - T.give.j; b.jcards += T.give.j - T.get.j;
+      for (const q of T.give.p) S.own[q].o = T.to;
+      for (const q of T.get.p) S.own[q].o = T.from;
+      ev({ e: 'trade', from: T.from, to: T.to, ok: 1 }); log(`🤝 ${b.name} aceptó el trato de ${a.name}`);
+    } else { ev({ e: 'trade', from: T.from, to: T.to, ok: 0 }); log(`🙅 ${P(T.to).name} rechazó el trato`); }
+    S.deadline = Date.now() + (P(S.turn).bot ? 0 : HUMAN_T);
   }
 
   // ---------- acciones ----------
@@ -213,9 +278,11 @@ export function createEngine(seatsIn, opts, hooks) {
 
   function act(seat, a) {
     if (!a || typeof a !== 'object' || S.phase === 'over') return false;
-    if (seat !== S.turn) return false;
-    if (Date.now() < S.busy - 150) return false;
-    const p = P(seat); if (p.out) return false;
+    const ANY = ['bid', 'fold', 'accept', 'reject'];
+    if (!ANY.includes(a.t) && seat !== S.turn) return false;
+    if (!ANY.includes(a.t) && Date.now() < S.busy - 150) return false;
+    if ((S.phase === 'auction' || S.phase === 'trade') && !ANY.includes(a.t) && a.t !== 'cancel') return false;
+    const p = P(seat); if (!p || p.out) return false;
     const sq = Number.isInteger(a.sq) ? a.sq : -1;
     evAcc = 0;
     let ok = true;
@@ -229,7 +296,12 @@ export function createEngine(seatsIn, opts, hooks) {
         ev({ e: 'buy', s: seat, sq: S.offer }); log(`🏠 ${p.name} compró ${s.name} por ${money(cost)}`);
         S.phase = 'x'; afterMove(seat); break;
       }
-      case 'pass': if (S.phase !== 'buy') return false; log(`${p.name} no compró ${SQUARES[S.offer].name}`); S.phase = 'x'; afterMove(seat); break;
+      case 'pass': case 'auction': if (S.phase !== 'buy') return false; log(`${p.name} no compró ${SQUARES[S.offer].name}`); startAuction(S.offer, 'move'); break;
+      case 'bid': if (S.phase !== 'auction' || !bid(seat, +a.v)) return false; break;
+      case 'fold': if (S.phase !== 'auction' || !fold(seat)) return false; break;
+      case 'offer': if (!offer(seat, a)) return false; break;
+      case 'accept': case 'reject': if (S.phase !== 'trade' || S.trade.to !== seat) return false; closeTrade(a.t === 'accept'); break;
+      case 'cancel': if (S.phase !== 'trade' || S.trade.from !== seat) return false; closeTrade(false); break;
       case 'end': if (S.phase !== 'end') return false; nextTurn(); break;
       case 'bail': if (S.phase !== 'roll' || !p.jail || p.cash < inf(BAIL)) return false; p.cash -= inf(BAIL); S.pot += inf(BAIL); p.jail = 0; ev({ e: 'pay', s: seat, to: -2, v: inf(BAIL) }); log(`${p.name} pagó la fianza (${money(inf(BAIL))})`); break;
       case 'jcard': if (S.phase !== 'roll' || !p.jail || !p.jcards) return false; p.jcards--; p.jail = 0; log(`${p.name} usó la salida libre`); break;
@@ -240,21 +312,39 @@ export function createEngine(seatsIn, opts, hooks) {
       default: ok = false;
     }
     if (!ok) return false;
-    S.busy = Date.now() + evAcc;
-    S.deadline = S.busy + (S.seats[S.turn].bot ? 0 : HUMAN_T);
+    if (!ANY.includes(a.t)) { S.busy = Date.now() + evAcc; if (S.phase !== 'auction' && S.phase !== 'trade') S.deadline = S.busy + (S.seats[S.turn].bot ? 0 : HUMAN_T); }
+    else if (S.phase !== 'auction' && S.phase !== 'trade') { S.busy = Math.max(S.busy, Date.now() + evAcc); S.deadline = S.busy + (S.seats[S.turn].bot ? 0 : HUMAN_T); }
     push();
     return true;
   }
 
   // reloj: bots y jugadores que se duermen
+  const botNext = {};
   function tick() {
     if (S.phase === 'over') return;
     const now = Date.now(); if (now < S.busy) return;
+    if (S.phase === 'auction') {
+      const A = S.auc; evAcc = 0;
+      if (auctionDone(now)) { closeAuction(); S.busy = now + evAcc; S.deadline = S.busy + (P(S.turn).bot ? 0 : HUMAN_T); push(); return; }
+      for (const i of alive()) {
+        if (!P(i).bot || A.out.includes(i) || A.by === i || now < (botNext[i] || 0)) continue;
+        botNext[i] = now + 600 + Math.random() * 1400;
+        const v = botBid(api, i, A);
+        if (v > 0 ? bid(i, v) : fold(i)) { push(); break; }
+      }
+      return;
+    }
+    if (S.phase === 'trade') {
+      const T = S.trade;
+      if (now > T.end) { evAcc = 0; closeTrade(false); push(); return; }
+      if (P(T.to).bot && now > T.at + 1800) { evAcc = 0; closeTrade(botAcceptTrade(api, T)); push(); }
+      return;
+    }
     const p = P(S.turn);
     if (p.bot) { if (now >= S.busy + BOT_T) { const a = botAction(api, S.turn); if (!act(S.turn, a)) act(S.turn, fallback()); } }
     else if (S.deadline && now > S.deadline) { if (!act(S.turn, botAction(api, S.turn, true))) act(S.turn, fallback()); }
   }
-  function fallback() { return S.phase === 'buy' ? { t: 'pass' } : S.phase === 'roll' ? { t: 'roll' } : { t: 'end' }; }
+  function fallback() { return S.phase === 'buy' ? { t: 'auction' } : S.phase === 'roll' ? { t: 'roll' } : { t: 'end' }; }
 
   function setBot(seat, name) { const s = P(seat); s.bot = true; s.id = null; if (name) s.name = name; if (seat === S.turn) S.deadline = Date.now(); push(); }
   function admin(seat, k) {
@@ -264,8 +354,8 @@ export function createEngine(seatsIn, opts, hooks) {
     push();
   }
 
-  function restore(st) { const keep = { ...st }; delete keep.tl; delete keep.bz; Object.assign(S, keep); S.busy = Date.now() + 800; S.deadline = S.busy + (P(S.turn).bot ? 0 : HUMAN_T); push(); }
-  const api = { S, restore, act, tick, push, setBot, admin, inf, rentOf, canBuild, canSell, canMort, canUnmort, worth, ownerOf, groupOwned };
+  function restore(st) { const keep = { ...st }; delete keep.tl; delete keep.bz; Object.assign(S, keep); if (S.auc) S.auc.end = Date.now() + (S.auc.left || 5000); if (S.trade) { S.trade.end = Date.now() + (S.trade.left || 10000); S.trade.at = Date.now(); } S.busy = Date.now() + 800; S.deadline = S.busy + (P(S.turn).bot ? 0 : HUMAN_T); push(); }
+  const api = { S, restore, act, tradable, tradeValid, botValue: (seat, sq) => botValue(api, seat, sq), tick, push, setBot, admin, inf, rentOf, canBuild, canSell, canMort, canUnmort, worth, ownerOf, groupOwned };
   S.deadline = Date.now() + (P(0).bot ? 0 : HUMAN_T);
   return api;
 }
