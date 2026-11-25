@@ -1,0 +1,12 @@
+{
+  "name": "Camino Negro",
+  "description": "El juego de propiedades de la economía argentina: comprá barrios, construí, pagá impuestos y sobreviví a la inflación y a tarjetas de humor negro. De 2 a 6 jugadores, con bots.",
+  "author": "ClaudeArcade",
+  "mode": "multi",
+  "minPlayers": 1,
+  "maxPlayers": 6,
+  "emoji": "🎲",
+  "color": "#2b2440",
+  "thumbnail": "thumb.jpg",
+  "controls": "Click: botones de abajo y casilleros · Arrastrar: girar la cámara · Rueda: zoom"
+}

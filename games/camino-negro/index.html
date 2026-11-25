@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Camino Negro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="cv"></canvas>
+  <div id="labels"></div>
+  <div id="top"><div id="round"></div><button id="mute" title="Sonido">🔊</button></div>
+  <div id="players"></div>
+  <div id="log"></div>
+  <div id="bar"></div>
+  <div id="deed" hidden></div>
+  <div id="mine" hidden></div>
+  <div id="card" hidden></div>
+  <div id="toast"></div>
+  <div id="setup" class="overlay" hidden></div>
+  <div id="end" class="overlay" hidden></div>
+  <script src="/sdk/arcade-sdk.js"></script>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
