@@ -1,0 +1,12 @@
+{
+  "name": "Tee Race",
+  "description": "Carreras cooperativas al estilo DDraceNetwork: hook, doble salto, hielo que te congela y mapas clásicos de DDNet. Ayudá a tus amigos con el hook y el martillo para llegar a la meta.",
+  "author": "ClaudeArcade (basado en DDNet)",
+  "mode": "multi",
+  "minPlayers": 1,
+  "maxPlayers": 8,
+  "emoji": "🏁",
+  "color": "#3b7fc4",
+  "thumbnail": "thumb.jpg",
+  "controls": "A/D moverse · Espacio saltar · Click derecho hook · Click izquierdo martillo · K reiniciar · Tab tiempos"
+}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tee Race</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="cv"></canvas>
+  <div id="top"><span id="mapName"></span><span id="timer">0.00</span></div>
+  <div id="frz" hidden></div>
+  <div id="board"></div>
+  <div class="corner"><button id="btnBoard" title="Tiempos (Tab)">🏁</button><button id="btnMenu" title="Menú (Esc)">☰</button></div>
+  <div id="menu" hidden>
+    <div class="box">
+      <h2>Tee Race</h2>
+      <h4>Mapas</h4><div id="menuMaps" class="maps"></div><small id="menuHint"></small>
+      <h4>Tu skin</h4><div id="skinList" class="skins"></div>
+      <div class="row"><button id="btnKill">💀 Reiniciar (K)</button><button id="mute">🔊 Sonido</button><button id="btnEnd" hidden>🏆 Terminar partida</button><button id="closeMenu" class="go">Seguir</button></div>
+      <p class="credits">Física, mapas, skins y sonidos de <b>DDraceNetwork</b> y <b>Teeworlds</b> (código zlib, contenido CC-BY-SA 3.0). Mapas: Tutorial (unique2 &amp; Alisa), LearnToPlay (Tridemy &amp; Cøke), Sunny Side Up (Ravie), Gold Mine (BµmM), Tsunami (louis). Skins de sus autores, ver LICENSE-SKINS.txt.</p>
+    </div>
+  </div>
+  <div id="help" hidden>
+    <div class="box">
+      <h2>Cómo se juega</h2>
+      <p class="desk"><b>A / D</b> moverse · <b>Espacio</b> saltar (doble salto en el aire) · <b>Click derecho</b> hook · <b>Click izquierdo</b> martillo · <b>K</b> reiniciar · <b>Tab</b> tiempos · <b>Esc</b> menú</p>
+      <p class="mob">Palanca a la izquierda para moverte (para arriba salta) · Tocá a la derecha para tirar el hook hacia ahí · Botones de salto y martillo</p>
+      <p>Pasá por la <b>largada</b>, llegá a la <b>meta</b>. El hielo te congela 3 segundos: tus amigos te pueden enganchar con el hook o darte un martillazo para descongelarte.</p>
+      <button class="go">¡Dale!</button>
+    </div>
+  </div>
+  <div id="stick" hidden><div></div></div>
+  <div class="tbtns"><button id="btnHammer">🔨</button><button id="btnJump">⤒</button></div>
+  <div id="toast"></div>
+  <div id="loading">Cargando…</div>
+  <script src="/sdk/arcade-sdk.js"></script>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

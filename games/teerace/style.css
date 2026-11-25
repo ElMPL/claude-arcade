@@ -1,0 +1,42 @@
+:root { --ink: #1b1b1b; --font: 'Fredoka', system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #7fb0d8; font-family: var(--font); color: #fff; user-select: none; -webkit-user-select: none; touch-action: none; }
+canvas#cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: crosshair; }
+[hidden] { display: none !important; }
+button { font-family: var(--font); cursor: pointer; border: 0; }
+#top { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; pointer-events: none; }
+#mapName { background: rgba(0,0,0,.45); padding: 4px 12px; border-radius: 99px; font-weight: 600; font-size: 14px; }
+#timer { font-size: 30px; font-weight: 700; text-shadow: 0 2px 0 #000, 0 0 8px rgba(0,0,0,.6); min-width: 110px; text-align: center; }
+#timer.done { color: #7dff9b; }
+#frz { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); background: rgba(80,160,255,.85); padding: 6px 14px; border-radius: 99px; font-weight: 700; }
+.corner { position: fixed; top: 10px; right: 10px; display: flex; gap: 6px; }
+.corner button { width: 42px; height: 42px; border-radius: 12px; background: rgba(0,0,0,.45); color: #fff; font-size: 20px; }
+#board { position: fixed; top: 60px; right: 10px; width: 260px; background: rgba(20,20,30,.82); border-radius: 14px; padding: 10px 12px; transform: translateX(120%); transition: transform .2s; }
+#board.show { transform: none; }
+#board h3 { margin: 0 0 6px; font-size: 16px; }
+#board div { display: grid; grid-template-columns: 28px 1fr auto; gap: 6px; padding: 4px 2px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 14px; }
+#board div.me { color: #ffd84a; } #board i { font-style: normal; font-variant-numeric: tabular-nums; } #board small { display: block; margin-top: 6px; opacity: .7; }
+#menu, #help { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(10,15,30,.55); padding: 12px; z-index: 10; }
+.box { background: #f6f3ea; color: var(--ink); border-radius: 18px; padding: 18px 20px; width: min(620px, 100%); max-height: 92vh; overflow: auto; border: 3px solid var(--ink); box-shadow: 0 8px 0 rgba(0,0,0,.3); }
+.box h2 { margin: 0 0 8px; font-size: 26px; } .box h4 { margin: 12px 0 6px; }
+.maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.maps button { background: #e6e0cf; border-radius: 10px; padding: 8px 10px; text-align: left; color: var(--ink); }
+.maps button.on { background: #ffd84a; } .maps button b { display: block; } .maps button small { opacity: .7; }
+.maps button:disabled { cursor: default; opacity: .7; }
+.skins { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 4px; max-height: 210px; overflow: auto; background: #e6e0cf; padding: 6px; border-radius: 10px; }
+.skins button { background: transparent; border-radius: 8px; padding: 0; border: 2px solid transparent; }
+.skins button.on { border-color: var(--ink); background: #fff8; } .skins canvas { width: 50px; height: 50px; display: block; margin: auto; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.row button, .box > button { background: #3c8df0; color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 0 #1f5fb5; }
+.row button.go, .box > button.go { background: #21b357; box-shadow: 0 4px 0 #137a39; }
+#btnEnd { background: #e8a030; box-shadow: 0 4px 0 #a86c10; }
+.credits { font-size: 11.5px; color: #555; margin: 14px 0 0; line-height: 1.4; }
+#help p { line-height: 1.5; } .mob { display: none; } body.touch .mob { display: block; } body.touch .desk { display: none; }
+#toast { position: fixed; left: 50%; top: 90px; transform: translateX(-50%); background: rgba(20,20,30,.85); padding: 8px 18px; border-radius: 12px; font-weight: 700; opacity: 0; transition: opacity .3s; pointer-events: none; text-align: center; }
+#toast.on { opacity: 1; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; background: #2b3a55; font-size: 22px; font-weight: 700; z-index: 20; }
+#stick { position: fixed; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.35); pointer-events: none; }
+#stick div { position: absolute; left: 30px; top: 30px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.45); }
+.tbtns { display: none; position: fixed; right: 16px; bottom: 16px; gap: 12px; }
+body.touch .tbtns { display: flex; }
+.tbtns button { width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,.4); color: #fff; font-size: 30px; border: 2px solid rgba(255,255,255,.35); }
