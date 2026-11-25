@@ -89,7 +89,7 @@
       }
       if (room) show('viewLobby');
     });
-    socket.on('account:update', u => { me = u; renderAccount(); toast('👑 ¡Corona guardada en tu cuenta! Total: ' + u.crowns); });
+    socket.on('account:update', u => { const before = me ? me.crowns : 0; me = { ...(me || {}), ...u }; renderAccount(); if (u.crowns > before) toast('👑 ¡Corona guardada en tu cuenta! Total: ' + u.crowns); });
     socket.on('relay', m => toFrame({ kind: 'msg', type: m.type, data: m.data, from: m.from, adm: m.adm ? 1 : 0 }));
     socket.on('room:kicked', () => { toast('Un admin te sacó de la sala'); });
     socket.on('connect', () => Admin.reauth());
@@ -238,7 +238,8 @@
       const li = document.createElement('li');
       const accTag = p.acc ? ' <small class="accTag" title="Juega con su cuenta">✔</small>' : '';
       const crowns = p.crowns ? `<span class="crowns" title="Juegos ganados">👑 ${p.crowns}</span>` : '<span class="crowns zero">👑 0</span>';
-      li.innerHTML = `<span class="pname">${esc(p.name)}${accTag}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
+      const av = p.acc ? `<span class="miniAv" style="--pc:${esc(p.color || '')}">${esc(p.avatar || '🙂')}</span>` : '';
+      li.innerHTML = `<span class="pname">${av}<span class="${p.acc ? 'who' : ''}" ${p.acc ? `data-user="${esc(p.name)}"` : ''}>${esc(p.name)}</span>${accTag}${p.id === room.hostId ? ' <small class="host">HOST</small>' : ''}${p.id === myId ? ' <small class="you">VOS</small>' : ''}</span>${crowns}`;
       ul.appendChild(li);
     });
 
@@ -418,7 +419,7 @@
   let me = null, accTab = 'login';
   async function api(path, body) {
     const r = await fetch('/api/account/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' } : { credentials: 'same-origin' });
-    try { return await r.json(); } catch { return { ok: false, error: 'Error del servidor' }; }
+    try { const j = await r.json(); j.status = r.status; return j; } catch { return { ok: false, status: r.status, error: 'Error del servidor' }; }
   }
   function applyName() {
     const inp = $('#inName');
@@ -427,20 +428,105 @@
     $('#btnAccount').textContent = me ? `👤 ${me.name} · 👑 ${me.crowns}` : '👤 Iniciar sesión';
   }
   const fmtDate = t => new Date(t).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+  // cabecera del perfil (la propia y la de otros usan la misma)
+  function heroHTML(u) {
+    const p = u.profile || {}, st = u.stats || {};
+    const played = Math.max(st.played || 0, u.crowns || 0);
+    return `<div class="bigAv" style="--pc:${esc(p.color)}">${esc(p.avatar || '🙂')}</div>
+      <div><div class="heroName f-${esc(p.font || 'normal')}">${esc(u.name)}</div>
+        ${p.title ? `<span class="heroTitle" style="--pc:${esc(p.color)}">${esc(p.title)}</span>` : ''}
+        ${p.bio ? `<div class="heroBio">${esc(p.bio)}</div>` : ''}
+        <div class="heroMeta">Desde ${new Date(u.created).toLocaleDateString('es-AR')}${p.fav ? ' · ❤️ ' + esc(p.fav) : ''}</div></div>
+      <div class="heroStats"><div><b>${u.crowns || 0}</b><small>👑 CORONAS</small></div><div><b>${played}</b><small>PARTIDAS</small></div>
+        <div><b>${pct(u.crowns || 0, played)}</b><small>VICTORIAS</small></div><div><b>${st.best || 0}</b><small>MEJOR RACHA</small></div></div>`;
+  }
+  function setHero(el, u) { el.className = 'card accHero bn-' + ((u.profile && u.profile.banner) || 'aurora'); el.innerHTML = heroHTML(u); }
+  function applyName() {
+    const inp = $('#inName');
+    if (me) { inp.value = me.name; inp.disabled = true; inp.title = 'Jugás con tu cuenta'; }
+    else { inp.disabled = false; inp.title = ''; inp.value = store.get('arcade:name') || ''; }
+    $('#btnAccount').textContent = me ? `${(me.profile && me.profile.avatar) || '👤'} ${me.name} · 👑 ${me.crowns}` : '👤 Iniciar sesión';
+  }
+  function histHTML(list) {
+    return (list || []).length ? list.map(h => `<li><span class="cr">👑</span><b>${esc(h.game)}${h.co ? ' <small class="accTag">(compartida)</small>' : ''}</b><small>${esc(h.room || '')}${h.with && h.with.length ? ' · contra ' + h.with.map(esc).join(', ') : ''}</small><time>${fmtDate(h.t)}</time></li>`).join('')
+      : '<li class="none">Todavía no ganó ningún juego online.</li>';
+  }
+  function byGameHTML(bg) { bg = Object.entries(bg || {}).sort((a, b) => b[1] - a[1]); return bg.length ? bg.map(([g, n]) => `<li><span>${esc(g)}</span><span>👑 ${n}</span></li>`).join('') : '<li class="none">Todavía nada</li>'; }
   function renderAccount() {
     applyName();
     if (!me) return;
-    $('#accName').textContent = me.name;
-    $('#accSince').textContent = 'Cuenta creada el ' + new Date(me.created).toLocaleDateString('es-AR');
-    $('#accCrowns').textContent = me.crowns;
-    const bg = Object.entries(me.byGame || {}).sort((a, b) => b[1] - a[1]);
-    $('#accByGame').innerHTML = bg.length ? bg.map(([g, n]) => `<li><span>${esc(g)}</span><span>👑 ${n}</span></li>`).join('') : '<li class="none">Todavía nada</li>';
-    $('#accHistory').innerHTML = (me.history || []).length ? me.history.map(h => `<li><span class="cr">👑</span><b>${esc(h.game)}${h.co ? ' <small class="accTag">(compartida)</small>' : ''}</b><small>${esc(h.room || '')}${h.with && h.with.length ? ' · contra ' + h.with.map(esc).join(', ') : ''}</small><time>${fmtDate(h.t)}</time></li>`).join('')
-      : '<li class="none">Ganá un juego online para sumar tu primera corona.</li>';
+    setHero($('#accHero'), me);
+    const warn = me.admin && me.storage && me.storage !== 'postgres';
+    $('#accWarn').hidden = !warn;
+    if (warn) $('#accWarn').textContent = '⚠️ (Solo lo ves vos, admin) Las cuentas se guardan en un archivo del servidor. En Render ese disco se borra en cada deploy o reinicio, y con eso se borran todas las cuentas. Para que duren hay que conectar una base Postgres (variable DATABASE_URL).';
+    $('#accByGame').innerHTML = byGameHTML(me.byGame);
+    $('#accHistory').innerHTML = histHTML(me.history);
+    renderEditor();
   }
+  // ---------- Editor de perfil ----------
+  let opts = null, draft = null;
+  async function loadOpts() { if (!opts) { const r = await api('options'); if (r.ok) opts = r; } return opts; }
+  function renderEditor() {
+    if (!opts || !me) return;
+    if (!draft) draft = { ...me.profile };
+    const pick = (el, list, key, label) => { el.innerHTML = list.map(v => `<button type="button" data-k="${key}" data-v="${esc(v)}" class="${draft[key] === v ? 'on' : ''} ${key === 'banner' ? 'bn-' + v : ''} ${key === 'font' ? 'f-' + v : ''}" ${key === 'color' ? `style="background:${v}"` : ''} title="${esc(v)}">${label(v)}</button>`).join(''); };
+    pick($('#pfAvatars'), opts.AVATARS, 'avatar', v => v);
+    pick($('#pfColors'), opts.COLORS, 'color', () => '');
+    pick($('#pfBanners'), opts.BANNERS, 'banner', v => v);
+    pick($('#pfFonts'), opts.FONTS, 'font', () => 'Abc');
+    if (document.activeElement !== $('#pfTitle')) $('#pfTitle').value = draft.title || '';
+    if (document.activeElement !== $('#pfBio')) $('#pfBio').value = draft.bio || '';
+    $('#pfBioN').textContent = `${($('#pfBio').value || '').length}/${opts.BIO_MAX}`;
+    const sel = $('#pfFav'), names = [...new Set((games || []).map(g => g.name))];
+    sel.innerHTML = '<option value="">—</option>' + names.map(n => `<option ${draft.fav === n ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  }
+  const preview = () => setHero($('#accHero'), { ...me, profile: { ...draft, title: $('#pfTitle').value, bio: $('#pfBio').value, fav: $('#pfFav').value } });
+  $('#profForm').addEventListener('click', e => {
+    const b = e.target.closest('button[data-k]'); if (!b) return;
+    draft[b.dataset.k] = b.dataset.v; renderEditor(); preview(); $('#pfMsg').textContent = 'Sin guardar';
+  });
+  ['#pfTitle', '#pfBio', '#pfFav'].forEach(id => $(id).addEventListener('input', () => { $('#pfBioN').textContent = `${$('#pfBio').value.length}/${opts ? opts.BIO_MAX : 120}`; preview(); $('#pfMsg').textContent = 'Sin guardar'; }));
+  $('#profForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = { avatar: draft.avatar, color: draft.color, banner: draft.banner, font: draft.font, title: $('#pfTitle').value, bio: $('#pfBio').value, fav: $('#pfFav').value };
+    $('#pfSave').disabled = true;
+    const r = await api('profile', body);
+    $('#pfSave').disabled = false;
+    if (r.status === 401 || (!r.ok && /sesión/.test(r.error || ''))) return sessionLost();
+    if (!r.ok) { $('#pfMsg').textContent = r.error || 'No se pudo guardar'; return; }
+    me = r.user; draft = { ...me.profile }; renderAccount(); loadTop();
+    $('#pfMsg').textContent = '✔ Guardado';
+  });
+  $('#pwForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const msg = $('#pwMsg');
+    if ($('#pwNew').value !== $('#pwNew2').value) { msg.textContent = 'Las contraseñas nuevas no coinciden'; return; }
+    const r = await api('password', { old: $('#pwOld').value, pass: $('#pwNew').value });
+    if (!r.ok && /sesión se cerró/.test(r.error || '')) return sessionLost();
+    msg.textContent = r.ok ? '✔ Contraseña cambiada' : (r.error || 'No se pudo');
+    if (r.ok) $('#pwOld').value = $('#pwNew').value = $('#pwNew2').value = '';
+  });
+  // si el servidor ya no reconoce la sesión (se reinició sin base de datos, venció, etc.)
+  function sessionLost() {
+    me = null; draft = null; Admin.reauth(); applyName(); show('viewCatalog');
+    toast('Tu sesión se cerró. Volvé a iniciar sesión.'); openAccModal('login');
+  }
+  // ---------- Perfil público ----------
+  async function openProfile(name) {
+    const r = await api('u/' + encodeURIComponent(name));
+    if (!r.ok) return toast(r.error || 'No se encontró el perfil');
+    const u = r.user, body = $('#profBody');
+    body.innerHTML = `<div class="card accHero"></div><div class="profExtra"><div><h4>Por juego</h4><ul class="byGame">${byGameHTML(u.byGame)}</ul></div><div><h4>Últimas coronas</h4><ul class="hist">${histHTML(u.history)}</ul></div></div>`;
+    setHero(body.querySelector('.accHero'), u);
+    $('#profModal').hidden = false;
+  }
+  $('#profClose').addEventListener('click', () => { $('#profModal').hidden = true; });
+  $('#profModal').addEventListener('click', e => { if (e.target === $('#profModal')) $('#profModal').hidden = true; });
+  document.addEventListener('click', e => { const w = e.target.closest('[data-user]'); if (w) openProfile(w.dataset.user); });
   async function loadTop() {
     const r = await api('top');
-    $('#accTop').innerHTML = r.ok && r.top.length ? r.top.map(u => `<li class="${me && u.name === me.name ? 'me' : ''}"><span>${esc(u.name)}</span>👑 ${u.crowns}</li>`).join('') : '<li class="none">Sin coronas todavía</li>';
+    $('#accTop').innerHTML = r.ok && r.top.length ? r.top.map(u => `<li class="${me && u.name === me.name ? 'me' : ''}"><span class="miniAv" style="--pc:${esc(u.color || '')}">${esc(u.avatar || '🙂')}</span><span class="who" data-user="${esc(u.name)}">${esc(u.name)}</span>👑 ${u.crowns}</li>`).join('') : '<li class="none">Sin coronas todavía</li>';
   }
   function openAccModal(tab) {
     accTab = tab || 'login';
@@ -462,7 +548,7 @@
     const r = await api(accTab, { user, pass });
     $('#accSubmit').disabled = false;
     if (!r.ok) { $('#accErr').textContent = r.error || 'No se pudo'; return; }
-    me = r.user; $('#accPass').value = $('#accPass2').value = '';
+    me = r.user; draft = null; $('#accPass').value = $('#accPass2').value = '';
     $('#accModal').hidden = true;
     // la conexión de la sala lee la sesión al conectarse: se reabre (si no estás en una sala)
     if (socket && !room) { socket.disconnect(); socket = null; }
@@ -472,11 +558,14 @@
   });
   $('#btnAccount').addEventListener('click', () => {
     if (!me) return openAccModal('login');
-    renderAccount(); loadTop(); show('viewAccount');
+    draft = null; show('viewAccount'); renderAccount(); loadTop();
+    // se vuelve a pedir la cuenta: si el servidor perdió la sesión, se avisa en vez de mostrar datos viejos
+    api('me').then(r => { if (r.ok) { me = r.user; renderAccount(); } else if (r.status !== 500) sessionLost(); }).catch(() => {});
+    loadOpts().then(renderEditor);
   });
   $('#btnLogout').addEventListener('click', async () => {
     await api('logout', {});
-    me = null; Admin.reauth(); if (socket && !room) { socket.disconnect(); socket = null; }
+    me = null; draft = null; Admin.reauth(); if (socket && !room) { socket.disconnect(); socket = null; }
     applyName(); show('viewCatalog'); toast('Cerraste sesión');
   });
 

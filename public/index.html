@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ClaudeArcade</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@500;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&family=Fredoka:wght@600&family=JetBrains+Mono:wght@800&family=Nunito:wght@500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -65,14 +65,8 @@
 
     <section id="viewAccount" hidden>
       <div class="accWrap">
-        <div class="card accHead">
-          <div>
-            <small>CUENTA</small>
-            <div id="accName" class="accName"></div>
-            <div id="accSince" class="muted"></div>
-          </div>
-          <div class="accTotal"><span>👑</span><b id="accCrowns">0</b><small>coronas</small></div>
-        </div>
+        <div id="accWarn" class="card accWarn" hidden></div>
+        <div id="accHero" class="card accHero"></div>
         <div class="accGrid">
           <div class="card">
             <h3>Por juego</h3>
@@ -86,6 +80,37 @@
             <h3>Ranking</h3>
             <ol id="accTop" class="topList"></ol>
           </div>
+        </div>
+        <div class="accGrid2">
+          <form id="profForm" class="card profEdit">
+            <h3>Personalizar perfil</h3>
+            <label>Avatar</label>
+            <div id="pfAvatars" class="pick avatars"></div>
+            <label>Color</label>
+            <div id="pfColors" class="pick colors"></div>
+            <label>Fondo del perfil</label>
+            <div id="pfBanners" class="pick banners"></div>
+            <label>Letra del nombre</label>
+            <div id="pfFonts" class="pick fonts"></div>
+            <div class="row2">
+              <div><label for="pfTitle">Título</label><input id="pfTitle" maxlength="24" placeholder="Ej: Rey del Counter"></div>
+              <div><label for="pfFav">Juego favorito</label><select id="pfFav"><option value="">—</option></select></div>
+            </div>
+            <label for="pfBio">Sobre mí <small id="pfBioN" class="muted"></small></label>
+            <textarea id="pfBio" maxlength="120" rows="2" placeholder="Algo corto sobre vos"></textarea>
+            <div class="formEnd"><span id="pfMsg" class="muted"></span><button class="btn" id="pfSave">Guardar perfil</button></div>
+          </form>
+          <form id="pwForm" class="card">
+            <h3>Cambiar contraseña</h3>
+            <input type="text" autocomplete="username" hidden>
+            <label for="pwOld">Contraseña actual</label>
+            <input id="pwOld" type="password" autocomplete="current-password" maxlength="64">
+            <label for="pwNew">Contraseña nueva</label>
+            <input id="pwNew" type="password" autocomplete="new-password" maxlength="64">
+            <label for="pwNew2">Repetir contraseña nueva</label>
+            <input id="pwNew2" type="password" autocomplete="new-password" maxlength="64">
+            <div class="formEnd"><span id="pwMsg" class="muted"></span><button class="btn">Cambiar</button></div>
+          </form>
         </div>
         <div class="accActions">
           <button class="btn ghost back">← Volver al catálogo</button>
@@ -139,6 +164,12 @@
     <iframe id="frame" allow="fullscreen; gamepad; autoplay; clipboard-write" allowfullscreen></iframe>
   </div>
 
+  <div id="profModal" class="modal" hidden>
+    <div class="card modalCard profModalCard">
+      <div id="profBody"></div>
+      <button id="profClose" class="btn ghost">Cerrar</button>
+    </div>
+  </div>
   <div id="accModal" class="modal" hidden>
     <div class="card modalCard">
       <div class="tabs"><button data-tab="login" class="tab on">Iniciar sesión</button><button data-tab="register" class="tab">Crear cuenta</button></div>

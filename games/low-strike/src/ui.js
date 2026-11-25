@@ -54,13 +54,54 @@ export function drawRadar(cv, img, W, view, list, bomb, meTeam) {
   x.translate(S / 2, S / 2); if (rot) x.rotate(view.yaw); x.scale(sc, sc);
   const cx = view.x / W.cell, cz = view.z / W.cell;
   { const R = Math.ceil(S * 0.75 / sc) + 2, sx = Math.max(0, Math.floor(cx - R)), sz = Math.max(0, Math.floor(cz - R)), sw = Math.min(img.width, Math.ceil(cx + R)) - sx, sh = Math.min(img.height, Math.ceil(cz + R)) - sz; if (sw > 0 && sh > 0) x.drawImage(img, sx, sz, sw, sh, sx - cx, sz - cz, sw, sh); } // solo el pedazo visible
-  const dot = (px, pz, col, r = 3.4) => { x.fillStyle = col; x.beginPath(); x.arc(px / W.cell - cx, pz / W.cell - cz, r / sc, 0, 7); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1 / sc; x.stroke(); };
-  if (bomb && (bomb.s === 'planted' || bomb.s === 'dropped') && (meTeam === 'T' || bomb.s === 'planted' && bomb.seen)) { x.fillStyle = bomb.s === 'planted' ? '#ff4038' : '#ffb03a'; const bx = bomb.x / W.cell - cx, bz = bomb.z / W.cell - cz; x.fillRect(bx - 4 / sc, bz - 3 / sc, 8 / sc, 6 / sc); }
-  for (const p of list) { if (p.ping) { x.strokeStyle = p.col; x.lineWidth = 2 / sc; x.beginPath(); x.arc(p.x / W.cell - cx, p.z / W.cell - cz, 6 / sc, 0, 7); x.stroke(); continue; } dot(p.x, p.z, p.col, p.me ? 0 : 3.4); }
   x.restore();
-  // yo: flecha en el centro
-  x.save(); x.translate(S / 2, S / 2); if (!rot) x.rotate(-view.yaw); x.translate(-S / 2, -S / 2);
-  x.fillStyle = '#fff'; x.beginPath(); x.moveTo(S / 2, S / 2 - 7); x.lineTo(S / 2 + 5, S / 2 + 5); x.lineTo(S / 2, S / 2 + 2); x.lineTo(S / 2 - 5, S / 2 + 5); x.closePath(); x.fill(); x.restore();
+  // marcadores en coordenadas de pantalla: así no se achican con el zoom y los que quedan fuera se pegan al borde
+  const cs = rot ? Math.cos(view.yaw) : 1, sn = rot ? Math.sin(view.yaw) : 0, H = S / 2, EDGE = H - 9;
+  const scr = (wx, wz) => { const dx = (wx / W.cell - cx) * sc, dz = (wz / W.cell - cz) * sc; let px = dx * cs - dz * sn, pz = dx * sn + dz * cs; const m = Math.max(Math.abs(px), Math.abs(pz)), out = m > EDGE; if (out) { px *= EDGE / m; pz *= EDGE / m; } return [H + px, H + pz, out]; };
+  const head = yaw => (rot ? view.yaw : 0) - yaw; // ángulo en pantalla de alguien que mira hacia yaw (0 = arriba)
+  const T = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+  x.lineJoin = 'round';
+  // muertos del equipo: una X donde cayeron (como en CS)
+  for (const p of list) {
+    if (!p.dead) continue; const [px, pz, out] = scr(p.x, p.z); if (out) continue;
+    x.strokeStyle = '#000'; x.lineWidth = 4; x.beginPath(); x.moveTo(px - 4, pz - 4); x.lineTo(px + 4, pz + 4); x.moveTo(px + 4, pz - 4); x.lineTo(px - 4, pz + 4); x.stroke();
+    x.strokeStyle = p.col; x.globalAlpha = 0.8; x.lineWidth = 2; x.stroke(); x.globalAlpha = 1;
+  }
+  // la bomba: rectángulo con luz; plantada late en rojo; si está lejos, queda en el borde
+  const c4 = (px, pz, planted, out) => {
+    if (planted) { const k = (T * 1.6) % 1; x.strokeStyle = `rgba(255,60,50,${(1 - k).toFixed(2)})`; x.lineWidth = 2; x.beginPath(); x.arc(px, pz, 7 + k * 12, 0, 7); x.stroke(); }
+    x.save(); x.translate(px, pz); if (out) x.scale(0.8, 0.8);
+    x.fillStyle = '#000'; x.fillRect(-8, -6, 16, 12);
+    x.fillStyle = planted ? '#e8322a' : '#ffae2a'; x.fillRect(-6.5, -4.5, 13, 9);
+    x.fillStyle = '#2b2b2b'; x.fillRect(-4.5, -2.5, 6, 5);
+    x.fillStyle = planted && (T * 3) % 1 < 0.5 ? '#fff' : '#ff2a1a'; x.fillRect(3, -1.5, 2.5, 3);
+    x.restore();
+  };
+  if (bomb && (bomb.s === 'planted' || bomb.s === 'dropped') && (meTeam === 'T' || bomb.s === 'planted' && bomb.seen)) { const [px, pz, out] = scr(bomb.x, bomb.z); c4(px, pz, bomb.s === 'planted', out); }
+  // pings
+  for (const p of list) { if (!p.ping) continue; const [px, pz] = scr(p.x, p.z); x.strokeStyle = p.col; x.lineWidth = 2; x.beginPath(); x.arc(px, pz, 7, 0, 7); x.stroke(); }
+  // enemigos vistos
+  for (const p of list) { if (!p.enemy) continue; const [px, pz, out] = scr(p.x, p.z); if (out) continue; x.fillStyle = p.col; x.beginPath(); x.arc(px, pz, 4, 0, 7); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1.5; x.stroke(); }
+  // compañeros: punto grande con su número y una cuña hacia donde miran; fuera del radar, flechita en el borde
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = 'bold 9px Rajdhani, Arial, sans-serif';
+  for (const p of list) {
+    if (!p.mate) continue; const [px, pz, out] = scr(p.x, p.z);
+    if (out) {
+      const a = Math.atan2(pz - H, px - H); x.save(); x.translate(px, pz); x.rotate(a);
+      x.fillStyle = p.col; x.strokeStyle = '#000'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(6, 0); x.lineTo(-4, -5); x.lineTo(-4, 5); x.closePath(); x.fill(); x.stroke(); x.restore();
+      if (p.c4) { x.fillStyle = '#ffae2a'; x.fillRect(px - 3, pz - 9, 6, 4); }
+      continue;
+    }
+    if (p.yaw != null) { x.save(); x.translate(px, pz); x.rotate(head(p.yaw)); x.fillStyle = 'rgba(255,255,255,.85)'; x.strokeStyle = '#000'; x.lineWidth = 1; x.beginPath(); x.moveTo(0, -11); x.lineTo(4, -5); x.lineTo(-4, -5); x.closePath(); x.fill(); x.stroke(); x.restore(); }
+    x.fillStyle = p.col; x.beginPath(); x.arc(px, pz, 6, 0, 7); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1.6; x.stroke();
+    if (p.n) { x.fillStyle = '#111'; x.fillText(String(p.n), px, pz + 0.5); }
+    if (p.c4) { x.fillStyle = '#000'; x.fillRect(px + 3, pz - 11, 9, 7); x.fillStyle = '#ffae2a'; x.fillRect(px + 4, pz - 10, 7, 5); }
+  }
+  // yo: flecha en el centro (con la bomba encima si la llevo)
+  const myC4 = list.some(p => p.me && p.c4);
+  x.save(); x.translate(H, H); if (!rot) x.rotate(-view.yaw); x.translate(-H, -H);
+  x.fillStyle = '#fff'; x.strokeStyle = '#000'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(H, H - 8); x.lineTo(H + 6, H + 6); x.lineTo(H, H + 2); x.lineTo(H - 6, H + 6); x.closePath(); x.fill(); x.stroke(); x.restore();
+  if (myC4) { x.fillStyle = '#000'; x.fillRect(H + 6, H - 12, 9, 7); x.fillStyle = '#ffae2a'; x.fillRect(H + 7, H - 11, 7, 5); }
 }
 
 // ---------- HUD ----------

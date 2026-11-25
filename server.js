@@ -121,6 +121,7 @@ function tooMany(ip) {
   if (now - e.t > 10 * 60e3) { e.n = 0; e.t = now; }
   e.n++; authTries.set(ip, e); return e.n > 20;
 }
+function okAuth(ip) { const e = authTries.get(ip); if (e) e.n = Math.max(0, e.n - 1); } // un acierto no gasta intentos
 const api = express.Router();
 api.use(express.json({ limit: '4kb' }));
 const wrap = fn => (req, res) => fn(req, res).catch(e => { console.error('cuentas', e); res.status(500).json({ ok: false, error: 'Error del servidor, probá de nuevo' }); });
@@ -128,20 +129,46 @@ api.post('/register', wrap(async (req, res) => {
   if (tooMany(req.ip)) return res.status(429).json({ ok: false, error: 'Demasiados intentos, esperá unos minutos' });
   const r = await Accounts.register(req.body && req.body.user, req.body && req.body.pass);
   if (!r.ok) return res.json(r);
+  okAuth(req.ip);
   setCookie(req, res, await Accounts.newSession(r.user));
-  res.json({ ok: true, user: { ...Accounts.publicUser(r.user), admin: ADMIN_USERS.has(r.user.key) || undefined } });
+  res.json({ ok: true, user: meOut(r.user) });
 }));
 api.post('/login', wrap(async (req, res) => {
   if (tooMany(req.ip)) return res.status(429).json({ ok: false, error: 'Demasiados intentos, esperá unos minutos' });
   const r = await Accounts.login(req.body && req.body.user, req.body && req.body.pass);
   if (!r.ok) return res.json(r);
+  okAuth(req.ip);
   setCookie(req, res, await Accounts.newSession(r.user));
-  res.json({ ok: true, user: { ...Accounts.publicUser(r.user), admin: ADMIN_USERS.has(r.user.key) || undefined } });
+  res.json({ ok: true, user: meOut(r.user) });
 }));
 api.post('/logout', wrap(async (req, res) => { await Accounts.logout(readCookie(req.headers.cookie)); setCookie(req, res, null); res.json({ ok: true }); }));
+// lo que recibe el dueño de la cuenta; al admin además se le avisa si las cuentas no persisten
+const meOut = u => { const admin = ADMIN_USERS.has(u.key); return { ...Accounts.publicUser(u), admin: admin || undefined, storage: admin ? Accounts.store.kind : undefined }; };
+const authed = fn => wrap(async (req, res) => {
+  const u = await Accounts.userFromToken(readCookie(req.headers.cookie));
+  if (!u) return res.status(401).json({ ok: false, error: 'Tu sesión se cerró, volvé a iniciar sesión' });
+  return fn(req, res, u);
+});
 api.get('/me', wrap(async (req, res) => {
   const u = await Accounts.userFromToken(readCookie(req.headers.cookie));
-  res.json(u ? { ok: true, user: { ...Accounts.publicUser(u), admin: ADMIN_USERS.has(u.key) || undefined } } : { ok: false });
+  res.json(u ? { ok: true, user: meOut(u) } : { ok: false });
+}));
+api.get('/options', (_req, res) => res.json({ ok: true, ...Accounts.OPTIONS }));
+api.post('/profile', authed(async (req, res, u) => {
+  const r = await Accounts.updateProfile(u.key, req.body);
+  if (!r.ok) return res.json(r);
+  res.json({ ok: true, user: meOut(r.user) });
+  updateRoomsFor(u.key, r.user);
+}));
+api.post('/password', authed(async (req, res, u) => {
+  if (tooMany(req.ip)) return res.status(429).json({ ok: false, error: 'Demasiados intentos, esperá unos minutos' });
+  const r = await Accounts.changePassword(u.key, req.body && req.body.old, req.body && req.body.pass);
+  if (r.ok) okAuth(req.ip);
+  res.json(r.ok ? { ok: true } : r);
+}));
+api.get('/u/:name', wrap(async (req, res) => {
+  const u = await Accounts.getUserByName(String(req.params.name || '').slice(0, 20));
+  res.json(u ? { ok: true, user: Accounts.profileCard(u) } : { ok: false, error: 'Ese usuario no existe' });
 }));
 api.get('/top', wrap(async (_req, res) => res.json({ ok: true, top: await Accounts.top(20) })));
 app.use('/api/account', api);
@@ -166,6 +193,15 @@ function cleanName(n) {
   return String(n || '').replace(/[<>&"'\u0000-\u001f]/g, '').trim().slice(0, 16);
 }
 
+// si alguien cambia su avatar o color, se actualiza en las salas donde está
+function updateRoomsFor(key, u) {
+  const p = Accounts.profileOf(u);
+  for (const r of rooms.values()) {
+    let hit = false;
+    for (const pl of r.players.values()) if (accOf.get(pl.id) === key) { pl.avatar = p.avatar; pl.color = p.color; hit = true; }
+    if (hit) io.to(r.code).emit('room:update', publicRoom(r));
+  }
+}
 function publicRoom(r) {
   return { code: r.code, name: r.name, locked: !!r.pass, hostId: r.hostId, gameId: r.gameId, state: r.state, players: [...r.players.values()] };
 }
@@ -199,8 +235,10 @@ io.on('connection', socket => {
   // si el navegador tiene sesión iniciada, el jugador usa el nombre de su cuenta y sus coronas quedan guardadas
   const userP = Accounts.userFromToken(readCookie(socket.handshake.headers.cookie)).catch(() => null);
   async function playerName(payload) {
-    const u = await userP;
-    return u ? { name: u.name, acc: u.key } : { name: cleanName(payload && payload.name), acc: null };
+    const u0 = await userP, u = u0 && (await Accounts.store.getUser(u0.key).catch(() => null) || u0);
+    if (!u) return { name: cleanName(payload && payload.name), acc: null, look: {} };
+    const p = Accounts.profileOf(u);
+    return { name: u.name, acc: u.key, look: { avatar: p.avatar, color: p.color } };
   }
   let msgCount = 0, passTries = 0;
   const resetTimer = setInterval(() => { msgCount = 0; }, 1000);
@@ -229,13 +267,13 @@ io.on('connection', socket => {
 
   socket.on('room:create', async (payload, cb) => {
     if (typeof cb !== 'function') return;
-    const { name, acc } = await playerName(payload);
+    const { name, acc, look } = await playerName(payload);
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     leave();
     const code = makeCode();
     const r = { code, name: cleanRoomName(payload && payload.roomName) || 'Sala de ' + name, pass: null, salt: '', hostId: socket.id, players: new Map(), gameId: null, state: 'lobby' };
     setPass(r, payload && payload.pass);
-    r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0, acc: !!acc }); accOf.set(socket.id, acc);
+    r.players.set(socket.id, { id: socket.id, name, slot: 0, crowns: 0, acc: !!acc, ...look }); accOf.set(socket.id, acc);
     rooms.set(code, r);
     room = r;
     socket.join(code);
@@ -245,7 +283,7 @@ io.on('connection', socket => {
   socket.on('room:join', async (payload, cb) => {
     if (typeof cb !== 'function') return;
     const code = String((payload && payload.code) || '').toUpperCase().trim();
-    const { name, acc } = await playerName(payload);
+    const { name, acc, look } = await playerName(payload);
     if (!name) return cb({ ok: false, error: 'Poné tu nombre para jugar online' });
     const r = rooms.get(code);
     if (!r) return cb({ ok: false, error: 'No existe esa sala' });
@@ -258,7 +296,7 @@ io.on('connection', socket => {
       if (!passOk(r, payload.pass)) return cb({ ok: false, needPass: true, error: 'Contraseña incorrecta' });
     }
     leave();
-    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0, acc: !!acc }); accOf.set(socket.id, acc);
+    r.players.set(socket.id, { id: socket.id, name, slot: r.players.size, crowns: 0, acc: !!acc, ...look }); accOf.set(socket.id, acc);
     room = r;
     socket.join(code);
     cb({ ok: true, me: socket.id, room: publicRoom(r) });
@@ -320,6 +358,13 @@ io.on('connection', socket => {
       Accounts.addCrown(key, { game: game ? game.name : '?', gameId: room.gameId, room: room.name, with: names.filter(n => n !== me).slice(0, 8), co: winners.length > 1 })
         .then(u => { const s = io.sockets.sockets.get(id); if (u && s) s.emit('account:update', Accounts.publicUser(u)); })
         .catch(e => console.error('corona', e));
+    }
+    // partidas jugadas (y racha cortada) para las cuentas que no ganaron
+    for (const id of room.players.keys()) {
+      const key = accOf.get(id); if (!key || winners.includes(id)) continue;
+      Accounts.addPlayed(key, false)
+        .then(u => { const s = io.sockets.sockets.get(id); if (u && s) s.emit('account:update', Accounts.publicUser(u)); })
+        .catch(e => console.error('partida', e));
     }
     let text = payload && typeof payload === 'object' ? String(payload.text || '').slice(0, 120) : '';
     if (!text && winners.length) text = `👑 ${winners.map(id => room.players.get(id).name).join(' y ')} ${winners.length > 1 ? 'ganaron' : 'ganó'} ${game ? game.name : ''}`;

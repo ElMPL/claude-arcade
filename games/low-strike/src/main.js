@@ -219,7 +219,7 @@ function onKey(c) {
   else if (c === 'KeyR') reload();
   else if (c === 'KeyG') dropCurrent();
   else if (c === 'KeyE') use();
-  else if (c === 'KeyF') { /* el cuchillo no se inspecciona (por ahora) */ if (M.reloadT <= 0 && M.drawT <= 0 && !M.scope && (WEAPONS[curId()] || {}).cat !== 'knife') { const ct = (WEAPONS[curId()] || {}).cat; M.inspectDur = ct === 'knife' ? 2.6 : ct === 'pistol' ? 3.2 : 4.2; M.inspect = M.inspectDur; } }
+  else if (c === 'KeyF') { /* el cuchillo y la bomba no se inspeccionan (por ahora) */ if (M.reloadT <= 0 && M.drawT <= 0 && !M.scope && (WEAPONS[curId()] || {}).cat !== 'knife' && curId() !== 'c4') { const ct = (WEAPONS[curId()] || {}).cat; M.inspectDur = ct === 'knife' ? 2.6 : ct === 'pistol' ? 3.2 : 4.2; M.inspect = M.inspectDur; } }
 }
 // táctil (básico)
 function setupTouch() {
@@ -1395,10 +1395,15 @@ function drawRadarNow(P) {
   const S = M.spec && !P.alive ? G.players.get(M.spec) : P;
   const view = S && S !== P ? { x: S.x, z: S.z, yaw: S.yaw } : { x: M.pl.x, z: M.pl.z, yaw: M.pl.yaw }; view.zoom = CFG.radarZoom ?? 1; view.rot = CFG.radarRot !== false;
   radarDots.length = 0;
+  const ctr = S || P; let n = 0;
   for (const p of G.players.values()) {
-    if (!p.alive) continue;
-    if (p.team === P.team) radarDots.push({ x: p.id === myId ? M.pl.x : p.x, z: p.id === myId ? M.pl.z : p.z, col: p.team === 'T' ? '#f0c060' : '#8ab8ff', me: p.id === myId });
-    else if (p.seenT > G.time - 0.6) radarDots.push({ x: p.x, z: p.z, col: '#ff4040' });
+    if (p.team === P.team) {
+      n++;
+      const mine = p.id === myId, px = mine ? M.pl.x : p.x, pz = mine ? M.pl.z : p.z;
+      if (!p.alive) { if (p.team === 'T' || p.team === 'CT') radarDots.push({ x: px, z: pz, col: p.team === 'T' ? '#f0c060' : '#8ab8ff', dead: true }); continue; }
+      const center = p === ctr;
+      radarDots.push({ x: px, z: pz, col: p.team === 'T' ? '#f0c060' : '#8ab8ff', me: center, mate: !center, n, yaw: mine ? M.pl.yaw : p.yaw, c4: P.team === 'T' && G.bomb.state === 'carried' && G.bomb.carrier === p.id });
+    } else if (p.alive && p.seenT > G.time - 0.6) radarDots.push({ x: p.x, z: p.z, col: '#ff4040', enemy: true });
   }
   for (const q of pings) radarDots.push({ x: q.x, z: q.z, col: '#ffd34a', ping: true });
   drawRadar($('radar'), radarImg, G.W, view, radarDots, { s: G.bomb.state, x: G.bomb.x, z: G.bomb.z, seen: P.team === 'T' || G.bomb.seen || G.bomb.state === 'planted' }, P.team);
